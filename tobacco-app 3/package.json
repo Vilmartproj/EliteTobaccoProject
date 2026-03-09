@@ -3,11 +3,12 @@
   "version": "1.0.0",
   "description": "Elite Tobacco Buying Management System",
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev": "cross-env NODE_ENV=development concurrently \"npm run server\" \"npm run client\"",
     "client": "vite",
-    "server": "node server/index.js",
+    "server": "cross-env NODE_ENV=development node server/index.js",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "cross-env NODE_ENV=production node server/index.js"
   },
   "dependencies": {
     "concurrently": "^8.2.2",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.1.4"
+    "vite": "^5.1.4",
+    "cross-env": "^7.0.3"
   }
 }
