@@ -6,12 +6,26 @@ import BuyingForm from './BuyingForm';
 import QRCode from './QRCode';
 import { printQRCodes } from '../utils/printQR';
 import { exportCSV } from '../utils/exportCSV';
+import { formatDateTime, fromInputDateTime, nowInputDateTime, toInputDateTime } from '../utils/dateFormat';
+
+const TOBACCO_GRADES = [
+  'H1','H2','H3','H4',
+  'C1','C2','C3','C4',
+  'B1','B2','B3','B4',
+  'X1','X2','X3','X4',
+  'L1','L2','L3','L4',
+  'G1','G2','G3','G4',
+  'F1','F2','F3','F4',
+];
 
 export default function BuyerDashboard({ user, onLogout }) {
   const [view, setView]     = useState('form');
   const [bags, setBags]     = useState([]);
   const [qrCodes, setQR]    = useState([]);
   const [loading, setLoad]  = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [editMsg, setEditMsg] = useState('');
 
   const loadBags = async () => {
     setLoad(true);
@@ -26,8 +40,56 @@ export default function BuyerDashboard({ user, onLogout }) {
 
   const switchView = (v) => {
     setView(v);
+    setEditMsg('');
+    if (v !== 'bags') {
+      setEditingId(null);
+      setEditForm(null);
+    }
     if (v === 'bags') loadBags();
     if (v === 'qr')   loadQR();
+  };
+
+  const formatUpdatedAt = (value) => formatDateTime(value);
+
+  const startEdit = (bag) => {
+    setEditMsg('');
+    setEditingId(bag.id);
+    setEditForm({
+      fcv: bag.fcv || '',
+      apf_number: bag.apf_number || '',
+      tobacco_grade: bag.tobacco_grade || '',
+      weight: bag.weight ?? '',
+      buyer_grade: bag.buyer_grade || '',
+      date_of_purchase: toInputDateTime(bag.date_of_purchase) || nowInputDateTime(),
+      purchase_location: bag.purchase_location || '',
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editingId || !editForm) return;
+    if (!editForm.apf_number || !editForm.tobacco_grade || !editForm.weight || !editForm.buyer_grade) {
+      setEditMsg('Please fill required fields before saving');
+      return;
+    }
+    try {
+      await api.updateBag(editingId, {
+        ...editForm,
+        weight: parseFloat(editForm.weight),
+        date_of_purchase: fromInputDateTime(editForm.date_of_purchase),
+      });
+      setEditMsg('✅ Bag updated successfully');
+      setEditingId(null);
+      setEditForm(null);
+      await loadBags();
+    } catch (e) {
+      setEditMsg(e.message);
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm(null);
+    setEditMsg('');
   };
 
   return (
@@ -64,26 +126,72 @@ export default function BuyerDashboard({ user, onLogout }) {
                 </button>
               )}
             </div>
+            {editMsg && <div style={editMsg.startsWith('✅') ? S.success : S.error}>{editMsg}</div>}
             {loading ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>Loading…</p>
             : bags.length === 0 ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>No bags saved yet.</p>
             : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={S.table}>
                   <thead><tr>
-                    {['Code','APF','TB Grade','Weight','B.Grade','Date','Location','FCV'].map(h => <th key={h} style={S.th}>{h}</th>)}
+                    {['Code','APF','TB Grade','Weight','B.Grade','Date','Location','FCV','Updated','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {bags.map((b, i) => (
-                      <tr key={b.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
-                        <td style={S.td}><b>{b.unique_code}</b></td>
-                        <td style={S.td}>{b.apf_number}</td>
-                        <td style={S.td}>{b.tobacco_grade}</td>
-                        <td style={S.td}>{b.weight} kg</td>
-                        <td style={S.td}>{b.buyer_grade}</td>
-                        <td style={S.td}>{b.date_of_purchase}</td>
-                        <td style={S.td}>{b.purchase_location}</td>
-                        <td style={S.td}><span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span></td>
-                      </tr>
+                      editingId === b.id ? (
+                        <tr key={b.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
+                          <td style={S.td}><b>{b.unique_code}</b></td>
+                          <td style={S.td}><input style={{ ...S.input, minWidth: 100 }} value={editForm?.apf_number ?? ''} onChange={e => setEditForm(f => ({ ...f, apf_number: e.target.value }))} /></td>
+                          <td style={S.td}>
+                            <select style={{ ...S.input, minWidth: 110 }} value={editForm?.tobacco_grade ?? ''} onChange={e => setEditForm(f => ({ ...f, tobacco_grade: e.target.value }))}>
+                              <option value="">Select</option>
+                              {TOBACCO_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+                            </select>
+                          </td>
+                          <td style={S.td}><input style={{ ...S.input, minWidth: 90 }} type="number" value={editForm?.weight ?? ''} onChange={e => setEditForm(f => ({ ...f, weight: e.target.value }))} /></td>
+                          <td style={S.td}>
+                            <select style={{ ...S.input, minWidth: 110 }} value={editForm?.buyer_grade ?? ''} onChange={e => setEditForm(f => ({ ...f, buyer_grade: e.target.value }))}>
+                              <option value="">Select</option>
+                              {TOBACCO_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+                            </select>
+                          </td>
+                          <td style={S.td}>
+                            <input style={{ ...S.input, minWidth: 180 }} type="datetime-local" value={editForm?.date_of_purchase ?? nowInputDateTime()} onChange={e => setEditForm(f => ({ ...f, date_of_purchase: e.target.value }))} />
+                            <div style={{ fontSize: 10, color: '#888', marginTop: 4 }}>IST: {fromInputDateTime(editForm?.date_of_purchase)}</div>
+                          </td>
+                          <td style={S.td}><input style={{ ...S.input, minWidth: 120 }} value={editForm?.purchase_location ?? ''} onChange={e => setEditForm(f => ({ ...f, purchase_location: e.target.value }))} /></td>
+                          <td style={S.td}>
+                            <select style={{ ...S.input, minWidth: 95 }} value={editForm?.fcv ?? ''} onChange={e => setEditForm(f => ({ ...f, fcv: e.target.value }))}>
+                              <option value="">Select</option>
+                              <option value="FCV">FCV</option>
+                              <option value="NON-FCV">NON-FCV</option>
+                            </select>
+                          </td>
+                          <td style={S.td}>{formatUpdatedAt(b.updated_at)}</td>
+                          <td style={S.td}>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={saveEdit}>Save</button>
+                              <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={cancelEdit}>Cancel</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        <tr key={b.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
+                          <td style={S.td}><b>{b.unique_code}</b></td>
+                          <td style={S.td}>{b.apf_number}</td>
+                          <td style={S.td}>{b.tobacco_grade}</td>
+                          <td style={S.td}>{b.weight} kg</td>
+                          <td style={S.td}>{b.buyer_grade}</td>
+                          <td style={S.td}>{formatDateTime(b.date_of_purchase)}</td>
+                          <td style={S.td}>{b.purchase_location}</td>
+                          <td style={S.td}><span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span></td>
+                          <td style={S.td}>{formatUpdatedAt(b.updated_at)}</td>
+                          <td style={S.td}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => startEdit(b)}>
+                              Edit
+                            </button>
+                          </td>
+                        </tr>
+                      )
                     ))}
                   </tbody>
                 </table>

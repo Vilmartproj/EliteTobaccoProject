@@ -71,21 +71,54 @@ app.get('/api/qrcodes', (req, res) => {
 });
 
 app.post('/api/qrcodes/generate', (req, res) => {
-  const { count } = req.body || {};
+  const { startCode, count, buyerId } = req.body || {};
+  const n = Math.max(1, parseInt(count, 10) || 1);
+  const parsedStart = parseInt(startCode, 10);
+  const parsedBuyerId = buyerId ? parseInt(buyerId, 10) : null;
   const codes = [];
-  const n = count || 1;
+
+  if (parsedBuyerId) {
+    const buyerExists = db.buyers.some(b => b.id === parsedBuyerId);
+    if (!buyerExists) return res.status(400).json({ error: 'Invalid buyerId' });
+  }
+
+  const existing = new Set(db.qr_codes.map(q => q.unique_code));
+
+  if (Number.isFinite(parsedStart)) {
+    for (let i = 0; i < n; i++) {
+      const candidate = String(parsedStart + i);
+      if (existing.has(candidate)) {
+        return res.status(400).json({ error: `QR code ${candidate} already exists` });
+      }
+    }
+  }
+
   for (let i = 0; i < n; i++) {
+    let generatedCode;
+
+    if (Number.isFinite(parsedStart)) {
+      generatedCode = String(parsedStart + i);
+    } else {
+      do {
+        generatedCode = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+      } while (existing.has(generatedCode));
+    }
+
+    existing.add(generatedCode);
+
     const code = {
       id: nextId.qr_codes++,
-      unique_code: '' + Math.floor(Math.random() * 1000000),
-      buyer_id: null,
+      unique_code: generatedCode,
+      buyer_id: parsedBuyerId,
       used: 0,
       created_at: new Date().toISOString()
     };
+
     db.qr_codes.push(code);
     codes.push(code);
   }
-  res.json(codes);
+
+  res.json({ count: codes.length, codes });
 });
 
 app.put('/api/qrcodes/:id/assign', (req, res) => {
@@ -115,6 +148,7 @@ app.get('/api/bags', (req, res) => {
 
 app.post('/api/bags', (req, res) => {
   const body = req.body;
+  const now = new Date().toISOString();
   const newBag = {
     id: nextId.bags++,
     unique_code: body.unique_code || '' + Math.random(),
@@ -132,7 +166,8 @@ app.post('/api/bags', (req, res) => {
     colour: body.colour,
     sandy_leaves: body.sandy_leaves,
     total_bales: body.total_bales,
-    saved_at: new Date().toISOString()
+    saved_at: now,
+    updated_at: now
   };
   db.bags.push(newBag);
   
@@ -141,6 +176,34 @@ app.post('/api/bags', (req, res) => {
   if (qr) qr.used = 1;
   
   res.json({ success: true, bag: newBag });
+});
+
+app.put('/api/bags/:id', (req, res) => {
+  const { id } = req.params;
+  const updates = req.body || {};
+  const bag = db.bags.find(b => b.id == id);
+
+  if (!bag) return res.status(404).json({ error: 'Bag not found' });
+
+  const editableFields = [
+    'fcv',
+    'apf_number',
+    'tobacco_grade',
+    'weight',
+    'buyer_grade',
+    'date_of_purchase',
+    'purchase_location'
+  ];
+
+  for (const field of editableFields) {
+    if (Object.prototype.hasOwnProperty.call(updates, field)) {
+      bag[field] = updates[field];
+    }
+  }
+
+  bag.updated_at = new Date().toISOString();
+
+  res.json({ success: true, bag });
 });
 
 // ── DB VIEWER ───────────────────────────────────────────────

@@ -2,6 +2,7 @@
 import { useState, useRef } from 'react';
 import { api } from '../api';
 import { S } from '../styles';
+import { fromInputDateTime, nowInputDateTime } from '../utils/dateFormat';
 
 const TOBACCO_GRADES = [
   'H1','H2','H3','H4',
@@ -13,12 +14,6 @@ const TOBACCO_GRADES = [
   'F1','F2','F3','F4',
 ];
 
-function nowDatetime() {
-  const d = new Date();
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 export default function BuyingForm({ buyer, onSaveExit }) {
   const [fcv, setFcv]                   = useState('');
   const [uniqueCode, setUniqueCode]     = useState('');
@@ -28,7 +23,7 @@ export default function BuyingForm({ buyer, onSaveExit }) {
   const [tobaccoGrade, setTobaccoGrade] = useState('');
   const [weight, setWeight]             = useState('');
   const [buyerGrade, setBuyerGrade]     = useState('');
-  const [dateOfPurchase, setDate]       = useState(nowDatetime());
+  const [dateOfPurchase, setDate]       = useState(nowInputDateTime());
   const [purchaseLocation, setLocation] = useState('Guntur');
   const [error, setError]               = useState('');
   const [saved, setSaved]               = useState(false);
@@ -39,12 +34,13 @@ export default function BuyingForm({ buyer, onSaveExit }) {
     setFcv(''); setUniqueCode(''); setApfNumber(''); setTobaccoGrade('');
     setWeight(''); setBuyerGrade(''); setError(''); setSaved(false);
     setCodeStatus(null); setCodeMsg('');
+    setDate(nowInputDateTime());
     // keep date & location for next bag
   };
 
   const checkCode = async (code) => {
     setCodeStatus('checking');
-    setDate(nowDatetime()); // stamp date+time on scan
+    setDate(nowInputDateTime()); // stamp date+time on scan
     try {
       const v = await api.validateCode(code);
       if (!v.valid) {
@@ -105,7 +101,7 @@ export default function BuyingForm({ buyer, onSaveExit }) {
         buyer_code: buyer.code, buyer_name: buyer.name,
         fcv, apf_number: apfNumber, tobacco_grade: tobaccoGrade,
         weight: parseFloat(weight), buyer_grade: buyerGrade,
-        date_of_purchase: dateOfPurchase.replace('T', ' '),
+        date_of_purchase: fromInputDateTime(dateOfPurchase),
         purchase_location: purchaseLocation,
       });
       setSaved(true);
@@ -131,8 +127,18 @@ export default function BuyingForm({ buyer, onSaveExit }) {
       {/* FCV Toggle */}
       <label style={S.label}>FCV / NON-FCV</label>
       <div style={S.toggleGroup}>
-        <button style={S.toggleBtn(fcv === 'FCV', fcv === 'NON-FCV')} onClick={() => setFcv(fcv === 'FCV' ? '' : 'FCV')}>FCV</button>
-        <button style={S.toggleBtn(fcv === 'NON-FCV', fcv === 'FCV')} onClick={() => setFcv(fcv === 'NON-FCV' ? '' : 'NON-FCV')}>NON-FCV</button>
+        <button
+          style={{ ...S.toggleBtn(fcv === 'FCV', fcv === 'NON-FCV'), borderRight: '2px solid #e63946' }}
+          onClick={() => setFcv(fcv === 'FCV' ? '' : 'FCV')}
+        >
+          FCV
+        </button>
+        <button
+          style={S.toggleBtn(fcv === 'NON-FCV', fcv === 'FCV')}
+          onClick={() => setFcv(fcv === 'NON-FCV' ? '' : 'NON-FCV')}
+        >
+          NON-FCV
+        </button>
       </div>
       {fcv && (
         <div style={{ fontSize: 11, color: '#aaa', marginBottom: 14 }}>
@@ -204,7 +210,10 @@ export default function BuyingForm({ buyer, onSaveExit }) {
         </div>
         <div style={S.row}>
           <label style={S.label}>Buyer Grade</label>
-          <input style={S.input} placeholder="e.g. 23" value={buyerGrade} onChange={e => setBuyerGrade(e.target.value)} />
+          <select style={S.input} value={buyerGrade} onChange={e => setBuyerGrade(e.target.value)}>
+            <option value="">— Select Grade —</option>
+            {TOBACCO_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+          </select>
         </div>
       </div>
 
@@ -212,7 +221,9 @@ export default function BuyingForm({ buyer, onSaveExit }) {
         <div style={S.row}>
           <label style={S.label}>Date &amp; Time of Purchase</label>
           <input style={S.input} type="datetime-local" value={dateOfPurchase} onChange={e => setDate(e.target.value)} />
-          <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>⏱ Auto-stamped when QR code is scanned</div>
+          <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+            ⏱ Auto-stamped when QR code is scanned · IST: {fromInputDateTime(dateOfPurchase)}
+          </div>
         </div>
         <div style={S.row}>
           <label style={S.label}>Purchase Location</label>

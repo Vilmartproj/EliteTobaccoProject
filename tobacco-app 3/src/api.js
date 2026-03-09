@@ -6,8 +6,19 @@ async function req(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(BASE + path, opts);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+  const contentType = res.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+  const data = isJson ? await res.json() : await res.text();
+
+  if (!res.ok) {
+    if (isJson && data?.error) throw new Error(data.error);
+    if (typeof data === 'string' && data.trim()) {
+      const cleaned = data.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      throw new Error(cleaned || `Request failed (${res.status})`);
+    }
+    throw new Error(`Request failed (${res.status})`);
+  }
+
   return data;
 }
 
@@ -21,6 +32,7 @@ export const api = {
   validateCode:     (code)         => req('GET',  `/qrcodes/validate/${code}`),
   getBags:          (buyerId)      => req('GET',  `/bags${buyerId ? `?buyer_id=${buyerId}` : ''}`),
   saveBag:          (body)         => req('POST', '/bags', body),
+  updateBag:        (id, body)     => req('PUT',  `/bags/${id}`, body),
   getStats:         ()             => req('GET',  '/stats'),
   // DB viewer
   getDbTables:      ()             => req('GET',  '/db/tables'),

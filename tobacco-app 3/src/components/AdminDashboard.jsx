@@ -6,6 +6,7 @@ import QRCode from './QRCode';
 import DatabaseViewer from './DatabaseViewer';
 import { printQRCodes } from '../utils/printQR';
 import { exportCSV } from '../utils/exportCSV';
+import { formatDateTime } from '../utils/dateFormat';
 
 export default function AdminDashboard({ user, onLogout }) {
   const [tab, setTab]         = useState('overview');
@@ -36,8 +37,9 @@ export default function AdminDashboard({ user, onLogout }) {
     if (!genStart || !genCount) { setGenMsg('Fill all fields'); return; }
     try {
       const res = await api.generateQR({ startCode: genStart, count: parseInt(genCount), buyerId: genBuyerId ? parseInt(genBuyerId) : null });
-      setGenMsg(`✅ Generated ${res.count} QR codes`);
-      refresh();
+      const generatedCount = Array.isArray(res) ? res.length : (res?.count ?? res?.codes?.length ?? 0);
+      setGenMsg(`✅ Generated ${generatedCount} QR codes`);
+      await refresh();
     } catch (e) { setGenMsg(e.message); }
   };
 
@@ -254,7 +256,7 @@ export default function AdminDashboard({ user, onLogout }) {
                           <td style={S.td}>{b.apf_number}</td>
                           <td style={S.td}>{b.tobacco_grade}</td>
                           <td style={S.td}>{b.weight} kg</td>
-                          <td style={S.td}>{b.date_of_purchase}</td>
+                          <td style={S.td}>{formatDateTime(b.date_of_purchase)}</td>
                           <td style={S.td}>{b.purchase_location}</td>
                           <td style={S.td}><span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span></td>
                         </tr>
