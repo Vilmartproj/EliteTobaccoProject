@@ -4,17 +4,7 @@ import { api } from '../api';
 import { S } from '../styles';
 import { fromInputDateTime, nowInputDateTime } from '../utils/dateFormat';
 
-const TOBACCO_GRADES = [
-  'H1','H2','H3','H4',
-  'C1','C2','C3','C4',
-  'B1','B2','B3','B4',
-  'X1','X2','X3','X4',
-  'L1','L2','L3','L4',
-  'G1','G2','G3','G4',
-  'F1','F2','F3','F4',
-];
-
-export default function BuyingForm({ buyer, onSaveExit }) {
+export default function BuyingForm({ buyer, grades = [], onSaveExit }) {
   const [fcv, setFcv]                   = useState('');
   const [uniqueCode, setUniqueCode]     = useState('');
   const [codeStatus, setCodeStatus]     = useState(null); // null|checking|ok|duplicate|error
@@ -29,6 +19,8 @@ export default function BuyingForm({ buyer, onSaveExit }) {
   const [saved, setSaved]               = useState(false);
   const [loading, setLoading]           = useState(false);
   const debounceRef = useRef(null);
+  const sortedGrades = [...grades].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  const gradeCodes = sortedGrades.map(g => g.code);
 
   const reset = () => {
     setFcv(''); setUniqueCode(''); setApfNumber(''); setTobaccoGrade('');
@@ -199,7 +191,7 @@ export default function BuyingForm({ buyer, onSaveExit }) {
         <label style={S.label}>Tobacco Board Grade</label>
         <select style={S.input} value={tobaccoGrade} onChange={e => setTobaccoGrade(e.target.value)}>
           <option value="">— Select Grade —</option>
-          {TOBACCO_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+          {gradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
         </select>
       </div>
 
@@ -212,7 +204,7 @@ export default function BuyingForm({ buyer, onSaveExit }) {
           <label style={S.label}>Buyer Grade</label>
           <select style={S.input} value={buyerGrade} onChange={e => setBuyerGrade(e.target.value)}>
             <option value="">— Select Grade —</option>
-            {TOBACCO_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+            {gradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
           </select>
         </div>
       </div>

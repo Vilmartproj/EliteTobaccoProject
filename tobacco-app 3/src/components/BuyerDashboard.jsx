@@ -9,20 +9,11 @@ import { exportCSV } from '../utils/exportCSV';
 import { exportBagsPDF, exportBagsXLS, shareBagsWhatsApp } from '../utils/exportBags';
 import { formatDateTime, fromInputDateTime, nowInputDateTime, toInputDateTime } from '../utils/dateFormat';
 
-const TOBACCO_GRADES = [
-  'H1','H2','H3','H4',
-  'C1','C2','C3','C4',
-  'B1','B2','B3','B4',
-  'X1','X2','X3','X4',
-  'L1','L2','L3','L4',
-  'G1','G2','G3','G4',
-  'F1','F2','F3','F4',
-];
-
 export default function BuyerDashboard({ user, onLogout }) {
   const [view, setView]     = useState('form');
   const [bags, setBags]     = useState([]);
   const [qrCodes, setQR]    = useState([]);
+  const [grades, setGrades] = useState([]);
   const [loading, setLoad]  = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(null);
@@ -36,8 +27,11 @@ export default function BuyerDashboard({ user, onLogout }) {
     const all = await api.getQRCodes();
     setQR(all.filter(q => q.buyer_id === user.id));
   };
+  const loadGrades = async () => {
+    setGrades(await api.getGrades());
+  };
 
-  useEffect(() => { loadBags(); loadQR(); }, []);
+  useEffect(() => { loadBags(); loadQR(); loadGrades(); }, []);
 
   const switchView = (v) => {
     setView(v);
@@ -48,6 +42,7 @@ export default function BuyerDashboard({ user, onLogout }) {
     }
     if (v === 'bags') loadBags();
     if (v === 'qr')   loadQR();
+    if (v === 'grades') loadGrades();
   };
 
   const formatUpdatedAt = (value) => formatDateTime(value);
@@ -65,6 +60,9 @@ export default function BuyerDashboard({ user, onLogout }) {
       purchase_location: bag.purchase_location || '',
     });
   };
+
+  const sortedGrades = [...grades].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  const gradeCodes = sortedGrades.map(g => g.code);
 
   const saveEdit = async () => {
     if (!editingId || !editForm) return;
@@ -147,10 +145,11 @@ export default function BuyerDashboard({ user, onLogout }) {
           <button style={S.tab(view === 'form')} onClick={() => switchView('form')}>📝 New Bag Entry</button>
           <button style={S.tab(view === 'bags')} onClick={() => switchView('bags')}>📦 My Bags ({bags.length})</button>
           <button style={S.tab(view === 'qr')}   onClick={() => switchView('qr')}>🔲 My QR Codes ({qrCodes.length})</button>
+          <button style={S.tab(view === 'grades')} onClick={() => switchView('grades')}>🏷️ Grade Info ({grades.length})</button>
         </div>
 
         {view === 'form' && (
-          <BuyingForm buyer={user} onSaveExit={() => switchView('bags')} />
+          <BuyingForm buyer={user} grades={grades} onSaveExit={() => switchView('bags')} />
         )}
 
         {view === 'bags' && (
@@ -204,14 +203,14 @@ export default function BuyerDashboard({ user, onLogout }) {
                           <td style={S.td}>
                             <select style={{ ...S.input, minWidth: 110 }} value={editForm?.tobacco_grade ?? ''} onChange={e => setEditForm(f => ({ ...f, tobacco_grade: e.target.value }))}>
                               <option value="">Select</option>
-                              {TOBACCO_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+                              {gradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
                             </select>
                           </td>
                           <td style={S.td}><input style={{ ...S.input, minWidth: 90 }} type="number" value={editForm?.weight ?? ''} onChange={e => setEditForm(f => ({ ...f, weight: e.target.value }))} /></td>
                           <td style={S.td}>
                             <select style={{ ...S.input, minWidth: 110 }} value={editForm?.buyer_grade ?? ''} onChange={e => setEditForm(f => ({ ...f, buyer_grade: e.target.value }))}>
                               <option value="">Select</option>
-                              {TOBACCO_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+                              {gradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
                             </select>
                           </td>
                           <td style={S.td}>
@@ -284,6 +283,28 @@ export default function BuyerDashboard({ user, onLogout }) {
                   ))}
                 </div>
               )}
+          </div>
+        )}
+
+        {view === 'grades' && (
+          <div style={S.card}>
+            <div style={S.subheading}>Tobacco Board Grades ({grades.length})</div>
+            {grades.length === 0 ? <p style={{ color: '#aaa', textAlign: 'center', padding: 24 }}>No grade data available.</p>
+            : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={S.table}>
+                  <thead><tr>{['Grade Code','Description'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {sortedGrades.map((g, i) => (
+                      <tr key={g.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
+                        <td style={S.td}><b>{g.code}</b></td>
+                        <td style={S.td}>{g.description}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>

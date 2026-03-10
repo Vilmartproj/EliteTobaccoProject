@@ -8,13 +8,43 @@ const app = express();
 const PORT = 3001;
 
 // ── In-Memory Database ──────────────────────────────────────
-let nextId = { buyers: 4, qr_codes: 6, bags: 1 };
+let nextId = { buyers: 4, qr_codes: 6, bags: 1, grades: 29 };
 
 const db = {
   buyers: [
     { id: 1, code: 'B001', name: 'Ravi Kumar', password: 'B001', created_at: new Date().toISOString() },
     { id: 2, code: 'B002', name: 'Suresh Reddy', password: 'B002', created_at: new Date().toISOString() },
     { id: 3, code: 'B003', name: 'Anitha Devi', password: 'B003', created_at: new Date().toISOString() },
+  ],
+  grades: [
+    { id: 1, code: 'H1', description: 'High Grade 1', created_at: new Date().toISOString() },
+    { id: 2, code: 'H2', description: 'High Grade 2', created_at: new Date().toISOString() },
+    { id: 3, code: 'H3', description: 'High Grade 3', created_at: new Date().toISOString() },
+    { id: 4, code: 'H4', description: 'High Grade 4', created_at: new Date().toISOString() },
+    { id: 5, code: 'C1', description: 'Category C Grade 1', created_at: new Date().toISOString() },
+    { id: 6, code: 'C2', description: 'Category C Grade 2', created_at: new Date().toISOString() },
+    { id: 7, code: 'C3', description: 'Category C Grade 3', created_at: new Date().toISOString() },
+    { id: 8, code: 'C4', description: 'Category C Grade 4', created_at: new Date().toISOString() },
+    { id: 9, code: 'B1', description: 'Category B Grade 1', created_at: new Date().toISOString() },
+    { id: 10, code: 'B2', description: 'Category B Grade 2', created_at: new Date().toISOString() },
+    { id: 11, code: 'B3', description: 'Category B Grade 3', created_at: new Date().toISOString() },
+    { id: 12, code: 'B4', description: 'Category B Grade 4', created_at: new Date().toISOString() },
+    { id: 13, code: 'X1', description: 'Category X Grade 1', created_at: new Date().toISOString() },
+    { id: 14, code: 'X2', description: 'Category X Grade 2', created_at: new Date().toISOString() },
+    { id: 15, code: 'X3', description: 'Category X Grade 3', created_at: new Date().toISOString() },
+    { id: 16, code: 'X4', description: 'Category X Grade 4', created_at: new Date().toISOString() },
+    { id: 17, code: 'L1', description: 'Category L Grade 1', created_at: new Date().toISOString() },
+    { id: 18, code: 'L2', description: 'Category L Grade 2', created_at: new Date().toISOString() },
+    { id: 19, code: 'L3', description: 'Category L Grade 3', created_at: new Date().toISOString() },
+    { id: 20, code: 'L4', description: 'Category L Grade 4', created_at: new Date().toISOString() },
+    { id: 21, code: 'G1', description: 'Category G Grade 1', created_at: new Date().toISOString() },
+    { id: 22, code: 'G2', description: 'Category G Grade 2', created_at: new Date().toISOString() },
+    { id: 23, code: 'G3', description: 'Category G Grade 3', created_at: new Date().toISOString() },
+    { id: 24, code: 'G4', description: 'Category G Grade 4', created_at: new Date().toISOString() },
+    { id: 25, code: 'F1', description: 'Category F Grade 1', created_at: new Date().toISOString() },
+    { id: 26, code: 'F2', description: 'Category F Grade 2', created_at: new Date().toISOString() },
+    { id: 27, code: 'F3', description: 'Category F Grade 3', created_at: new Date().toISOString() },
+    { id: 28, code: 'F4', description: 'Category F Grade 4', created_at: new Date().toISOString() },
   ],
   qr_codes: [
     { id: 1, unique_code: '113', buyer_id: 1, used: 0, created_at: new Date().toISOString() },
@@ -63,6 +93,71 @@ app.post('/api/buyers', (req, res) => {
   };
   db.buyers.push(newBuyer);
   res.json(newBuyer);
+});
+
+// ── GRADES ──────────────────────────────────────────────────
+app.get('/api/grades', (req, res) => {
+  const rows = [...db.grades].sort((a, b) => a.code.localeCompare(b.code));
+  res.json(rows);
+});
+
+app.post('/api/grades', (req, res) => {
+  const { code, description } = req.body || {};
+  const normalizedCode = String(code || '').trim().toUpperCase();
+  const normalizedDesc = String(description || '').trim();
+
+  if (!normalizedCode || !normalizedDesc) {
+    return res.status(400).json({ error: 'code and description required' });
+  }
+
+  const duplicate = db.grades.some(g => g.code === normalizedCode);
+  if (duplicate) return res.status(400).json({ error: 'Grade code already exists' });
+
+  const grade = {
+    id: nextId.grades++,
+    code: normalizedCode,
+    description: normalizedDesc,
+    created_at: new Date().toISOString(),
+  };
+
+  db.grades.push(grade);
+  res.json(grade);
+});
+
+app.put('/api/grades/:id', (req, res) => {
+  const { id } = req.params;
+  const gradeId = Number(id);
+  const { code, description } = req.body || {};
+
+  const grade = db.grades.find(g => g.id === gradeId);
+  if (!grade) return res.status(404).json({ error: 'Grade not found' });
+
+  const normalizedCode = String(code || '').trim().toUpperCase();
+  const normalizedDesc = String(description || '').trim();
+  if (!normalizedCode || !normalizedDesc) {
+    return res.status(400).json({ error: 'code and description required' });
+  }
+
+  const duplicate = db.grades.some(g => g.id !== gradeId && g.code === normalizedCode);
+  if (duplicate) return res.status(400).json({ error: 'Grade code already exists' });
+
+  grade.code = normalizedCode;
+  grade.description = normalizedDesc;
+  res.json(grade);
+});
+
+app.delete('/api/grades/:id', (req, res) => {
+  const { id } = req.params;
+  const gradeId = Number(id);
+  const index = db.grades.findIndex(g => g.id === gradeId);
+  if (index === -1) return res.status(404).json({ error: 'Grade not found' });
+
+  const grade = db.grades[index];
+  const inUse = db.bags.some(b => b.tobacco_grade === grade.code || b.buyer_grade === grade.code);
+  if (inUse) return res.status(400).json({ error: 'Grade is in use and cannot be deleted' });
+
+  const deleted = db.grades.splice(index, 1)[0];
+  res.json({ success: true, grade: deleted });
 });
 
 app.delete('/api/buyers/:id', (req, res) => {
