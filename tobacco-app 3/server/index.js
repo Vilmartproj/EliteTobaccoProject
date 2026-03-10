@@ -65,9 +65,33 @@ app.post('/api/buyers', (req, res) => {
   res.json(newBuyer);
 });
 
+app.delete('/api/buyers/:id', (req, res) => {
+  const { id } = req.params;
+  const buyerId = Number(id);
+  const index = db.buyers.findIndex(b => b.id === buyerId);
+  if (index === -1) return res.status(404).json({ error: 'Buyer not found' });
+
+  const hasBags = db.bags.some(b => b.buyer_id === buyerId);
+  if (hasBags) return res.status(400).json({ error: 'Cannot delete buyer with bags' });
+
+  const hasAssignedQrs = db.qr_codes.some(q => q.buyer_id === buyerId);
+  if (hasAssignedQrs) return res.status(400).json({ error: 'Cannot delete buyer with assigned QR codes' });
+
+  const deleted = db.buyers.splice(index, 1)[0];
+  res.json({ success: true, buyer: deleted });
+});
+
 // ── QR CODES ────────────────────────────────────────────────
 app.get('/api/qrcodes', (req, res) => {
-  res.json(db.qr_codes);
+  const rows = db.qr_codes.map((qr) => {
+    const buyer = qr.buyer_id ? db.buyers.find((b) => b.id === qr.buyer_id) : null;
+    return {
+      ...qr,
+      buyer_code: buyer?.code || null,
+      buyer_name: buyer?.name || null,
+    };
+  });
+  res.json(rows);
 });
 
 app.post('/api/qrcodes/generate', (req, res) => {
@@ -138,6 +162,19 @@ app.get('/api/qrcodes/validate/:code', (req, res) => {
   res.json({ valid: true, qr });
 });
 
+app.delete('/api/qrcodes/:id', (req, res) => {
+  const { id } = req.params;
+  const qrId = Number(id);
+  const index = db.qr_codes.findIndex(q => q.id === qrId);
+  if (index === -1) return res.status(404).json({ error: 'QR code not found' });
+
+  const qr = db.qr_codes[index];
+  if (qr.used) return res.status(400).json({ error: 'Used QR code cannot be deleted' });
+
+  const deleted = db.qr_codes.splice(index, 1)[0];
+  res.json({ success: true, qr: deleted });
+});
+
 // ── BAGS ────────────────────────────────────────────────────
 app.get('/api/bags', (req, res) => {
   const { buyer_id } = req.query;
@@ -204,6 +241,24 @@ app.put('/api/bags/:id', (req, res) => {
   bag.updated_at = new Date().toISOString();
 
   res.json({ success: true, bag });
+});
+
+app.delete('/api/bags/:id', (req, res) => {
+  const { id } = req.params;
+  const bagId = Number(id);
+  const index = db.bags.findIndex(b => b.id === bagId);
+
+  if (index === -1) return res.status(404).json({ error: 'Bag not found' });
+
+  const deletedBag = db.bags.splice(index, 1)[0];
+
+  const qr = db.qr_codes.find(q => q.unique_code === deletedBag.unique_code);
+  if (qr) {
+    qr.used = 0;
+    qr.buyer_id = null;
+  }
+
+  res.json({ success: true, bag: deletedBag, qrReset: !!qr });
 });
 
 // ── DB VIEWER ───────────────────────────────────────────────

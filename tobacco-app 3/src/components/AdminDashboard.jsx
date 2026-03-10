@@ -26,6 +26,8 @@ export default function AdminDashboard({ user, onLogout }) {
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
   const [buyerMsg, setBuyerMsg] = useState('');
+  const [qrMsg, setQrMsg] = useState('');
+  const [bagsMsg, setBagsMsg] = useState('');
 
   const refresh = async () => {
     const [s, b, q, bg] = await Promise.all([api.getStats(), api.getBuyers(), api.getQRCodes(), api.getBags()]);
@@ -52,6 +54,45 @@ export default function AdminDashboard({ user, onLogout }) {
       setNewCode(''); setNewName('');
       refresh();
     } catch (e) { setBuyerMsg(e.message); }
+  };
+
+  const handleDeleteBuyer = async (buyer) => {
+    if (!window.confirm(`Delete buyer ${buyer.code} (${buyer.name})?`)) return;
+    try {
+      await api.deleteBuyer(buyer.id);
+      setBuyerMsg(`✅ Buyer ${buyer.code} deleted`);
+      await refresh();
+    } catch (e) {
+      setBuyerMsg(e.message);
+    }
+  };
+
+  const handleDeleteQRCode = async (qr) => {
+    if (!window.confirm(`Delete QR code ${qr.unique_code}?`)) return;
+    try {
+      await api.deleteQRCode(qr.id);
+      setQrMsg(`✅ QR code ${qr.unique_code} deleted`);
+      await refresh();
+    } catch (e) {
+      setQrMsg(e.message);
+    }
+  };
+
+  const canDeleteQRCode = (qr) => {
+    const usedValue = qr?.used;
+    const isUsed = usedValue === true || usedValue === 1 || usedValue === '1';
+    return !isUsed;
+  };
+
+  const handleDeleteBag = async (bag) => {
+    if (!window.confirm(`Delete bag ${bag.unique_code}? QR will become available/unassigned.`)) return;
+    try {
+      await api.deleteBag(bag.id);
+      setBagsMsg(`✅ Bag ${bag.unique_code} deleted and QR reset to available`);
+      await refresh();
+    } catch (e) {
+      setBagsMsg(e.message);
+    }
   };
 
   const buyerMap = Object.fromEntries(buyers.map(b => [b.id, b]));
@@ -169,7 +210,7 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={S.card}>
               <div style={S.subheading}>All Buyers ({buyers.length})</div>
               <table style={S.table}>
-                <thead><tr>{['Code','Name','Password','QR Assigned'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <thead><tr>{['Code','Name','Password','QR Assigned','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                 <tbody>
                   {buyers.map(b => (
                     <tr key={b.id}>
@@ -177,6 +218,11 @@ export default function AdminDashboard({ user, onLogout }) {
                       <td style={S.td}>{b.name}</td>
                       <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{b.password}</td>
                       <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
+                      <td style={S.td}>
+                        <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteBuyer(b)}>
+                          🗑 Delete
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -188,6 +234,7 @@ export default function AdminDashboard({ user, onLogout }) {
         {/* ── QR CODES ── */}
         {tab === 'qrcodes' && (
           <div style={S.card}>
+            {qrMsg && <div style={qrMsg.startsWith('✅') ? S.success : S.error}>{qrMsg}</div>}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div style={S.subheading}>All QR Codes ({qrCodes.length})</div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -203,7 +250,7 @@ export default function AdminDashboard({ user, onLogout }) {
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={S.table}>
-                <thead><tr>{['Code','QR','Assigned To','Buyer Name','Status'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <thead><tr>{['Code','QR','Assigned To','Buyer Name','Status','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                 <tbody>
                   {qrCodes.map(q => (
                     <tr key={q.id}>
@@ -212,6 +259,16 @@ export default function AdminDashboard({ user, onLogout }) {
                       <td style={S.td}>{q.buyer_code ? <span style={S.badge('green')}>{q.buyer_code}</span> : <span style={S.badge()}>Unassigned</span>}</td>
                       <td style={S.td}>{q.buyer_name || '—'}</td>
                       <td style={S.td}><span style={S.badge(q.used ? 'red' : 'green')}>{q.used ? 'Used' : 'Available'}</span></td>
+                      <td style={S.td}>
+                        <button
+                          style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: canDeleteQRCode(q) ? 1 : 0.45 }}
+                          onClick={() => handleDeleteQRCode(q)}
+                          disabled={!canDeleteQRCode(q)}
+                          title={canDeleteQRCode(q) ? 'Delete this QR code' : 'Used QR codes cannot be deleted'}
+                        >
+                          🗑 Delete
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -270,6 +327,7 @@ export default function AdminDashboard({ user, onLogout }) {
         {/* ── ALL BAGS ── */}
         {tab === 'bags' && (
           <div style={S.card}>
+            {bagsMsg && <div style={bagsMsg.startsWith('✅') ? S.success : S.error}>{bagsMsg}</div>}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div style={S.subheading}>All Bags ({bags.length})</div>
               {bags.length > 0 && (
@@ -306,7 +364,7 @@ export default function AdminDashboard({ user, onLogout }) {
               : (
                 <div style={{ overflowX: 'auto' }}>
                   <table style={S.table}>
-                    <thead><tr>{['Buyer','Name','Code','APF','Grade','Weight','Date','Location','FCV'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                    <thead><tr>{['Buyer','Name','Code','APF','Grade','Weight','Date','Location','FCV','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                     <tbody>
                       {bags.map((b, i) => (
                         <tr key={b.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
@@ -319,6 +377,11 @@ export default function AdminDashboard({ user, onLogout }) {
                           <td style={S.td}>{formatDateTime(b.date_of_purchase)}</td>
                           <td style={S.td}>{b.purchase_location}</td>
                           <td style={S.td}><span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span></td>
+                          <td style={S.td}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteBag(b)}>
+                              🗑 Delete
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
