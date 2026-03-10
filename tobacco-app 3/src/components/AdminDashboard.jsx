@@ -6,6 +6,7 @@ import QRCode from './QRCode';
 import DatabaseViewer from './DatabaseViewer';
 import { printQRCodes } from '../utils/printQR';
 import { exportCSV } from '../utils/exportCSV';
+import { exportBagsPDF, exportBagsXLS, shareBagsWhatsApp } from '../utils/exportBags';
 import { formatDateTime } from '../utils/dateFormat';
 
 export default function AdminDashboard({ user, onLogout }) {
@@ -54,6 +55,43 @@ export default function AdminDashboard({ user, onLogout }) {
   };
 
   const buyerMap = Object.fromEntries(buyers.map(b => [b.id, b]));
+
+  const exportBtn = {
+    flex: 'none',
+    padding: '8px 14px',
+    fontSize: 13,
+    borderRadius: 999,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    boxShadow: '0 2px 8px rgba(230,57,70,0.14)',
+  };
+
+  const exportBtnXls = {
+    ...S.btnPrimary,
+    ...exportBtn,
+    background: '#1f7a3d',
+  };
+
+  const exportBtnPdf = {
+    ...S.btnPrimary,
+    ...exportBtn,
+    background: '#c62828',
+  };
+
+  const exportBtnWhatsApp = {
+    ...S.btnPrimary,
+    ...exportBtn,
+    background: '#25D366',
+    color: '#083b1f',
+    fontWeight: 800,
+  };
+
+  const exportBtnCsv = {
+    ...S.btnSecondary,
+    ...exportBtn,
+    boxShadow: '0 2px 8px rgba(214,40,57,0.1)',
+  };
 
   const StatCard = ({ icon, label, value }) => (
     <div style={{ ...S.card, textAlign: 'center', marginBottom: 0, padding: 20 }}>
@@ -235,10 +273,32 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div style={S.subheading}>All Bags ({bags.length})</div>
               {bags.length > 0 && (
-                <button style={{ ...S.btnPrimary, flex: 'none', padding: '8px 18px', fontSize: 13 }}
-                  onClick={() => exportCSV(bags, `all_bags_${new Date().toISOString().split('T')[0]}.csv`)}>
-                  ⬇ Export CSV
-                </button>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    style={exportBtnXls}
+                    onClick={() => exportBagsXLS(bags, `all_bags_${new Date().toISOString().split('T')[0]}.xls`)}
+                  >
+                    ⬇ Export XLS
+                  </button>
+                  <button
+                    style={exportBtnPdf}
+                    onClick={() => exportBagsPDF(bags, `All Bags Report - ${new Date().toISOString().split('T')[0]}`)}
+                  >
+                    📄 Export PDF
+                  </button>
+                  <button
+                    style={exportBtnWhatsApp}
+                    onClick={() => shareBagsWhatsApp(bags)}
+                  >
+                    💬 WhatsApp
+                  </button>
+                  <button
+                    style={exportBtnCsv}
+                    onClick={() => exportCSV(bags, `all_bags_${new Date().toISOString().split('T')[0]}.csv`)}
+                  >
+                    ⬇ CSV
+                  </button>
+                </div>
               )}
             </div>
             {bags.length === 0
