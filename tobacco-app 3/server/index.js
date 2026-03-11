@@ -72,13 +72,20 @@ const resolveGradeType = (value, fallback = DEFAULT_GRADE_TYPE) => {
 };
 
 // ── In-Memory Database ──────────────────────────────────────
-let nextId = { buyers: 4, qr_codes: 6, bags: 1, grades: 57 };
+let nextId = { buyers: 4, qr_codes: 6, bags: 1, grades: 57, apf_numbers: 6 };
 
 const db = {
   buyers: [
     { id: 1, code: 'B001', name: 'Ravi Kumar', password: 'B001', created_at: new Date().toISOString() },
     { id: 2, code: 'B002', name: 'Suresh Reddy', password: 'B002', created_at: new Date().toISOString() },
     { id: 3, code: 'B003', name: 'Anitha Devi', password: 'B003', created_at: new Date().toISOString() },
+  ],
+  apf_numbers: [
+    { id: 1, number: '101', description: 'Default APF 101', created_at: new Date().toISOString() },
+    { id: 2, number: '102', description: 'Default APF 102', created_at: new Date().toISOString() },
+    { id: 3, number: '103', description: 'Default APF 103', created_at: new Date().toISOString() },
+    { id: 4, number: '104', description: 'Default APF 104', created_at: new Date().toISOString() },
+    { id: 5, number: '105', description: 'Default APF 105', created_at: new Date().toISOString() },
   ],
   grades: seedGrades(),
   qr_codes: [
@@ -90,6 +97,11 @@ const db = {
   ],
   bags: [
   ],
+  settings: {
+    buyer_actions_after_6pm_enabled: false,
+    buyer_actions_after_6pm_buyer_ids: [],
+    updated_at: new Date().toISOString(),
+  },
 };
 
 console.log('✅ In-memory database initialized');
@@ -130,6 +142,72 @@ app.post('/api/buyers', (req, res) => {
   res.json(newBuyer);
 });
 
+// ── APF NUMBERS ─────────────────────────────────────────────
+app.get('/api/apf-numbers', (req, res) => {
+  const rows = [...db.apf_numbers].sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
+  res.json(rows);
+});
+
+app.post('/api/apf-numbers', (req, res) => {
+  const { number, description } = req.body || {};
+  const normalizedNumber = String(number || '').trim();
+  const normalizedDescription = String(description || '').trim();
+
+  if (!normalizedNumber) {
+    return res.status(400).json({ error: 'APF number is required' });
+  }
+
+  const duplicate = db.apf_numbers.some(a => a.number === normalizedNumber);
+  if (duplicate) return res.status(400).json({ error: 'APF number already exists' });
+
+  const apf = {
+    id: nextId.apf_numbers++,
+    number: normalizedNumber,
+    description: normalizedDescription,
+    created_at: new Date().toISOString(),
+  };
+
+  db.apf_numbers.push(apf);
+  res.json(apf);
+});
+
+app.put('/api/apf-numbers/:id', (req, res) => {
+  const { id } = req.params;
+  const apfId = Number(id);
+  const { number, description } = req.body || {};
+
+  const apf = db.apf_numbers.find(a => a.id === apfId);
+  if (!apf) return res.status(404).json({ error: 'APF number not found' });
+
+  const normalizedNumber = String(number || '').trim();
+  const normalizedDescription = String(description || '').trim();
+
+  if (!normalizedNumber) {
+    return res.status(400).json({ error: 'APF number is required' });
+  }
+
+  const duplicate = db.apf_numbers.some(a => a.id !== apfId && a.number === normalizedNumber);
+  if (duplicate) return res.status(400).json({ error: 'APF number already exists' });
+
+  apf.number = normalizedNumber;
+  apf.description = normalizedDescription;
+  res.json(apf);
+});
+
+app.delete('/api/apf-numbers/:id', (req, res) => {
+  const { id } = req.params;
+  const apfId = Number(id);
+  const index = db.apf_numbers.findIndex(a => a.id === apfId);
+  if (index === -1) return res.status(404).json({ error: 'APF number not found' });
+
+  const apf = db.apf_numbers[index];
+  const inUse = db.bags.some(b => String(b.apf_number || '').trim() === apf.number);
+  if (inUse) return res.status(400).json({ error: 'APF number is in use and cannot be deleted' });
+
+  const deleted = db.apf_numbers.splice(index, 1)[0];
+  res.json({ success: true, apf: deleted });
+});
+
 // ── GRADES ──────────────────────────────────────────────────
 app.get('/api/grades', (req, res) => {
   const requestedType = resolveGradeType(req.query?.type, null);
@@ -149,8 +227,8 @@ app.post('/api/grades', (req, res) => {
   const normalizedDesc = String(description || '').trim();
   const gradeType = resolveGradeType(type);
 
-  if (!normalizedCode || !normalizedDesc) {
-    return res.status(400).json({ error: 'code and description required' });
+  if (!normalizedCode) {
+    return res.status(400).json({ error: 'code required' });
   }
 
   if (!gradeType) {
@@ -183,8 +261,8 @@ app.put('/api/grades/:id', (req, res) => {
   const normalizedCode = String(code || '').trim().toUpperCase();
   const normalizedDesc = String(description || '').trim();
   const gradeType = resolveGradeType(type, grade.type || DEFAULT_GRADE_TYPE);
-  if (!normalizedCode || !normalizedDesc) {
-    return res.status(400).json({ error: 'code and description required' });
+  if (!normalizedCode) {
+    return res.status(400).json({ error: 'code required' });
   }
 
   if (!gradeType) {
@@ -336,6 +414,12 @@ app.get('/api/bags', (req, res) => {
 
 app.post('/api/bags', (req, res) => {
   const body = req.body;
+  const fcvType = String(body.fcv || '').trim();
+  const apfNumber = String(body.apf_number || '').trim();
+  const apfExists = apfNumber ? db.apf_numbers.some(a => a.number === apfNumber) : false;
+  if (fcvType === 'FCV' && (!apfNumber || !apfExists)) {
+    return res.status(400).json({ error: 'Invalid APF number. Please select from APF master.' });
+  }
   const now = new Date().toISOString();
   const newBag = {
     id: nextId.bags++,
@@ -343,10 +427,14 @@ app.post('/api/bags', (req, res) => {
     buyer_id: body.buyer_id,
     buyer_code: body.buyer_code,
     buyer_name: body.buyer_name,
-    fcv: body.fcv,
-    apf_number: body.apf_number,
+    fcv: fcvType,
+    type_of_tobacco: body.type_of_tobacco,
+    apf_number: fcvType === 'FCV' ? apfNumber : '',
     tobacco_grade: body.tobacco_grade,
+    purchase_date: body.purchase_date,
     weight: body.weight,
+    rate: body.rate,
+    bale_value: body.bale_value,
     buyer_grade: body.buyer_grade,
     date_of_purchase: body.date_of_purchase,
     purchase_location: body.purchase_location,
@@ -375,9 +463,13 @@ app.put('/api/bags/:id', (req, res) => {
 
   const editableFields = [
     'fcv',
+    'type_of_tobacco',
     'apf_number',
     'tobacco_grade',
+    'purchase_date',
     'weight',
+    'rate',
+    'bale_value',
     'buyer_grade',
     'date_of_purchase',
     'purchase_location'
@@ -385,6 +477,15 @@ app.put('/api/bags/:id', (req, res) => {
 
   for (const field of editableFields) {
     if (Object.prototype.hasOwnProperty.call(updates, field)) {
+      if (field === 'apf_number') {
+        const normalizedApf = String(updates.apf_number || '').trim();
+        if (normalizedApf) {
+          const apfExists = db.apf_numbers.some(a => a.number === normalizedApf);
+          if (!apfExists) return res.status(400).json({ error: 'Invalid APF number. Please select from APF master.' });
+        }
+        bag[field] = normalizedApf;
+        continue;
+      }
       bag[field] = updates[field];
     }
   }
@@ -431,6 +532,50 @@ app.get('/api/db/query', (req, res) => {
   if (!sql) return res.status(400).json({ error: 'No SQL provided' });
   // Simple query response
   res.json({ message: 'Query executed', sql });
+});
+
+// ── SETTINGS ───────────────────────────────────────────────
+app.get('/api/settings/buyer-bag-actions', (req, res) => {
+  const enabledBuyerIds = Array.isArray(db.settings?.buyer_actions_after_6pm_buyer_ids)
+    ? db.settings.buyer_actions_after_6pm_buyer_ids
+    : [];
+  res.json({
+    enabled_after_6pm: !!db.settings?.buyer_actions_after_6pm_enabled,
+    enabled_buyer_ids: enabledBuyerIds,
+    updated_at: db.settings?.updated_at || null,
+  });
+});
+
+app.put('/api/settings/buyer-bag-actions', (req, res) => {
+  const body = req.body || {};
+  const enabled = !!body.enabled_after_6pm;
+  const buyerId = Number(body.buyer_id);
+
+  const currentIds = Array.isArray(db.settings?.buyer_actions_after_6pm_buyer_ids)
+    ? [...db.settings.buyer_actions_after_6pm_buyer_ids]
+    : [];
+
+  if (Number.isFinite(buyerId) && buyerId > 0) {
+    const exists = currentIds.includes(buyerId);
+    if (enabled && !exists) currentIds.push(buyerId);
+    if (!enabled && exists) {
+      const idx = currentIds.indexOf(buyerId);
+      currentIds.splice(idx, 1);
+    }
+  }
+
+  db.settings = {
+    ...(db.settings || {}),
+    buyer_actions_after_6pm_enabled: enabled,
+    buyer_actions_after_6pm_buyer_ids: currentIds,
+    updated_at: new Date().toISOString(),
+  };
+  res.json({
+    success: true,
+    enabled_after_6pm: db.settings.buyer_actions_after_6pm_enabled,
+    enabled_buyer_ids: db.settings.buyer_actions_after_6pm_buyer_ids,
+    updated_at: db.settings.updated_at,
+  });
 });
 
 // ── STATS ───────────────────────────────────────────────────

@@ -3,8 +3,22 @@ import { useState, useRef } from 'react';
 import { api } from '../api';
 import { S } from '../styles';
 import { fromInputDateTime, nowInputDateTime } from '../utils/dateFormat';
+import SearchableSelect from './SearchableSelect';
 
-export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: [] }, onSaveExit }) {
+const calendarValueToDisplayDate = (value) => {
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return '';
+  const [, yyyy, mm, dd] = match;
+  return `${dd}/${mm}/${yyyy}`;
+};
+
+const dateTimeInputToDisplayDate = (value) => {
+  const datePart = String(value || '').split('T')[0] || '';
+  return calendarValueToDisplayDate(datePart);
+};
+
+export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: [] }, apfNumbers = [], onSaveExit }) {
   const [fcv, setFcv]                   = useState('');
   const [uniqueCode, setUniqueCode]     = useState('');
   const [codeStatus, setCodeStatus]     = useState(null); // null|checking|ok|duplicate|error
@@ -12,25 +26,61 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
   const [apfNumber, setApfNumber]       = useState('');
   const [tobaccoGrade, setTobaccoGrade] = useState('');
   const [weight, setWeight]             = useState('');
+  const [rate, setRate]                 = useState('');
   const [buyerGrade, setBuyerGrade]     = useState('');
+  const [typeOfTobacco, setTypeOfTobacco] = useState('');
+  const [purchaseLocation, setPurchaseLocation] = useState('');
+  const [purchaseDate, setPurchaseDate] = useState('');
   const [dateOfPurchase, setDate]       = useState(nowInputDateTime());
-  const [purchaseLocation, setLocation] = useState('Guntur');
   const [error, setError]               = useState('');
   const [saved, setSaved]               = useState(false);
   const [loading, setLoading]           = useState(false);
   const debounceRef = useRef(null);
+  const isFCV = fcv === 'FCV';
+  const isNonFCV = fcv === 'NON-FCV';
   const tobaccoBoardGrades = [...grades.tobaccoBoard].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
   const buyerGrades = [...grades.buyer].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
   const tobaccoBoardGradeCodes = tobaccoBoardGrades.map(g => g.code);
   const buyerGradeCodes = buyerGrades.map(g => g.code);
+  const tobaccoBoardGradeOptions = tobaccoBoardGradeCodes.map(g => ({ value: g, label: g }));
+  const buyerGradeOptions = buyerGradeCodes.map(g => ({ value: g, label: g }));
+  const tobaccoTypeOptions = [
+    'FCV Virginia',
+    'Burley',
+    'Natu',
+    'White Burley',
+    'Rustica',
+    'Other',
+  ].map((item) => ({ value: item, label: item }));
+  const locationOptions = [
+    'Godown A',
+    'Godown B',
+    'Godown C',
+    'Warehouse 1',
+    'Warehouse 2',
+    'Warehouse 3',
+  ].map((item) => ({ value: item, label: item }));
+  const apfNumberOptions = [...apfNumbers]
+    .sort((a, b) => String(a.number).localeCompare(String(b.number), undefined, { numeric: true }))
+    .map(a => ({
+      value: String(a.number),
+      label: a.description ? `${a.number} - ${a.description}` : String(a.number),
+      keywords: `${a.number} ${a.description || ''}`,
+    }));
 
   const reset = () => {
     setFcv(''); setUniqueCode(''); setApfNumber(''); setTobaccoGrade('');
-    setWeight(''); setBuyerGrade(''); setError(''); setSaved(false);
+    setWeight(''); setRate(''); setBuyerGrade(''); setTypeOfTobacco(''); setPurchaseLocation(''); setPurchaseDate(''); setError(''); setSaved(false);
     setCodeStatus(null); setCodeMsg('');
     setDate(nowInputDateTime());
-    // keep date & location for next bag
+    // keep date for next bag
   };
+
+  const numericWeight = parseFloat(weight);
+  const numericRate = parseFloat(rate);
+  const baleValue = Number.isFinite(numericWeight) && Number.isFinite(numericRate)
+    ? Number((numericWeight * numericRate).toFixed(2))
+    : '';
 
   const checkCode = async (code) => {
     setCodeStatus('checking');
@@ -67,15 +117,41 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     }
   };
 
+  const handleFcvSelect = (nextValue) => {
+    const value = fcv === nextValue ? '' : nextValue;
+    setFcv(value);
+
+    if (value === 'FCV') {
+      setTypeOfTobacco('');
+      setPurchaseLocation('');
+    }
+    if (value === 'NON-FCV') {
+      setApfNumber('');
+      setTobaccoGrade('');
+      setPurchaseDate('');
+    }
+    if (!value) {
+      setTypeOfTobacco('');
+      setPurchaseLocation('');
+      setApfNumber('');
+      setTobaccoGrade('');
+      setPurchaseDate('');
+    }
+  };
+
   const validate = () => {
     if (!fcv)                          return 'Please select FCV or NON-FCV';
     if (!uniqueCode)                   return 'Unique Code is required';
     if (codeStatus === 'duplicate')    return codeMsg;
     if (codeStatus === 'error')        return codeMsg;
     if (codeStatus === 'checking')     return 'Please wait — validating code…';
-    if (!apfNumber)                    return 'APF Number is required';
-    if (!tobaccoGrade)                 return 'Tobacco Board Grade is required';
+    if (isNonFCV && !typeOfTobacco)    return 'Type of Tobacco/Variety is required for NON-FCV';
+    if (isNonFCV && !purchaseLocation) return 'Location is required for NON-FCV';
+    if (isFCV && !purchaseDate)        return 'Purchase Date is required for FCV';
+    if (isFCV && !apfNumber)           return 'APF Number is required for FCV';
+    if (isFCV && !tobaccoGrade)        return 'Tobacco Board Grade is required for FCV';
     if (!weight)                       return 'Weight is required';
+    if (!rate)                         return 'Rate is required';
     if (!buyerGrade)                   return 'Buyer Grade is required';
     return null;
   };
@@ -93,10 +169,14 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
       await api.saveBag({
         unique_code: uniqueCode.trim(), buyer_id: buyer.id,
         buyer_code: buyer.code, buyer_name: buyer.name,
-        fcv, apf_number: apfNumber, tobacco_grade: tobaccoGrade,
-        weight: parseFloat(weight), buyer_grade: buyerGrade,
+        fcv,
+        apf_number: isFCV ? apfNumber : '',
+        tobacco_grade: isFCV ? tobaccoGrade : '',
+        type_of_tobacco: isNonFCV ? typeOfTobacco : '',
+        purchase_location: isNonFCV ? purchaseLocation : '',
+        weight: parseFloat(weight), rate: parseFloat(rate), bale_value: baleValue, buyer_grade: buyerGrade,
+        purchase_date: isFCV ? calendarValueToDisplayDate(purchaseDate) : dateTimeInputToDisplayDate(dateOfPurchase),
         date_of_purchase: fromInputDateTime(dateOfPurchase),
-        purchase_location: purchaseLocation,
       });
       setSaved(true);
       if (exit) setTimeout(onSaveExit, 600);
@@ -123,13 +203,13 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
       <div style={S.toggleGroup}>
         <button
           style={{ ...S.toggleBtn(fcv === 'FCV', fcv === 'NON-FCV'), borderRight: '2px solid #e63946' }}
-          onClick={() => setFcv(fcv === 'FCV' ? '' : 'FCV')}
+          onClick={() => handleFcvSelect('FCV')}
         >
           FCV
         </button>
         <button
           style={S.toggleBtn(fcv === 'NON-FCV', fcv === 'FCV')}
-          onClick={() => setFcv(fcv === 'NON-FCV' ? '' : 'NON-FCV')}
+          onClick={() => handleFcvSelect('NON-FCV')}
         >
           NON-FCV
         </button>
@@ -183,45 +263,101 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
         </div>
       )}
 
+      {isNonFCV && (
+        <div style={S.row}>
+          <label style={S.label}>Type of Tobacco / Variety</label>
+          <SearchableSelect
+            options={tobaccoTypeOptions}
+            value={typeOfTobacco}
+            onChange={setTypeOfTobacco}
+            inputStyle={S.input}
+            placeholder="Search Tobacco Type/Variety"
+          />
+        </div>
+      )}
+
+      {isNonFCV && (
+        <div style={S.row}>
+          <label style={S.label}>Location</label>
+          <SearchableSelect
+            options={locationOptions}
+            value={purchaseLocation}
+            onChange={setPurchaseLocation}
+            inputStyle={S.input}
+            placeholder="Search Location"
+          />
+        </div>
+      )}
+
+      {isFCV && (
+        <div style={S.row}>
+          <label style={S.label}>Date of Purchase (dd/mm/yyyy)</label>
+          <input
+            style={S.input}
+            type="date"
+            value={purchaseDate}
+            onChange={e => setPurchaseDate(e.target.value)}
+          />
+        </div>
+      )}
+
+      {isFCV && (
+        <div style={S.row}>
+          <label style={S.label}>APF Number</label>
+          <SearchableSelect
+            options={apfNumberOptions}
+            value={apfNumber}
+            onChange={setApfNumber}
+            inputStyle={S.input}
+            placeholder="Search APF Number"
+          />
+        </div>
+      )}
+
+      {isFCV && (
+        <div style={S.row}>
+          <label style={S.label}>Tobacco Board Grade</label>
+          <SearchableSelect
+            options={tobaccoBoardGradeOptions}
+            value={tobaccoGrade}
+            onChange={setTobaccoGrade}
+            inputStyle={S.input}
+            placeholder="Search Tobacco Board Grade"
+          />
+        </div>
+      )}
+
       <div style={S.row}>
-        <label style={S.label}>APF Number</label>
-        <input style={S.input} placeholder="e.g. 121" value={apfNumber} onChange={e => setApfNumber(e.target.value)} />
+        <label style={S.label}>Buyer Grade</label>
+        <SearchableSelect
+          options={buyerGradeOptions}
+          value={buyerGrade}
+          onChange={setBuyerGrade}
+          inputStyle={S.input}
+          placeholder="Search Buyer Grade"
+        />
       </div>
 
-      {/* Tobacco Board Grade — dropdown */}
-      <div style={S.row}>
-        <label style={S.label}>Tobacco Board Grade</label>
-        <select style={S.input} value={tobaccoGrade} onChange={e => setTobaccoGrade(e.target.value)}>
-          <option value="">— Select Grade —</option>
-          {tobaccoBoardGradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
-        </select>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 2 }}>
         <div style={S.row}>
           <label style={S.label}>Weight (kg)</label>
           <input style={S.input} type="number" placeholder="e.g. 22" value={weight} onChange={e => setWeight(e.target.value)} />
         </div>
         <div style={S.row}>
-          <label style={S.label}>Buyer Grade</label>
-          <select style={S.input} value={buyerGrade} onChange={e => setBuyerGrade(e.target.value)}>
-            <option value="">— Select Grade —</option>
-            {buyerGradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
-          </select>
+          <label style={S.label}>Rate</label>
+          <input style={S.input} type="number" step="0.01" placeholder="e.g. 120.5" value={rate} onChange={e => setRate(e.target.value)} />
+        </div>
+        <div style={S.row}>
+          <label style={S.label}>Bale Value (Weight x Rate)</label>
+          <input style={S.input} type="text" value={baleValue === '' ? '' : String(baleValue)} readOnly />
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <div style={S.row}>
-          <label style={S.label}>Date &amp; Time of Purchase</label>
-          <input style={S.input} type="datetime-local" value={dateOfPurchase} onChange={e => setDate(e.target.value)} />
-          <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-            ⏱ Auto-stamped when QR code is scanned · IST: {fromInputDateTime(dateOfPurchase)}
-          </div>
-        </div>
-        <div style={S.row}>
-          <label style={S.label}>Purchase Location</label>
-          <input style={S.input} placeholder="e.g. Guntur" value={purchaseLocation} onChange={e => setLocation(e.target.value)} />
+      <div style={S.row}>
+        <label style={S.label}>Date &amp; Time of Purchase</label>
+        <input style={S.input} type="datetime-local" value={dateOfPurchase} onChange={e => setDate(e.target.value)} />
+        <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+          ⏱ Auto-stamped when QR code is scanned · IST: {fromInputDateTime(dateOfPurchase)}
         </div>
       </div>
 

@@ -4,6 +4,8 @@ import { api } from '../api';
 import { S } from '../styles';
 import QRCode from './QRCode';
 import DatabaseViewer from './DatabaseViewer';
+import SearchableSelect from './SearchableSelect';
+import ApiStatusBadge from './ApiStatusBadge';
 import { printQRCodes } from '../utils/printQR';
 import { exportCSV } from '../utils/exportCSV';
 import { exportBagsPDF, exportBagsXLS, shareBagsWhatsApp } from '../utils/exportBags';
@@ -13,6 +15,7 @@ export default function AdminDashboard({ user, onLogout }) {
   const [tab, setTab]         = useState('overview');
   const [stats, setStats]     = useState({});
   const [buyers, setBuyers]   = useState([]);
+  const [apfNumbers, setApfNumbers] = useState([]);
   const [tobaccoBoardGrades, setTobaccoBoardGrades] = useState([]);
   const [buyerGrades, setBuyerGrades] = useState([]);
   const [qrCodes, setQR]      = useState([]);
@@ -22,6 +25,7 @@ export default function AdminDashboard({ user, onLogout }) {
   const [genStart, setGenStart]   = useState('200');
   const [genCount, setGenCount]   = useState(5);
   const [genBuyerId, setGenBuyer] = useState('');
+  const [qrBuyerFilter, setQrBuyerFilter] = useState('');
   const [genMsg, setGenMsg]       = useState('');
 
   // Add buyer state
@@ -30,6 +34,8 @@ export default function AdminDashboard({ user, onLogout }) {
   const [buyerMsg, setBuyerMsg] = useState('');
   const [qrMsg, setQrMsg] = useState('');
   const [bagsMsg, setBagsMsg] = useState('');
+  const [enabledBuyerActionIds, setEnabledBuyerActionIds] = useState([]);
+  const [selectedBuyerActionId, setSelectedBuyerActionId] = useState('');
   const [editingBagId, setEditingBagId] = useState(null);
   const [editBagForm, setEditBagForm] = useState(null);
   const [tbGradeCode, setTbGradeCode] = useState('');
@@ -40,22 +46,32 @@ export default function AdminDashboard({ user, onLogout }) {
   const [buyerGradeDescription, setBuyerGradeDescription] = useState('');
   const [buyerGradeEditingId, setBuyerGradeEditingId] = useState(null);
   const [buyerGradeMsg, setBuyerGradeMsg] = useState('');
+  const [apfNumberCode, setApfNumberCode] = useState('');
+  const [apfNumberDescription, setApfNumberDescription] = useState('');
+  const [apfNumberEditingId, setApfNumberEditingId] = useState(null);
+  const [apfNumberMsg, setApfNumberMsg] = useState('');
 
   const refresh = async () => {
-    const [s, b, tbGrades, byGrades, q, bg] = await Promise.all([
+    const [s, b, apf, tbGrades, byGrades, q, bg, buyerActionSetting] = await Promise.all([
       api.getStats(),
       api.getBuyers(),
+      api.getApfNumbers(),
       api.getGrades('tobacco_board'),
       api.getGrades('buyer'),
       api.getQRCodes(),
       api.getBags(),
+      api.getBuyerBagActionSetting(),
     ]);
     setStats(s);
     setBuyers(b);
+    setApfNumbers(apf);
     setTobaccoBoardGrades(tbGrades);
     setBuyerGrades(byGrades);
     setQR(q);
     setBags(bg);
+    setEnabledBuyerActionIds(Array.isArray(buyerActionSetting?.enabled_buyer_ids)
+      ? buyerActionSetting.enabled_buyer_ids.map(Number)
+      : []);
   };
 
   useEffect(() => { refresh(); }, []);
@@ -126,14 +142,23 @@ export default function AdminDashboard({ user, onLogout }) {
   const handleEditBag = (bag) => {
     setBagsMsg('');
     setEditingBagId(bag.id);
+    const rateValue = bag.rate ?? '';
+    const weightValue = bag.weight ?? '';
+    const computedBaleValue = Number.isFinite(Number(weightValue)) && Number.isFinite(Number(rateValue))
+      ? Number((Number(weightValue) * Number(rateValue)).toFixed(2))
+      : (bag.bale_value ?? '');
     setEditBagForm({
       fcv: bag.fcv || '',
       apf_number: bag.apf_number || '',
       tobacco_grade: bag.tobacco_grade || '',
-      weight: bag.weight ?? '',
+      type_of_tobacco: bag.type_of_tobacco || '',
+      purchase_location: bag.purchase_location || '',
+      purchase_date: bag.purchase_date || '',
+      weight: weightValue,
+      rate: rateValue,
+      bale_value: computedBaleValue,
       buyer_grade: bag.buyer_grade || '',
       date_of_purchase: toInputDateTime(bag.date_of_purchase) || nowInputDateTime(),
-      purchase_location: bag.purchase_location || '',
     });
   };
 
@@ -145,20 +170,58 @@ export default function AdminDashboard({ user, onLogout }) {
 
   const handleSaveBag = async () => {
     if (!editingBagId || !editBagForm) return;
-    if (!editBagForm.apf_number || !editBagForm.tobacco_grade || !editBagForm.weight || !editBagForm.buyer_grade) {
-      setBagsMsg('Please fill required fields before saving');
+    const isFCV = editBagForm.fcv === 'FCV';
+    const isNonFCV = editBagForm.fcv === 'NON-FCV';
+    if (!editBagForm.weight || !editBagForm.buyer_grade) {
+      setBagsMsg('Weight and Buyer Grade are required');
+      return;
+    }
+    if (isFCV && (!editBagForm.apf_number || !editBagForm.tobacco_grade || !editBagForm.purchase_date)) {
+      setBagsMsg('For FCV, APF Number, Tobacco Grade, and Purchase Date are required');
+      return;
+    }
+    if (isNonFCV && (!editBagForm.type_of_tobacco || !editBagForm.purchase_location)) {
+      setBagsMsg('For NON-FCV, Type of Tobacco and Location are required');
       return;
     }
     try {
+      const numericWeight = parseFloat(editBagForm.weight);
+      const numericRate = parseFloat(editBagForm.rate);
+      const baleValue = Number.isFinite(numericWeight) && Number.isFinite(numericRate)
+        ? Number((numericWeight * numericRate).toFixed(2))
+        : (editBagForm.bale_value ?? null);
       await api.updateBag(editingBagId, {
         ...editBagForm,
-        weight: parseFloat(editBagForm.weight),
+        weight: numericWeight,
+        rate: Number.isFinite(numericRate) ? numericRate : null,
+        bale_value: baleValue,
         date_of_purchase: fromInputDateTime(editBagForm.date_of_purchase),
       });
       setBagsMsg('✅ Bag updated successfully');
       setEditingBagId(null);
       setEditBagForm(null);
       await refresh();
+    } catch (e) {
+      setBagsMsg(e.message);
+    }
+  };
+
+  const handleToggleBuyerActionAfter6pm = async () => {
+    const selectedId = Number(selectedBuyerActionId);
+    if (!Number.isFinite(selectedId) || selectedId <= 0) {
+      setBagsMsg('Please select a buyer first');
+      return;
+    }
+    const nextValue = !enabledBuyerActionIds.includes(selectedId);
+    try {
+      const res = await api.updateBuyerBagActionSetting({ enabled_after_6pm: nextValue, buyer_id: selectedId });
+      const ids = Array.isArray(res?.enabled_buyer_ids) ? res.enabled_buyer_ids.map(Number) : [];
+      setEnabledBuyerActionIds(ids);
+      const buyer = buyers.find(b => b.id === selectedId);
+      const buyerLabel = buyer ? `${buyer.code} - ${buyer.name}` : `Buyer ${selectedId}`;
+      setBagsMsg(nextValue
+        ? `✅ Buyer action enabled after 6 PM for ${buyerLabel}`
+        : `✅ Buyer action disabled after 6 PM for ${buyerLabel}`);
     } catch (e) {
       setBagsMsg(e.message);
     }
@@ -177,8 +240,8 @@ export default function AdminDashboard({ user, onLogout }) {
   };
 
   const handleSaveTobaccoBoardGrade = async () => {
-    if (!tbGradeCode.trim() || !tbGradeDescription.trim()) {
-      setTbGradeMsg('Grade code and description are required');
+    if (!tbGradeCode.trim()) {
+      setTbGradeMsg('Grade code is required');
       return;
     }
     try {
@@ -197,8 +260,8 @@ export default function AdminDashboard({ user, onLogout }) {
   };
 
   const handleSaveBuyerGrade = async () => {
-    if (!buyerGradeCode.trim() || !buyerGradeDescription.trim()) {
-      setBuyerGradeMsg('Grade code and description are required');
+    if (!buyerGradeCode.trim()) {
+      setBuyerGradeMsg('Grade code is required');
       return;
     }
     try {
@@ -254,11 +317,67 @@ export default function AdminDashboard({ user, onLogout }) {
     }
   };
 
+  const resetApfNumberForm = () => {
+    setApfNumberCode('');
+    setApfNumberDescription('');
+    setApfNumberEditingId(null);
+  };
+
+  const handleSaveApfNumber = async () => {
+    if (!apfNumberCode.trim()) {
+      setApfNumberMsg('APF number is required');
+      return;
+    }
+    try {
+      if (apfNumberEditingId) {
+        await api.updateApfNumber(apfNumberEditingId, { number: apfNumberCode.trim(), description: apfNumberDescription.trim() });
+        setApfNumberMsg(`✅ APF number ${apfNumberCode.trim()} updated`);
+      } else {
+        await api.addApfNumber({ number: apfNumberCode.trim(), description: apfNumberDescription.trim() });
+        setApfNumberMsg(`✅ APF number ${apfNumberCode.trim()} added`);
+      }
+      resetApfNumberForm();
+      await refresh();
+    } catch (e) {
+      setApfNumberMsg(e.message);
+    }
+  };
+
+  const handleEditApfNumber = (apf) => {
+    setApfNumberEditingId(apf.id);
+    setApfNumberCode(apf.number);
+    setApfNumberDescription(apf.description || '');
+    setApfNumberMsg('');
+  };
+
+  const handleDeleteApfNumber = async (apf) => {
+    if (!window.confirm(`Delete APF number ${apf.number}?`)) return;
+    try {
+      await api.deleteApfNumber(apf.id);
+      setApfNumberMsg(`✅ APF number ${apf.number} deleted`);
+      if (apfNumberEditingId === apf.id) resetApfNumberForm();
+      await refresh();
+    } catch (e) {
+      setApfNumberMsg(e.message);
+    }
+  };
+
   const buyerMap = Object.fromEntries(buyers.map(b => [b.id, b]));
+  const sortedApfNumbers = [...apfNumbers].sort((a, b) => String(a.number).localeCompare(String(b.number), undefined, { numeric: true }));
   const sortedTobaccoBoardGrades = [...tobaccoBoardGrades].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
   const sortedBuyerGrades = [...buyerGrades].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
   const tobaccoBoardGradeCodes = sortedTobaccoBoardGrades.map(g => g.code);
-
+  const apfNumberOptions = sortedApfNumbers.map(a => ({
+    value: String(a.number),
+    label: a.description ? `${a.number} - ${a.description}` : String(a.number),
+    keywords: `${a.number} ${a.description || ''}`,
+  }));
+  const tobaccoBoardGradeOptions = tobaccoBoardGradeCodes.map(g => ({ value: g, label: g }));
+  const filteredQrCodes = qrBuyerFilter === ''
+    ? qrCodes
+    : qrBuyerFilter === '__unassigned__'
+      ? qrCodes.filter(q => !q.buyer_id)
+      : qrCodes.filter(q => String(q.buyer_id || '') === qrBuyerFilter);
   const exportBtn = {
     flex: 'none',
     padding: '8px 14px',
@@ -310,6 +429,7 @@ export default function AdminDashboard({ user, onLogout }) {
         <div style={S.topBarTitle}>🌿 Elite Tobacco — Admin</div>
         <div style={S.buyerInfo}>
           <span style={S.buyerBadge}>🔐 Administrator</span>
+          <ApiStatusBadge />
           <span style={S.bagsBadge}>📦 {stats.bags || 0} Bags</span>
           <button style={S.btnIcon} onClick={onLogout}>Logout</button>
         </div>
@@ -317,7 +437,7 @@ export default function AdminDashboard({ user, onLogout }) {
 
       <div style={S.page}>
         <div style={S.tabs}>
-          {[['overview','📊 Overview'],['buyers','👥 Buyers'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['generate','⚡ Generate QR'],['bags','📦 All Bags'],['database','🗄️ Database']].map(([id, label]) => (
+          {[['overview','📊 Overview'],['buyers','👥 Buyers'],['apf-maintenance','🔢 APF Maintenance'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['generate','⚡ Generate QR'],['bags','📦 Total Purchase'],['database','🗄️ Database']].map(([id, label]) => (
             <button key={id} style={S.tab(tab === id)} onClick={() => { setTab(id); refresh(); }}>{label}</button>
           ))}
         </div>
@@ -384,6 +504,59 @@ export default function AdminDashboard({ user, onLogout }) {
                         <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteBuyer(b)}>
                           🗑 Delete
                         </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── APF MAINTENANCE ── */}
+        {tab === 'apf-maintenance' && (
+          <div>
+            <div style={S.card}>
+              <div style={S.subheading}>APF Number Maintenance</div>
+              {apfNumberMsg && <div style={apfNumberMsg.startsWith('✅') ? S.success : S.error}>{apfNumberMsg}</div>}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
+                <div>
+                  <label style={S.label}>APF Number</label>
+                  <input style={S.input} placeholder="e.g. 121" value={apfNumberCode} onChange={e => setApfNumberCode(e.target.value)} />
+                </div>
+                <div>
+                  <label style={S.label}>Description (Optional)</label>
+                  <input style={S.input} placeholder="Optional description" value={apfNumberDescription} onChange={e => setApfNumberDescription(e.target.value)} />
+                </div>
+                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px' }} onClick={handleSaveApfNumber}>
+                  {apfNumberEditingId ? 'Update' : 'Add'}
+                </button>
+                {apfNumberEditingId && (
+                  <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 16px' }} onClick={resetApfNumberForm}>
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div style={S.card}>
+              <div style={S.subheading}>All APF Numbers ({apfNumbers.length})</div>
+              <table style={S.table}>
+                <thead><tr>{['APF Number','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {sortedApfNumbers.map(a => (
+                    <tr key={a.id}>
+                      <td style={S.td}><b>{a.number}</b></td>
+                      <td style={S.td}>{a.description || '—'}</td>
+                      <td style={S.td}>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditApfNumber(a)}>
+                            ✏️ Edit
+                          </button>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteApfNumber(a)}>
+                            🗑 Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -504,23 +677,33 @@ export default function AdminDashboard({ user, onLogout }) {
           <div style={S.card}>
             {qrMsg && <div style={qrMsg.startsWith('✅') ? S.success : S.error}>{qrMsg}</div>}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={S.subheading}>All QR Codes ({qrCodes.length})</div>
+              <div style={S.subheading}>All QR Codes ({filteredQrCodes.length})</div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={S.badge('green')}>Available: {qrCodes.filter(q => !q.used).length}</span>
-                <span style={S.badge('red')}>Used: {qrCodes.filter(q => q.used).length}</span>
-                {qrCodes.length > 0 && (
+                <span style={S.badge('green')}>Available: {filteredQrCodes.filter(q => !q.used).length}</span>
+                <span style={S.badge('red')}>Used: {filteredQrCodes.filter(q => q.used).length}</span>
+                {filteredQrCodes.length > 0 && (
                   <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 14px', fontSize: 12 }}
-                    onClick={() => printQRCodes(qrCodes, buyerMap)}>
+                    onClick={() => printQRCodes(filteredQrCodes, buyerMap)}>
                     🖨️ Print All
                   </button>
                 )}
               </div>
             </div>
+            <div style={{ marginBottom: 14, maxWidth: 320 }}>
+              <label style={S.label}>Filter by Buyer Name</label>
+              <select style={S.input} value={qrBuyerFilter} onChange={e => setQrBuyerFilter(e.target.value)}>
+                <option value="">All Buyers</option>
+                <option value="__unassigned__">Unassigned</option>
+                {buyers.map(b => (
+                  <option key={b.id} value={String(b.id)}>{b.name}</option>
+                ))}
+              </select>
+            </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={S.table}>
                 <thead><tr>{['Code','QR','Assigned To','Buyer Name','Status','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                 <tbody>
-                  {qrCodes.map(q => (
+                  {filteredQrCodes.map(q => (
                     <tr key={q.id}>
                       <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 'bold' }}>{q.unique_code}</td>
                       <td style={S.td}><QRCode value={q.unique_code} size={52} /></td>
@@ -558,7 +741,9 @@ export default function AdminDashboard({ user, onLogout }) {
                   <label style={S.label}>Assign to Buyer</label>
                   <select style={S.input} value={genBuyerId} onChange={e => setGenBuyer(e.target.value)}>
                     <option value="">— Unassigned —</option>
-                    {buyers.map(b => <option key={b.id} value={b.id}>{b.code} – {b.name}</option>)}
+                    {buyers.map(b => (
+                      <option key={b.id} value={String(b.id)}>{b.code} - {b.name}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -578,7 +763,7 @@ export default function AdminDashboard({ user, onLogout }) {
                   </button>
                 </div>
                 <div style={S.qrGrid}>
-                  {(genBuyerId ? qrCodes.filter(q => q.buyer_id === parseInt(genBuyerId)) : qrCodes).slice(0, 24).map(q => (
+                  {(genBuyerId ? qrCodes.filter(q => q.buyer_id === parseInt(genBuyerId)) : qrCodes).map(q => (
                     <div key={q.id} style={{ ...S.qrCard, opacity: q.used ? 0.4 : 1 }}>
                       <QRCode value={q.unique_code} size={100} />
                       <div style={{ marginTop: 6, fontWeight: 'bold', fontSize: 13 }}>{q.unique_code}</div>
@@ -592,13 +777,32 @@ export default function AdminDashboard({ user, onLogout }) {
           </div>
         )}
 
-        {/* ── ALL BAGS ── */}
+        {/* ── TOTAL PURCHASE ── */}
         {tab === 'bags' && (
           <div style={S.card}>
             {bagsMsg && <div style={bagsMsg.startsWith('✅') ? S.success : S.error}>{bagsMsg}</div>}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={S.subheading}>All Bags ({bags.length})</div>
-              {bags.length > 0 && (
+              <div style={S.subheading}>Total Purchase ({bags.length})</div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <select
+                  style={{ ...S.input, minWidth: 220, marginBottom: 0 }}
+                  value={selectedBuyerActionId}
+                  onChange={e => setSelectedBuyerActionId(e.target.value)}
+                >
+                  <option value="">Select Buyer</option>
+                  {buyers.map(b => (
+                    <option key={b.id} value={String(b.id)}>{b.code} - {b.name}</option>
+                  ))}
+                </select>
+                <button
+                  style={{ ...S.btnSecondary, flex: 'none', padding: '8px 14px', fontSize: 12 }}
+                  onClick={handleToggleBuyerActionAfter6pm}
+                >
+                  {enabledBuyerActionIds.includes(Number(selectedBuyerActionId))
+                    ? 'Disable Selected Buyer After 6 PM'
+                    : 'Enable Selected Buyer After 6 PM'}
+                </button>
+                {bags.length > 0 && (
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button
                     style={exportBtnXls}
@@ -608,7 +812,7 @@ export default function AdminDashboard({ user, onLogout }) {
                   </button>
                   <button
                     style={exportBtnPdf}
-                    onClick={() => exportBagsPDF(bags, `All Bags Report - ${new Date().toISOString().split('T')[0]}`)}
+                    onClick={() => exportBagsPDF(bags, `Total Purchase Report - ${new Date().toISOString().split('T')[0]}`)}
                   >
                     📄 Export PDF
                   </button>
@@ -625,14 +829,20 @@ export default function AdminDashboard({ user, onLogout }) {
                     ⬇ CSV
                   </button>
                 </div>
-              )}
+                )}
+              </div>
             </div>
+            {enabledBuyerActionIds.length > 0 && (
+              <div style={{ marginBottom: 12, fontSize: 12, color: '#2e7d32' }}>
+                Enabled buyers after 6 PM: {buyers.filter(b => enabledBuyerActionIds.includes(Number(b.id))).map(b => b.name).join(', ')}
+              </div>
+            )}
             {bags.length === 0
               ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>No bags yet.</p>
               : (
                 <div style={{ overflowX: 'auto' }}>
                   <table style={S.table}>
-                    <thead><tr>{['Buyer','Name','Code','APF','Grade','Weight','Date','Location','FCV','Updated','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                    <thead><tr>{['Buyer','Name','Code','APF','TB Grade','Type','Location','Purchase Date','Buyer Grade','Weight','Rate','Bale Value','Date & Time','FCV','Updated','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                     <tbody>
                       {bags.map((b, i) => (
                         editingBagId === b.id ? (
@@ -640,18 +850,38 @@ export default function AdminDashboard({ user, onLogout }) {
                             <td style={S.td}><b>{b.buyer_code}</b></td>
                             <td style={S.td}>{b.buyer_name}</td>
                             <td style={S.td}>{b.unique_code}</td>
-                            <td style={S.td}><input style={{ ...S.input, minWidth: 100 }} value={editBagForm?.apf_number ?? ''} onChange={e => setEditBagForm(f => ({ ...f, apf_number: e.target.value }))} /></td>
                             <td style={S.td}>
-                              <select style={{ ...S.input, minWidth: 110 }} value={editBagForm?.tobacco_grade ?? ''} onChange={e => setEditBagForm(f => ({ ...f, tobacco_grade: e.target.value }))}>
-                                <option value="">Select</option>
-                                {tobaccoBoardGradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
-                              </select>
+                              <SearchableSelect
+                                options={apfNumberOptions}
+                                value={editBagForm?.apf_number ?? ''}
+                                onChange={(val) => setEditBagForm(f => ({ ...f, apf_number: val }))}
+                                inputStyle={{ ...S.input, minWidth: 100 }}
+                                placeholder="Search APF"
+                              />
                             </td>
+                            <td style={S.td}>
+                              <SearchableSelect
+                                options={tobaccoBoardGradeOptions}
+                                value={editBagForm?.tobacco_grade ?? ''}
+                                onChange={(val) => setEditBagForm(f => ({ ...f, tobacco_grade: val }))}
+                                inputStyle={{ ...S.input, minWidth: 110 }}
+                                placeholder="Search"
+                              />
+                            </td>
+                            <td style={S.td}><input style={{ ...S.input, minWidth: 120 }} value={editBagForm?.type_of_tobacco ?? ''} onChange={e => setEditBagForm(f => ({ ...f, type_of_tobacco: e.target.value }))} /></td>
+                            <td style={S.td}><input style={{ ...S.input, minWidth: 120 }} value={editBagForm?.purchase_location ?? ''} onChange={e => setEditBagForm(f => ({ ...f, purchase_location: e.target.value }))} /></td>
+                            <td style={S.td}><input style={{ ...S.input, minWidth: 110 }} value={editBagForm?.purchase_date ?? ''} onChange={e => setEditBagForm(f => ({ ...f, purchase_date: e.target.value }))} /></td>
+                            <td style={S.td}><input style={{ ...S.input, minWidth: 110 }} value={editBagForm?.buyer_grade ?? ''} onChange={e => setEditBagForm(f => ({ ...f, buyer_grade: e.target.value }))} /></td>
                             <td style={S.td}><input style={{ ...S.input, minWidth: 90 }} type="number" value={editBagForm?.weight ?? ''} onChange={e => setEditBagForm(f => ({ ...f, weight: e.target.value }))} /></td>
+                            <td style={S.td}><input style={{ ...S.input, minWidth: 90 }} type="number" step="0.01" value={editBagForm?.rate ?? ''} onChange={e => setEditBagForm(f => ({ ...f, rate: e.target.value }))} /></td>
+                            <td style={S.td}>
+                              {Number.isFinite(Number(editBagForm?.weight)) && Number.isFinite(Number(editBagForm?.rate))
+                                ? Number((Number(editBagForm.weight) * Number(editBagForm.rate)).toFixed(2))
+                                : (editBagForm?.bale_value ?? '—')}
+                            </td>
                             <td style={S.td}>
                               <input style={{ ...S.input, minWidth: 180 }} type="datetime-local" value={editBagForm?.date_of_purchase ?? nowInputDateTime()} onChange={e => setEditBagForm(f => ({ ...f, date_of_purchase: e.target.value }))} />
                             </td>
-                            <td style={S.td}><input style={{ ...S.input, minWidth: 120 }} value={editBagForm?.purchase_location ?? ''} onChange={e => setEditBagForm(f => ({ ...f, purchase_location: e.target.value }))} /></td>
                             <td style={S.td}>
                               <select style={{ ...S.input, minWidth: 95 }} value={editBagForm?.fcv ?? ''} onChange={e => setEditBagForm(f => ({ ...f, fcv: e.target.value }))}>
                                 <option value="">Select</option>
@@ -675,9 +905,14 @@ export default function AdminDashboard({ user, onLogout }) {
                             <td style={S.td}>{b.unique_code}</td>
                             <td style={S.td}>{b.apf_number}</td>
                             <td style={S.td}>{b.tobacco_grade}</td>
+                            <td style={S.td}>{b.type_of_tobacco || '—'}</td>
+                            <td style={S.td}>{b.purchase_location || '—'}</td>
+                            <td style={S.td}>{b.purchase_date || '—'}</td>
+                            <td style={S.td}>{b.buyer_grade || '—'}</td>
                             <td style={S.td}>{b.weight} kg</td>
+                            <td style={S.td}>{b.rate ?? '—'}</td>
+                            <td style={S.td}>{b.bale_value ?? '—'}</td>
                             <td style={S.td}>{formatDateTime(b.date_of_purchase)}</td>
-                            <td style={S.td}>{b.purchase_location}</td>
                             <td style={S.td}><span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span></td>
                             <td style={S.td}>{formatDateTime(b.updated_at)}</td>
                             <td style={S.td}>
