@@ -13,7 +13,8 @@ export default function BuyerDashboard({ user, onLogout }) {
   const [view, setView]     = useState('form');
   const [bags, setBags]     = useState([]);
   const [qrCodes, setQR]    = useState([]);
-  const [grades, setGrades] = useState([]);
+  const [tobaccoBoardGrades, setTobaccoBoardGrades] = useState([]);
+  const [buyerGrades, setBuyerGrades] = useState([]);
   const [loading, setLoad]  = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(null);
@@ -28,7 +29,12 @@ export default function BuyerDashboard({ user, onLogout }) {
     setQR(all.filter(q => q.buyer_id === user.id));
   };
   const loadGrades = async () => {
-    setGrades(await api.getGrades());
+    const [tbGrades, byGrades] = await Promise.all([
+      api.getGrades('tobacco_board'),
+      api.getGrades('buyer'),
+    ]);
+    setTobaccoBoardGrades(tbGrades);
+    setBuyerGrades(byGrades);
   };
 
   useEffect(() => { loadBags(); loadQR(); loadGrades(); }, []);
@@ -42,7 +48,7 @@ export default function BuyerDashboard({ user, onLogout }) {
     }
     if (v === 'bags') loadBags();
     if (v === 'qr')   loadQR();
-    if (v === 'grades') loadGrades();
+    if (v === 'tb-grades' || v === 'buyer-grades') loadGrades();
   };
 
   const formatUpdatedAt = (value) => formatDateTime(value);
@@ -61,8 +67,10 @@ export default function BuyerDashboard({ user, onLogout }) {
     });
   };
 
-  const sortedGrades = [...grades].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
-  const gradeCodes = sortedGrades.map(g => g.code);
+  const sortedTobaccoBoardGrades = [...tobaccoBoardGrades].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  const sortedBuyerGrades = [...buyerGrades].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  const tobaccoBoardGradeCodes = sortedTobaccoBoardGrades.map(g => g.code);
+  const buyerGradeCodes = sortedBuyerGrades.map(g => g.code);
 
   const saveEdit = async () => {
     if (!editingId || !editForm) return;
@@ -145,11 +153,16 @@ export default function BuyerDashboard({ user, onLogout }) {
           <button style={S.tab(view === 'form')} onClick={() => switchView('form')}>📝 New Bag Entry</button>
           <button style={S.tab(view === 'bags')} onClick={() => switchView('bags')}>📦 My Bags ({bags.length})</button>
           <button style={S.tab(view === 'qr')}   onClick={() => switchView('qr')}>🔲 My QR Codes ({qrCodes.length})</button>
-          <button style={S.tab(view === 'grades')} onClick={() => switchView('grades')}>🏷️ Grade Info ({grades.length})</button>
+          <button style={S.tab(view === 'tb-grades')} onClick={() => switchView('tb-grades')}>🏷️ TB Grades ({tobaccoBoardGrades.length})</button>
+          <button style={S.tab(view === 'buyer-grades')} onClick={() => switchView('buyer-grades')}>🏷️ Buyer Grades ({buyerGrades.length})</button>
         </div>
 
         {view === 'form' && (
-          <BuyingForm buyer={user} grades={grades} onSaveExit={() => switchView('bags')} />
+          <BuyingForm
+            buyer={user}
+            grades={{ tobaccoBoard: tobaccoBoardGrades, buyer: buyerGrades }}
+            onSaveExit={() => switchView('bags')}
+          />
         )}
 
         {view === 'bags' && (
@@ -203,14 +216,14 @@ export default function BuyerDashboard({ user, onLogout }) {
                           <td style={S.td}>
                             <select style={{ ...S.input, minWidth: 110 }} value={editForm?.tobacco_grade ?? ''} onChange={e => setEditForm(f => ({ ...f, tobacco_grade: e.target.value }))}>
                               <option value="">Select</option>
-                              {gradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
+                              {tobaccoBoardGradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
                             </select>
                           </td>
                           <td style={S.td}><input style={{ ...S.input, minWidth: 90 }} type="number" value={editForm?.weight ?? ''} onChange={e => setEditForm(f => ({ ...f, weight: e.target.value }))} /></td>
                           <td style={S.td}>
                             <select style={{ ...S.input, minWidth: 110 }} value={editForm?.buyer_grade ?? ''} onChange={e => setEditForm(f => ({ ...f, buyer_grade: e.target.value }))}>
                               <option value="">Select</option>
-                              {gradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
+                              {buyerGradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
                             </select>
                           </td>
                           <td style={S.td}>
@@ -286,16 +299,38 @@ export default function BuyerDashboard({ user, onLogout }) {
           </div>
         )}
 
-        {view === 'grades' && (
+        {view === 'tb-grades' && (
           <div style={S.card}>
-            <div style={S.subheading}>Tobacco Board Grades ({grades.length})</div>
-            {grades.length === 0 ? <p style={{ color: '#aaa', textAlign: 'center', padding: 24 }}>No grade data available.</p>
+            <div style={S.subheading}>Tobacco Board Grades ({tobaccoBoardGrades.length})</div>
+            {tobaccoBoardGrades.length === 0 ? <p style={{ color: '#aaa', textAlign: 'center', padding: 24 }}>No Tobacco Board grades available.</p>
+            : (
+              <div style={{ overflowX: 'auto', marginBottom: 20 }}>
+                <table style={S.table}>
+                  <thead><tr>{['Grade Code','Description'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {sortedTobaccoBoardGrades.map((g, i) => (
+                      <tr key={g.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
+                        <td style={S.td}><b>{g.code}</b></td>
+                        <td style={S.td}>{g.description}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {view === 'buyer-grades' && (
+          <div style={S.card}>
+            <div style={S.subheading}>Buyer Grades ({buyerGrades.length})</div>
+            {buyerGrades.length === 0 ? <p style={{ color: '#aaa', textAlign: 'center', padding: 24 }}>No Buyer grades available.</p>
             : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={S.table}>
                   <thead><tr>{['Grade Code','Description'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                   <tbody>
-                    {sortedGrades.map((g, i) => (
+                    {sortedBuyerGrades.map((g, i) => (
                       <tr key={g.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
                         <td style={S.td}><b>{g.code}</b></td>
                         <td style={S.td}>{g.description}</td>

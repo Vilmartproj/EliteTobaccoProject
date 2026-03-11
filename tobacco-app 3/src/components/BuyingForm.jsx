@@ -4,7 +4,7 @@ import { api } from '../api';
 import { S } from '../styles';
 import { fromInputDateTime, nowInputDateTime } from '../utils/dateFormat';
 
-export default function BuyingForm({ buyer, grades = [], onSaveExit }) {
+export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: [] }, onSaveExit }) {
   const [fcv, setFcv]                   = useState('');
   const [uniqueCode, setUniqueCode]     = useState('');
   const [codeStatus, setCodeStatus]     = useState(null); // null|checking|ok|duplicate|error
@@ -19,8 +19,10 @@ export default function BuyingForm({ buyer, grades = [], onSaveExit }) {
   const [saved, setSaved]               = useState(false);
   const [loading, setLoading]           = useState(false);
   const debounceRef = useRef(null);
-  const sortedGrades = [...grades].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
-  const gradeCodes = sortedGrades.map(g => g.code);
+  const tobaccoBoardGrades = [...grades.tobaccoBoard].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  const buyerGrades = [...grades.buyer].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  const tobaccoBoardGradeCodes = tobaccoBoardGrades.map(g => g.code);
+  const buyerGradeCodes = buyerGrades.map(g => g.code);
 
   const reset = () => {
     setFcv(''); setUniqueCode(''); setApfNumber(''); setTobaccoGrade('');
@@ -191,7 +193,7 @@ export default function BuyingForm({ buyer, grades = [], onSaveExit }) {
         <label style={S.label}>Tobacco Board Grade</label>
         <select style={S.input} value={tobaccoGrade} onChange={e => setTobaccoGrade(e.target.value)}>
           <option value="">— Select Grade —</option>
-          {gradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
+          {tobaccoBoardGradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
         </select>
       </div>
 
@@ -204,7 +206,7 @@ export default function BuyingForm({ buyer, grades = [], onSaveExit }) {
           <label style={S.label}>Buyer Grade</label>
           <select style={S.input} value={buyerGrade} onChange={e => setBuyerGrade(e.target.value)}>
             <option value="">— Select Grade —</option>
-            {gradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
+            {buyerGradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
           </select>
         </div>
       </div>

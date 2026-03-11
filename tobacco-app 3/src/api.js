@@ -27,7 +27,7 @@ export const api = {
   getBuyers:        ()             => req('GET',  '/buyers'),
   addBuyer:         (body)         => req('POST', '/buyers', body),
   deleteBuyer:      (id)           => req('DELETE', `/buyers/${id}`),
-  getGrades:        ()             => req('GET',  '/grades'),
+  getGrades:        (type)         => req('GET',  `/grades${type ? `?type=${encodeURIComponent(type)}` : ''}`),
   addGrade:         (body)         => req('POST', '/grades', body),
   updateGrade:      (id, body)     => req('PUT',  `/grades/${id}`, body),
   deleteGrade:      (id)           => req('DELETE', `/grades/${id}`),

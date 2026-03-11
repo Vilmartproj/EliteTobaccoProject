@@ -7,8 +7,72 @@ const cors = require('cors');
 const app = express();
 const PORT = 3001;
 
+const GRADE_TYPES = {
+  TOBACCO_BOARD: 'tobacco_board',
+  BUYER: 'buyer',
+};
+
+const DEFAULT_GRADE_TYPE = GRADE_TYPES.TOBACCO_BOARD;
+const GRADE_TYPE_VALUES = new Set(Object.values(GRADE_TYPES));
+
+const seedGradeTemplates = [
+  ['H1', 'High Grade 1'],
+  ['H2', 'High Grade 2'],
+  ['H3', 'High Grade 3'],
+  ['H4', 'High Grade 4'],
+  ['C1', 'Category C Grade 1'],
+  ['C2', 'Category C Grade 2'],
+  ['C3', 'Category C Grade 3'],
+  ['C4', 'Category C Grade 4'],
+  ['B1', 'Category B Grade 1'],
+  ['B2', 'Category B Grade 2'],
+  ['B3', 'Category B Grade 3'],
+  ['B4', 'Category B Grade 4'],
+  ['X1', 'Category X Grade 1'],
+  ['X2', 'Category X Grade 2'],
+  ['X3', 'Category X Grade 3'],
+  ['X4', 'Category X Grade 4'],
+  ['L1', 'Category L Grade 1'],
+  ['L2', 'Category L Grade 2'],
+  ['L3', 'Category L Grade 3'],
+  ['L4', 'Category L Grade 4'],
+  ['G1', 'Category G Grade 1'],
+  ['G2', 'Category G Grade 2'],
+  ['G3', 'Category G Grade 3'],
+  ['G4', 'Category G Grade 4'],
+  ['F1', 'Category F Grade 1'],
+  ['F2', 'Category F Grade 2'],
+  ['F3', 'Category F Grade 3'],
+  ['F4', 'Category F Grade 4'],
+];
+
+const seedGrades = () => {
+  let id = 1;
+  const now = new Date().toISOString();
+
+  const createRows = (type) => seedGradeTemplates.map(([code, description]) => ({
+    id: id++,
+    type,
+    code,
+    description,
+    created_at: now,
+  }));
+
+  return [
+    ...createRows(GRADE_TYPES.TOBACCO_BOARD),
+    ...createRows(GRADE_TYPES.BUYER),
+  ];
+};
+
+const resolveGradeType = (value, fallback = DEFAULT_GRADE_TYPE) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (GRADE_TYPE_VALUES.has(normalized)) return normalized;
+  return null;
+};
+
 // ── In-Memory Database ──────────────────────────────────────
-let nextId = { buyers: 4, qr_codes: 6, bags: 1, grades: 29 };
+let nextId = { buyers: 4, qr_codes: 6, bags: 1, grades: 57 };
 
 const db = {
   buyers: [
@@ -16,36 +80,7 @@ const db = {
     { id: 2, code: 'B002', name: 'Suresh Reddy', password: 'B002', created_at: new Date().toISOString() },
     { id: 3, code: 'B003', name: 'Anitha Devi', password: 'B003', created_at: new Date().toISOString() },
   ],
-  grades: [
-    { id: 1, code: 'H1', description: 'High Grade 1', created_at: new Date().toISOString() },
-    { id: 2, code: 'H2', description: 'High Grade 2', created_at: new Date().toISOString() },
-    { id: 3, code: 'H3', description: 'High Grade 3', created_at: new Date().toISOString() },
-    { id: 4, code: 'H4', description: 'High Grade 4', created_at: new Date().toISOString() },
-    { id: 5, code: 'C1', description: 'Category C Grade 1', created_at: new Date().toISOString() },
-    { id: 6, code: 'C2', description: 'Category C Grade 2', created_at: new Date().toISOString() },
-    { id: 7, code: 'C3', description: 'Category C Grade 3', created_at: new Date().toISOString() },
-    { id: 8, code: 'C4', description: 'Category C Grade 4', created_at: new Date().toISOString() },
-    { id: 9, code: 'B1', description: 'Category B Grade 1', created_at: new Date().toISOString() },
-    { id: 10, code: 'B2', description: 'Category B Grade 2', created_at: new Date().toISOString() },
-    { id: 11, code: 'B3', description: 'Category B Grade 3', created_at: new Date().toISOString() },
-    { id: 12, code: 'B4', description: 'Category B Grade 4', created_at: new Date().toISOString() },
-    { id: 13, code: 'X1', description: 'Category X Grade 1', created_at: new Date().toISOString() },
-    { id: 14, code: 'X2', description: 'Category X Grade 2', created_at: new Date().toISOString() },
-    { id: 15, code: 'X3', description: 'Category X Grade 3', created_at: new Date().toISOString() },
-    { id: 16, code: 'X4', description: 'Category X Grade 4', created_at: new Date().toISOString() },
-    { id: 17, code: 'L1', description: 'Category L Grade 1', created_at: new Date().toISOString() },
-    { id: 18, code: 'L2', description: 'Category L Grade 2', created_at: new Date().toISOString() },
-    { id: 19, code: 'L3', description: 'Category L Grade 3', created_at: new Date().toISOString() },
-    { id: 20, code: 'L4', description: 'Category L Grade 4', created_at: new Date().toISOString() },
-    { id: 21, code: 'G1', description: 'Category G Grade 1', created_at: new Date().toISOString() },
-    { id: 22, code: 'G2', description: 'Category G Grade 2', created_at: new Date().toISOString() },
-    { id: 23, code: 'G3', description: 'Category G Grade 3', created_at: new Date().toISOString() },
-    { id: 24, code: 'G4', description: 'Category G Grade 4', created_at: new Date().toISOString() },
-    { id: 25, code: 'F1', description: 'Category F Grade 1', created_at: new Date().toISOString() },
-    { id: 26, code: 'F2', description: 'Category F Grade 2', created_at: new Date().toISOString() },
-    { id: 27, code: 'F3', description: 'Category F Grade 3', created_at: new Date().toISOString() },
-    { id: 28, code: 'F4', description: 'Category F Grade 4', created_at: new Date().toISOString() },
-  ],
+  grades: seedGrades(),
   qr_codes: [
     { id: 1, unique_code: '113', buyer_id: 1, used: 0, created_at: new Date().toISOString() },
     { id: 2, unique_code: '114', buyer_id: 1, used: 0, created_at: new Date().toISOString() },
@@ -97,24 +132,37 @@ app.post('/api/buyers', (req, res) => {
 
 // ── GRADES ──────────────────────────────────────────────────
 app.get('/api/grades', (req, res) => {
-  const rows = [...db.grades].sort((a, b) => a.code.localeCompare(b.code));
+  const requestedType = resolveGradeType(req.query?.type, null);
+  if (req.query?.type && !requestedType) {
+    return res.status(400).json({ error: 'Invalid grade type' });
+  }
+
+  const rows = [...db.grades]
+    .filter(g => !requestedType || g.type === requestedType)
+    .sort((a, b) => a.code.localeCompare(b.code));
   res.json(rows);
 });
 
 app.post('/api/grades', (req, res) => {
-  const { code, description } = req.body || {};
+  const { code, description, type } = req.body || {};
   const normalizedCode = String(code || '').trim().toUpperCase();
   const normalizedDesc = String(description || '').trim();
+  const gradeType = resolveGradeType(type);
 
   if (!normalizedCode || !normalizedDesc) {
     return res.status(400).json({ error: 'code and description required' });
   }
 
-  const duplicate = db.grades.some(g => g.code === normalizedCode);
+  if (!gradeType) {
+    return res.status(400).json({ error: 'Invalid grade type' });
+  }
+
+  const duplicate = db.grades.some(g => g.type === gradeType && g.code === normalizedCode);
   if (duplicate) return res.status(400).json({ error: 'Grade code already exists' });
 
   const grade = {
     id: nextId.grades++,
+    type: gradeType,
     code: normalizedCode,
     description: normalizedDesc,
     created_at: new Date().toISOString(),
@@ -127,20 +175,26 @@ app.post('/api/grades', (req, res) => {
 app.put('/api/grades/:id', (req, res) => {
   const { id } = req.params;
   const gradeId = Number(id);
-  const { code, description } = req.body || {};
+  const { code, description, type } = req.body || {};
 
   const grade = db.grades.find(g => g.id === gradeId);
   if (!grade) return res.status(404).json({ error: 'Grade not found' });
 
   const normalizedCode = String(code || '').trim().toUpperCase();
   const normalizedDesc = String(description || '').trim();
+  const gradeType = resolveGradeType(type, grade.type || DEFAULT_GRADE_TYPE);
   if (!normalizedCode || !normalizedDesc) {
     return res.status(400).json({ error: 'code and description required' });
   }
 
-  const duplicate = db.grades.some(g => g.id !== gradeId && g.code === normalizedCode);
+  if (!gradeType) {
+    return res.status(400).json({ error: 'Invalid grade type' });
+  }
+
+  const duplicate = db.grades.some(g => g.id !== gradeId && g.type === gradeType && g.code === normalizedCode);
   if (duplicate) return res.status(400).json({ error: 'Grade code already exists' });
 
+  grade.type = gradeType;
   grade.code = normalizedCode;
   grade.description = normalizedDesc;
   res.json(grade);
@@ -153,7 +207,9 @@ app.delete('/api/grades/:id', (req, res) => {
   if (index === -1) return res.status(404).json({ error: 'Grade not found' });
 
   const grade = db.grades[index];
-  const inUse = db.bags.some(b => b.tobacco_grade === grade.code || b.buyer_grade === grade.code);
+  const inUse = grade.type === GRADE_TYPES.BUYER
+    ? db.bags.some(b => b.buyer_grade === grade.code)
+    : db.bags.some(b => b.tobacco_grade === grade.code);
   if (inUse) return res.status(400).json({ error: 'Grade is in use and cannot be deleted' });
 
   const deleted = db.grades.splice(index, 1)[0];

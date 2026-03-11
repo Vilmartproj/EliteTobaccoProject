@@ -13,7 +13,8 @@ export default function AdminDashboard({ user, onLogout }) {
   const [tab, setTab]         = useState('overview');
   const [stats, setStats]     = useState({});
   const [buyers, setBuyers]   = useState([]);
-  const [grades, setGrades]   = useState([]);
+  const [tobaccoBoardGrades, setTobaccoBoardGrades] = useState([]);
+  const [buyerGrades, setBuyerGrades] = useState([]);
   const [qrCodes, setQR]      = useState([]);
   const [bags, setBags]       = useState([]);
 
@@ -31,14 +32,30 @@ export default function AdminDashboard({ user, onLogout }) {
   const [bagsMsg, setBagsMsg] = useState('');
   const [editingBagId, setEditingBagId] = useState(null);
   const [editBagForm, setEditBagForm] = useState(null);
-  const [gradeCode, setGradeCode] = useState('');
-  const [gradeDescription, setGradeDescription] = useState('');
-  const [gradeEditingId, setGradeEditingId] = useState(null);
-  const [gradeMsg, setGradeMsg] = useState('');
+  const [tbGradeCode, setTbGradeCode] = useState('');
+  const [tbGradeDescription, setTbGradeDescription] = useState('');
+  const [tbGradeEditingId, setTbGradeEditingId] = useState(null);
+  const [tbGradeMsg, setTbGradeMsg] = useState('');
+  const [buyerGradeCode, setBuyerGradeCode] = useState('');
+  const [buyerGradeDescription, setBuyerGradeDescription] = useState('');
+  const [buyerGradeEditingId, setBuyerGradeEditingId] = useState(null);
+  const [buyerGradeMsg, setBuyerGradeMsg] = useState('');
 
   const refresh = async () => {
-    const [s, b, g, q, bg] = await Promise.all([api.getStats(), api.getBuyers(), api.getGrades(), api.getQRCodes(), api.getBags()]);
-    setStats(s); setBuyers(b); setGrades(g); setQR(q); setBags(bg);
+    const [s, b, tbGrades, byGrades, q, bg] = await Promise.all([
+      api.getStats(),
+      api.getBuyers(),
+      api.getGrades('tobacco_board'),
+      api.getGrades('buyer'),
+      api.getQRCodes(),
+      api.getBags(),
+    ]);
+    setStats(s);
+    setBuyers(b);
+    setTobaccoBoardGrades(tbGrades);
+    setBuyerGrades(byGrades);
+    setQR(q);
+    setBags(bg);
   };
 
   useEffect(() => { refresh(); }, []);
@@ -147,54 +164,100 @@ export default function AdminDashboard({ user, onLogout }) {
     }
   };
 
-  const resetGradeForm = () => {
-    setGradeCode('');
-    setGradeDescription('');
-    setGradeEditingId(null);
+  const resetTobaccoBoardGradeForm = () => {
+    setTbGradeCode('');
+    setTbGradeDescription('');
+    setTbGradeEditingId(null);
   };
 
-  const handleSaveGrade = async () => {
-    if (!gradeCode.trim() || !gradeDescription.trim()) {
-      setGradeMsg('Grade code and description are required');
+  const resetBuyerGradeForm = () => {
+    setBuyerGradeCode('');
+    setBuyerGradeDescription('');
+    setBuyerGradeEditingId(null);
+  };
+
+  const handleSaveTobaccoBoardGrade = async () => {
+    if (!tbGradeCode.trim() || !tbGradeDescription.trim()) {
+      setTbGradeMsg('Grade code and description are required');
       return;
     }
     try {
-      if (gradeEditingId) {
-        await api.updateGrade(gradeEditingId, { code: gradeCode, description: gradeDescription });
-        setGradeMsg(`✅ Grade ${gradeCode.toUpperCase()} updated`);
+      if (tbGradeEditingId) {
+        await api.updateGrade(tbGradeEditingId, { code: tbGradeCode, description: tbGradeDescription, type: 'tobacco_board' });
+        setTbGradeMsg(`✅ Grade ${tbGradeCode.toUpperCase()} updated`);
       } else {
-        await api.addGrade({ code: gradeCode, description: gradeDescription });
-        setGradeMsg(`✅ Grade ${gradeCode.toUpperCase()} added`);
+        await api.addGrade({ code: tbGradeCode, description: tbGradeDescription, type: 'tobacco_board' });
+        setTbGradeMsg(`✅ Grade ${tbGradeCode.toUpperCase()} added`);
       }
-      resetGradeForm();
+      resetTobaccoBoardGradeForm();
       await refresh();
     } catch (e) {
-      setGradeMsg(e.message);
+      setTbGradeMsg(e.message);
     }
   };
 
-  const handleEditGrade = (grade) => {
-    setGradeEditingId(grade.id);
-    setGradeCode(grade.code);
-    setGradeDescription(grade.description);
-    setGradeMsg('');
+  const handleSaveBuyerGrade = async () => {
+    if (!buyerGradeCode.trim() || !buyerGradeDescription.trim()) {
+      setBuyerGradeMsg('Grade code and description are required');
+      return;
+    }
+    try {
+      if (buyerGradeEditingId) {
+        await api.updateGrade(buyerGradeEditingId, { code: buyerGradeCode, description: buyerGradeDescription, type: 'buyer' });
+        setBuyerGradeMsg(`✅ Grade ${buyerGradeCode.toUpperCase()} updated`);
+      } else {
+        await api.addGrade({ code: buyerGradeCode, description: buyerGradeDescription, type: 'buyer' });
+        setBuyerGradeMsg(`✅ Grade ${buyerGradeCode.toUpperCase()} added`);
+      }
+      resetBuyerGradeForm();
+      await refresh();
+    } catch (e) {
+      setBuyerGradeMsg(e.message);
+    }
   };
 
-  const handleDeleteGrade = async (grade) => {
+  const handleEditTobaccoBoardGrade = (grade) => {
+    setTbGradeEditingId(grade.id);
+    setTbGradeCode(grade.code);
+    setTbGradeDescription(grade.description);
+    setTbGradeMsg('');
+  };
+
+  const handleEditBuyerGrade = (grade) => {
+    setBuyerGradeEditingId(grade.id);
+    setBuyerGradeCode(grade.code);
+    setBuyerGradeDescription(grade.description);
+    setBuyerGradeMsg('');
+  };
+
+  const handleDeleteTobaccoBoardGrade = async (grade) => {
     if (!window.confirm(`Delete grade ${grade.code}?`)) return;
     try {
       await api.deleteGrade(grade.id);
-      setGradeMsg(`✅ Grade ${grade.code} deleted`);
-      if (gradeEditingId === grade.id) resetGradeForm();
+      setTbGradeMsg(`✅ Grade ${grade.code} deleted`);
+      if (tbGradeEditingId === grade.id) resetTobaccoBoardGradeForm();
       await refresh();
     } catch (e) {
-      setGradeMsg(e.message);
+      setTbGradeMsg(e.message);
+    }
+  };
+
+  const handleDeleteBuyerGrade = async (grade) => {
+    if (!window.confirm(`Delete grade ${grade.code}?`)) return;
+    try {
+      await api.deleteGrade(grade.id);
+      setBuyerGradeMsg(`✅ Grade ${grade.code} deleted`);
+      if (buyerGradeEditingId === grade.id) resetBuyerGradeForm();
+      await refresh();
+    } catch (e) {
+      setBuyerGradeMsg(e.message);
     }
   };
 
   const buyerMap = Object.fromEntries(buyers.map(b => [b.id, b]));
-  const sortedGrades = [...grades].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
-  const gradeCodes = sortedGrades.map(g => g.code);
+  const sortedTobaccoBoardGrades = [...tobaccoBoardGrades].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  const sortedBuyerGrades = [...buyerGrades].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  const tobaccoBoardGradeCodes = sortedTobaccoBoardGrades.map(g => g.code);
 
   const exportBtn = {
     flex: 'none',
@@ -254,7 +317,7 @@ export default function AdminDashboard({ user, onLogout }) {
 
       <div style={S.page}>
         <div style={S.tabs}>
-          {[['overview','📊 Overview'],['buyers','👥 Buyers'],['grades','🏷️ Grade Maintenance'],['qrcodes','🔲 QR Codes'],['generate','⚡ Generate QR'],['bags','📦 All Bags'],['database','🗄️ Database']].map(([id, label]) => (
+          {[['overview','📊 Overview'],['buyers','👥 Buyers'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['generate','⚡ Generate QR'],['bags','📦 All Bags'],['database','🗄️ Database']].map(([id, label]) => (
             <button key={id} style={S.tab(tab === id)} onClick={() => { setTab(id); refresh(); }}>{label}</button>
           ))}
         </div>
@@ -331,25 +394,25 @@ export default function AdminDashboard({ user, onLogout }) {
         )}
 
         {/* ── GRADE MAINTENANCE ── */}
-        {tab === 'grades' && (
+        {tab === 'tb-grades' && (
           <div>
             <div style={S.card}>
-              <div style={S.subheading}>Grade Maintenance</div>
-              {gradeMsg && <div style={gradeMsg.startsWith('✅') ? S.success : S.error}>{gradeMsg}</div>}
+              <div style={S.subheading}>Tobacco Board Grade Maintenance</div>
+              {tbGradeMsg && <div style={tbGradeMsg.startsWith('✅') ? S.success : S.error}>{tbGradeMsg}</div>}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>Grade Code</label>
-                  <input style={S.input} placeholder="e.g. H1" value={gradeCode} onChange={e => setGradeCode(e.target.value.toUpperCase())} />
+                  <input style={S.input} placeholder="e.g. H1" value={tbGradeCode} onChange={e => setTbGradeCode(e.target.value.toUpperCase())} />
                 </div>
                 <div>
                   <label style={S.label}>Description</label>
-                  <input style={S.input} placeholder="e.g. High Grade 1" value={gradeDescription} onChange={e => setGradeDescription(e.target.value)} />
+                  <input style={S.input} placeholder="e.g. High Grade 1" value={tbGradeDescription} onChange={e => setTbGradeDescription(e.target.value)} />
                 </div>
-                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px' }} onClick={handleSaveGrade}>
-                  {gradeEditingId ? 'Update' : 'Add'}
+                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px' }} onClick={handleSaveTobaccoBoardGrade}>
+                  {tbGradeEditingId ? 'Update' : 'Add'}
                 </button>
-                {gradeEditingId && (
-                  <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 16px' }} onClick={resetGradeForm}>
+                {tbGradeEditingId && (
+                  <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 16px' }} onClick={resetTobaccoBoardGradeForm}>
                     Cancel
                   </button>
                 )}
@@ -357,20 +420,73 @@ export default function AdminDashboard({ user, onLogout }) {
             </div>
 
             <div style={S.card}>
-              <div style={S.subheading}>All Grades ({grades.length})</div>
+              <div style={S.subheading}>All Tobacco Board Grades ({tobaccoBoardGrades.length})</div>
               <table style={S.table}>
                 <thead><tr>{['Grade Code','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                 <tbody>
-                  {sortedGrades.map(g => (
+                  {sortedTobaccoBoardGrades.map(g => (
                     <tr key={g.id}>
                       <td style={S.td}><b>{g.code}</b></td>
                       <td style={S.td}>{g.description}</td>
                       <td style={S.td}>
                         <div style={{ display: 'flex', gap: 8 }}>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditGrade(g)}>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditTobaccoBoardGrade(g)}>
                             ✏️ Edit
                           </button>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteGrade(g)}>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteTobaccoBoardGrade(g)}>
+                            🗑 Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── BUYER GRADE MAINTENANCE ── */}
+        {tab === 'buyer-grades' && (
+          <div>
+            <div style={S.card}>
+              <div style={S.subheading}>Buyer Grade Maintenance</div>
+              {buyerGradeMsg && <div style={buyerGradeMsg.startsWith('✅') ? S.success : S.error}>{buyerGradeMsg}</div>}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
+                <div>
+                  <label style={S.label}>Grade Code</label>
+                  <input style={S.input} placeholder="e.g. A1" value={buyerGradeCode} onChange={e => setBuyerGradeCode(e.target.value.toUpperCase())} />
+                </div>
+                <div>
+                  <label style={S.label}>Description</label>
+                  <input style={S.input} placeholder="e.g. Buyer Premium A1" value={buyerGradeDescription} onChange={e => setBuyerGradeDescription(e.target.value)} />
+                </div>
+                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px' }} onClick={handleSaveBuyerGrade}>
+                  {buyerGradeEditingId ? 'Update' : 'Add'}
+                </button>
+                {buyerGradeEditingId && (
+                  <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 16px' }} onClick={resetBuyerGradeForm}>
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div style={S.card}>
+              <div style={S.subheading}>All Buyer Grades ({buyerGrades.length})</div>
+              <table style={S.table}>
+                <thead><tr>{['Grade Code','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {sortedBuyerGrades.map(g => (
+                    <tr key={g.id}>
+                      <td style={S.td}><b>{g.code}</b></td>
+                      <td style={S.td}>{g.description}</td>
+                      <td style={S.td}>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditBuyerGrade(g)}>
+                            ✏️ Edit
+                          </button>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteBuyerGrade(g)}>
                             🗑 Delete
                           </button>
                         </div>
@@ -528,7 +644,7 @@ export default function AdminDashboard({ user, onLogout }) {
                             <td style={S.td}>
                               <select style={{ ...S.input, minWidth: 110 }} value={editBagForm?.tobacco_grade ?? ''} onChange={e => setEditBagForm(f => ({ ...f, tobacco_grade: e.target.value }))}>
                                 <option value="">Select</option>
-                                {gradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
+                                {tobaccoBoardGradeCodes.map(g => <option key={g} value={g}>{g}</option>)}
                               </select>
                             </td>
                             <td style={S.td}><input style={{ ...S.input, minWidth: 90 }} type="number" value={editBagForm?.weight ?? ''} onChange={e => setEditBagForm(f => ({ ...f, weight: e.target.value }))} /></td>
