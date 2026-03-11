@@ -1,0 +1,49 @@
+{
+  "folders": [
+    {
+      "name": "Elite Tobacco App",
+      "path": "tobacco-app 3"
+    }
+  ],
+  "settings": {
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "files.associations": {
+      "*.jsx": "javascriptreact"
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "esbenp.prettier-vscode",
+      "dbaeumer.vscode-eslint",
+      "dsznajder.es7-react-js-snippets",
+      "christian-kohler.path-intellisense",
+      "formulahendry.auto-rename-tag",
+      "naumovs.color-highlight",
+      "PKief.material-icon-theme"
+    ]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Launch Elite Tobacco Server",
+        "type": "node",
+        "request": "launch",
+        "program": "${workspaceFolder}/server/index.js",
+        "env": {
+          "NODE_ENV": "development"
+        },
+        "console": "integratedTerminal",
+        "restart": true
+      },
+      {
+        "name": "Launch Chrome (Vite Dev)",
+        "type": "chrome",
+        "request": "launch",
+        "url": "http://localhost:5173",
+        "webRoot": "${workspaceFolder}/src"
+      }
+    ]
+  }
+}
