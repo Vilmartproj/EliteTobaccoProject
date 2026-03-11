@@ -72,7 +72,7 @@ const resolveGradeType = (value, fallback = DEFAULT_GRADE_TYPE) => {
 };
 
 // ── In-Memory Database ──────────────────────────────────────
-let nextId = { buyers: 4, qr_codes: 6, bags: 1, grades: 57, apf_numbers: 6 };
+let nextId = { buyers: 4, qr_codes: 6, bags: 1, grades: 57, apf_numbers: 6, tobacco_types: 7 };
 
 const db = {
   buyers: [
@@ -86,6 +86,14 @@ const db = {
     { id: 3, number: '103', description: 'Default APF 103', created_at: new Date().toISOString() },
     { id: 4, number: '104', description: 'Default APF 104', created_at: new Date().toISOString() },
     { id: 5, number: '105', description: 'Default APF 105', created_at: new Date().toISOString() },
+  ],
+  tobacco_types: [
+    { id: 1, type: 'FCV Virginia', description: '', created_at: new Date().toISOString() },
+    { id: 2, type: 'Burley', description: '', created_at: new Date().toISOString() },
+    { id: 3, type: 'Natu', description: '', created_at: new Date().toISOString() },
+    { id: 4, type: 'White Burley', description: '', created_at: new Date().toISOString() },
+    { id: 5, type: 'Rustica', description: '', created_at: new Date().toISOString() },
+    { id: 6, type: 'Other', description: '', created_at: new Date().toISOString() },
   ],
   grades: seedGrades(),
   qr_codes: [
@@ -208,6 +216,72 @@ app.delete('/api/apf-numbers/:id', (req, res) => {
   res.json({ success: true, apf: deleted });
 });
 
+// ── TOBACCO TYPES / VARIETIES ─────────────────────────────
+app.get('/api/tobacco-types', (req, res) => {
+  const rows = [...db.tobacco_types].sort((a, b) => a.type.localeCompare(b.type, undefined, { numeric: true }));
+  res.json(rows);
+});
+
+app.post('/api/tobacco-types', (req, res) => {
+  const { type, description } = req.body || {};
+  const normalizedType = String(type || '').trim();
+  const normalizedDescription = String(description || '').trim();
+
+  if (!normalizedType) {
+    return res.status(400).json({ error: 'Type is required' });
+  }
+
+  const duplicate = db.tobacco_types.some(t => t.type.toLowerCase() === normalizedType.toLowerCase());
+  if (duplicate) return res.status(400).json({ error: 'Type already exists' });
+
+  const tobaccoType = {
+    id: nextId.tobacco_types++,
+    type: normalizedType,
+    description: normalizedDescription,
+    created_at: new Date().toISOString(),
+  };
+
+  db.tobacco_types.push(tobaccoType);
+  res.json(tobaccoType);
+});
+
+app.put('/api/tobacco-types/:id', (req, res) => {
+  const { id } = req.params;
+  const typeId = Number(id);
+  const { type, description } = req.body || {};
+
+  const tobaccoType = db.tobacco_types.find(t => t.id === typeId);
+  if (!tobaccoType) return res.status(404).json({ error: 'Type not found' });
+
+  const normalizedType = String(type || '').trim();
+  const normalizedDescription = String(description || '').trim();
+
+  if (!normalizedType) {
+    return res.status(400).json({ error: 'Type is required' });
+  }
+
+  const duplicate = db.tobacco_types.some(t => t.id !== typeId && t.type.toLowerCase() === normalizedType.toLowerCase());
+  if (duplicate) return res.status(400).json({ error: 'Type already exists' });
+
+  tobaccoType.type = normalizedType;
+  tobaccoType.description = normalizedDescription;
+  res.json(tobaccoType);
+});
+
+app.delete('/api/tobacco-types/:id', (req, res) => {
+  const { id } = req.params;
+  const typeId = Number(id);
+  const index = db.tobacco_types.findIndex(t => t.id === typeId);
+  if (index === -1) return res.status(404).json({ error: 'Type not found' });
+
+  const tobaccoType = db.tobacco_types[index];
+  const inUse = db.bags.some(b => String(b.type_of_tobacco || '').trim().toLowerCase() === tobaccoType.type.toLowerCase());
+  if (inUse) return res.status(400).json({ error: 'Type is in use and cannot be deleted' });
+
+  const deleted = db.tobacco_types.splice(index, 1)[0];
+  res.json({ success: true, tobacco_type: deleted });
+});
+
 // ── GRADES ──────────────────────────────────────────────────
 app.get('/api/grades', (req, res) => {
   const requestedType = resolveGradeType(req.query?.type, null);
@@ -326,7 +400,8 @@ app.get('/api/qrcodes', (req, res) => {
 app.post('/api/qrcodes/generate', (req, res) => {
   const { startCode, count, buyerId } = req.body || {};
   const n = Math.max(1, parseInt(count, 10) || 1);
-  const parsedStart = parseInt(startCode, 10);
+  const normalizedStart = String(startCode || '').trim().toUpperCase();
+  const parsedStart = /^\d+$/.test(normalizedStart) ? parseInt(normalizedStart, 10) : NaN;
   const parsedBuyerId = buyerId ? parseInt(buyerId, 10) : null;
   const codes = [];
 
@@ -337,9 +412,24 @@ app.post('/api/qrcodes/generate', (req, res) => {
 
   const existing = new Set(db.qr_codes.map(q => q.unique_code));
 
-  if (Number.isFinite(parsedStart)) {
+  const trailingDigitsMatch = normalizedStart.match(/^(.*?)(\d+)$/);
+  const prefix = trailingDigitsMatch ? trailingDigitsMatch[1] : '';
+  const baseDigits = trailingDigitsMatch ? trailingDigitsMatch[2] : '';
+  const digitWidth = baseDigits.length;
+
+  const generateDeterministicCode = (index) => {
+    if (!normalizedStart) return null;
+    if (Number.isFinite(parsedStart)) return String(parsedStart + index);
+    if (trailingDigitsMatch) {
+      const next = String(parseInt(baseDigits, 10) + index).padStart(digitWidth, '0');
+      return `${prefix}${next}`;
+    }
+    return index === 0 ? normalizedStart : `${normalizedStart}${index}`;
+  };
+
+  if (normalizedStart) {
     for (let i = 0; i < n; i++) {
-      const candidate = String(parsedStart + i);
+      const candidate = generateDeterministicCode(i);
       if (existing.has(candidate)) {
         return res.status(400).json({ error: `QR code ${candidate} already exists` });
       }
@@ -349,8 +439,8 @@ app.post('/api/qrcodes/generate', (req, res) => {
   for (let i = 0; i < n; i++) {
     let generatedCode;
 
-    if (Number.isFinite(parsedStart)) {
-      generatedCode = String(parsedStart + i);
+    if (normalizedStart) {
+      generatedCode = generateDeterministicCode(i);
     } else {
       do {
         generatedCode = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
@@ -416,9 +506,13 @@ app.post('/api/bags', (req, res) => {
   const body = req.body;
   const fcvType = String(body.fcv || '').trim();
   const apfNumber = String(body.apf_number || '').trim();
+  const lotNumber = String(body.lot_number || '').trim();
   const apfExists = apfNumber ? db.apf_numbers.some(a => a.number === apfNumber) : false;
   if (fcvType === 'FCV' && (!apfNumber || !apfExists)) {
     return res.status(400).json({ error: 'Invalid APF number. Please select from APF master.' });
+  }
+  if (fcvType === 'FCV' && !lotNumber) {
+    return res.status(400).json({ error: 'Lot Number is required for FCV.' });
   }
   const now = new Date().toISOString();
   const newBag = {
@@ -436,6 +530,7 @@ app.post('/api/bags', (req, res) => {
     rate: body.rate,
     bale_value: body.bale_value,
     buyer_grade: body.buyer_grade,
+    lot_number: fcvType === 'FCV' ? lotNumber : '',
     date_of_purchase: body.date_of_purchase,
     purchase_location: body.purchase_location,
     moisture: body.moisture,
@@ -471,6 +566,7 @@ app.put('/api/bags/:id', (req, res) => {
     'rate',
     'bale_value',
     'buyer_grade',
+    'lot_number',
     'date_of_purchase',
     'purchase_location'
   ];
@@ -486,8 +582,16 @@ app.put('/api/bags/:id', (req, res) => {
         bag[field] = normalizedApf;
         continue;
       }
+      if (field === 'lot_number') {
+        bag[field] = String(updates.lot_number || '').trim();
+        continue;
+      }
       bag[field] = updates[field];
     }
+  }
+
+  if (String(bag.fcv || '').trim() === 'FCV' && !String(bag.lot_number || '').trim()) {
+    return res.status(400).json({ error: 'Lot Number is required for FCV.' });
   }
 
   bag.updated_at = new Date().toISOString();
