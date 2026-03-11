@@ -1,4 +1,6 @@
 // src/utils/printQR.js
+import { formatDateTime } from './dateFormat';
+
 export function printQRCodes(qrList, buyerMap) {
   const items = qrList.map((q) => {
     const canvas = document.querySelector(`canvas[data-qrcode="${q.unique_code}"]`);
@@ -29,7 +31,7 @@ export function printQRCodes(qrList, buyerMap) {
     </style>
   </head><body>
     <h2>🌿 Elite Tobacco – QR Codes</h2>
-    <p class="sub">Printed: ${new Date().toLocaleString()} &nbsp;·&nbsp; Total: ${items.length}</p>
+      <p class="sub">Printed: ${formatDateTime(new Date())} &nbsp;·&nbsp; Total: ${items.length}</p>
     <div class="grid">
       ${items.map(it => `
         <div class="card ${it.used ? 'used' : ''}">

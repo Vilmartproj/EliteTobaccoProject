@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { S } from '../styles';
+import { formatDateTime } from '../utils/dateFormat';
 
 export default function DatabaseViewer() {
   const [tables, setTables]       = useState([]);
@@ -30,6 +31,8 @@ export default function DatabaseViewer() {
     catch (e) { setQueryErr(e.message); }
   };
 
+  const isDateField = (column) => /(_at|date)/i.test(column);
+
   const ResultTable = ({ data }) => (
     data.rows.length === 0
       ? <p style={{ color: '#aaa', padding: '20px 0' }}>No results.</p>
@@ -44,7 +47,7 @@ export default function DatabaseViewer() {
                     <td key={c} style={{ ...S.td, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {row[c] === null ? <span style={{ color: '#bbb' }}>NULL</span>
                         : typeof row[c] === 'number' ? <span style={{ fontFamily: 'monospace' }}>{row[c]}</span>
-                        : String(row[c])}
+                        : isDateField(c) ? formatDateTime(row[c]) : String(row[c])}
                     </td>
                   ))}
                 </tr>
@@ -130,7 +133,7 @@ export default function DatabaseViewer() {
           {[
             { table: 'buyers', cols: ['id','code','name','password','created_at'] },
             { table: 'qr_codes', cols: ['id','unique_code','buyer_id','used','created_at'] },
-            { table: 'bags', cols: ['id','unique_code','buyer_id','buyer_code','buyer_name','fcv','apf_number','tobacco_grade','weight','buyer_grade','date_of_purchase','purchase_location','saved_at'] },
+            { table: 'bags', cols: ['id','unique_code','buyer_id','buyer_code','buyer_name','fcv','apf_number','tobacco_grade','weight','buyer_grade','date_of_purchase','purchase_location','saved_at','updated_at'] },
           ].map(({ table, cols }) => (
             <div key={table} style={{ background: '#fdf8f8', border: '1px solid #f0dada', borderRadius: 8, padding: 14 }}>
               <div style={{ fontWeight: 'bold', color: '#c0392b', marginBottom: 8, fontFamily: 'monospace' }}>{table}</div>
