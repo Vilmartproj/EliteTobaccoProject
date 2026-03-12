@@ -7,8 +7,72 @@ const cors = require('cors');
 const app = express();
 const PORT = 3001;
 
+const GRADE_TYPES = {
+  TOBACCO_BOARD: 'tobacco_board',
+  BUYER: 'buyer',
+};
+
+const DEFAULT_GRADE_TYPE = GRADE_TYPES.TOBACCO_BOARD;
+const GRADE_TYPE_VALUES = new Set(Object.values(GRADE_TYPES));
+
+const seedGradeTemplates = [
+  ['H1', 'High Grade 1'],
+  ['H2', 'High Grade 2'],
+  ['H3', 'High Grade 3'],
+  ['H4', 'High Grade 4'],
+  ['C1', 'Category C Grade 1'],
+  ['C2', 'Category C Grade 2'],
+  ['C3', 'Category C Grade 3'],
+  ['C4', 'Category C Grade 4'],
+  ['B1', 'Category B Grade 1'],
+  ['B2', 'Category B Grade 2'],
+  ['B3', 'Category B Grade 3'],
+  ['B4', 'Category B Grade 4'],
+  ['X1', 'Category X Grade 1'],
+  ['X2', 'Category X Grade 2'],
+  ['X3', 'Category X Grade 3'],
+  ['X4', 'Category X Grade 4'],
+  ['L1', 'Category L Grade 1'],
+  ['L2', 'Category L Grade 2'],
+  ['L3', 'Category L Grade 3'],
+  ['L4', 'Category L Grade 4'],
+  ['G1', 'Category G Grade 1'],
+  ['G2', 'Category G Grade 2'],
+  ['G3', 'Category G Grade 3'],
+  ['G4', 'Category G Grade 4'],
+  ['F1', 'Category F Grade 1'],
+  ['F2', 'Category F Grade 2'],
+  ['F3', 'Category F Grade 3'],
+  ['F4', 'Category F Grade 4'],
+];
+
+const seedGrades = () => {
+  let id = 1;
+  const now = new Date().toISOString();
+
+  const createRows = (type) => seedGradeTemplates.map(([code, description]) => ({
+    id: id++,
+    type,
+    code,
+    description,
+    created_at: now,
+  }));
+
+  return [
+    ...createRows(GRADE_TYPES.TOBACCO_BOARD),
+    ...createRows(GRADE_TYPES.BUYER),
+  ];
+};
+
+const resolveGradeType = (value, fallback = DEFAULT_GRADE_TYPE) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (GRADE_TYPE_VALUES.has(normalized)) return normalized;
+  return null;
+};
+
 // ── In-Memory Database ──────────────────────────────────────
-let nextId = { buyers: 4, qr_codes: 6, bags: 1, grades: 29 };
+let nextId = { buyers: 4, qr_codes: 6, bags: 1, grades: 57, apf_numbers: 6, tobacco_types: 7 };
 
 const db = {
   buyers: [
@@ -16,36 +80,22 @@ const db = {
     { id: 2, code: 'B002', name: 'Suresh Reddy', password: 'B002', created_at: new Date().toISOString() },
     { id: 3, code: 'B003', name: 'Anitha Devi', password: 'B003', created_at: new Date().toISOString() },
   ],
-  grades: [
-    { id: 1, code: 'H1', description: 'High Grade 1', created_at: new Date().toISOString() },
-    { id: 2, code: 'H2', description: 'High Grade 2', created_at: new Date().toISOString() },
-    { id: 3, code: 'H3', description: 'High Grade 3', created_at: new Date().toISOString() },
-    { id: 4, code: 'H4', description: 'High Grade 4', created_at: new Date().toISOString() },
-    { id: 5, code: 'C1', description: 'Category C Grade 1', created_at: new Date().toISOString() },
-    { id: 6, code: 'C2', description: 'Category C Grade 2', created_at: new Date().toISOString() },
-    { id: 7, code: 'C3', description: 'Category C Grade 3', created_at: new Date().toISOString() },
-    { id: 8, code: 'C4', description: 'Category C Grade 4', created_at: new Date().toISOString() },
-    { id: 9, code: 'B1', description: 'Category B Grade 1', created_at: new Date().toISOString() },
-    { id: 10, code: 'B2', description: 'Category B Grade 2', created_at: new Date().toISOString() },
-    { id: 11, code: 'B3', description: 'Category B Grade 3', created_at: new Date().toISOString() },
-    { id: 12, code: 'B4', description: 'Category B Grade 4', created_at: new Date().toISOString() },
-    { id: 13, code: 'X1', description: 'Category X Grade 1', created_at: new Date().toISOString() },
-    { id: 14, code: 'X2', description: 'Category X Grade 2', created_at: new Date().toISOString() },
-    { id: 15, code: 'X3', description: 'Category X Grade 3', created_at: new Date().toISOString() },
-    { id: 16, code: 'X4', description: 'Category X Grade 4', created_at: new Date().toISOString() },
-    { id: 17, code: 'L1', description: 'Category L Grade 1', created_at: new Date().toISOString() },
-    { id: 18, code: 'L2', description: 'Category L Grade 2', created_at: new Date().toISOString() },
-    { id: 19, code: 'L3', description: 'Category L Grade 3', created_at: new Date().toISOString() },
-    { id: 20, code: 'L4', description: 'Category L Grade 4', created_at: new Date().toISOString() },
-    { id: 21, code: 'G1', description: 'Category G Grade 1', created_at: new Date().toISOString() },
-    { id: 22, code: 'G2', description: 'Category G Grade 2', created_at: new Date().toISOString() },
-    { id: 23, code: 'G3', description: 'Category G Grade 3', created_at: new Date().toISOString() },
-    { id: 24, code: 'G4', description: 'Category G Grade 4', created_at: new Date().toISOString() },
-    { id: 25, code: 'F1', description: 'Category F Grade 1', created_at: new Date().toISOString() },
-    { id: 26, code: 'F2', description: 'Category F Grade 2', created_at: new Date().toISOString() },
-    { id: 27, code: 'F3', description: 'Category F Grade 3', created_at: new Date().toISOString() },
-    { id: 28, code: 'F4', description: 'Category F Grade 4', created_at: new Date().toISOString() },
+  apf_numbers: [
+    { id: 1, number: '101', description: 'Default APF 101', created_at: new Date().toISOString() },
+    { id: 2, number: '102', description: 'Default APF 102', created_at: new Date().toISOString() },
+    { id: 3, number: '103', description: 'Default APF 103', created_at: new Date().toISOString() },
+    { id: 4, number: '104', description: 'Default APF 104', created_at: new Date().toISOString() },
+    { id: 5, number: '105', description: 'Default APF 105', created_at: new Date().toISOString() },
   ],
+  tobacco_types: [
+    { id: 1, type: 'FCV Virginia', description: '', created_at: new Date().toISOString() },
+    { id: 2, type: 'Burley', description: '', created_at: new Date().toISOString() },
+    { id: 3, type: 'Natu', description: '', created_at: new Date().toISOString() },
+    { id: 4, type: 'White Burley', description: '', created_at: new Date().toISOString() },
+    { id: 5, type: 'Rustica', description: '', created_at: new Date().toISOString() },
+    { id: 6, type: 'Other', description: '', created_at: new Date().toISOString() },
+  ],
+  grades: seedGrades(),
   qr_codes: [
     { id: 1, unique_code: '113', buyer_id: 1, used: 0, created_at: new Date().toISOString() },
     { id: 2, unique_code: '114', buyer_id: 1, used: 0, created_at: new Date().toISOString() },
@@ -55,6 +105,11 @@ const db = {
   ],
   bags: [
   ],
+  settings: {
+    buyer_actions_after_6pm_enabled: false,
+    buyer_actions_after_6pm_buyer_ids: [],
+    updated_at: new Date().toISOString(),
+  },
 };
 
 console.log('✅ In-memory database initialized');
@@ -95,26 +150,171 @@ app.post('/api/buyers', (req, res) => {
   res.json(newBuyer);
 });
 
+// ── APF NUMBERS ─────────────────────────────────────────────
+app.get('/api/apf-numbers', (req, res) => {
+  const rows = [...db.apf_numbers].sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
+  res.json(rows);
+});
+
+app.post('/api/apf-numbers', (req, res) => {
+  const { number, description } = req.body || {};
+  const normalizedNumber = String(number || '').trim();
+  const normalizedDescription = String(description || '').trim();
+
+  if (!normalizedNumber) {
+    return res.status(400).json({ error: 'APF number is required' });
+  }
+
+  const duplicate = db.apf_numbers.some(a => a.number === normalizedNumber);
+  if (duplicate) return res.status(400).json({ error: 'APF number already exists' });
+
+  const apf = {
+    id: nextId.apf_numbers++,
+    number: normalizedNumber,
+    description: normalizedDescription,
+    created_at: new Date().toISOString(),
+  };
+
+  db.apf_numbers.push(apf);
+  res.json(apf);
+});
+
+app.put('/api/apf-numbers/:id', (req, res) => {
+  const { id } = req.params;
+  const apfId = Number(id);
+  const { number, description } = req.body || {};
+
+  const apf = db.apf_numbers.find(a => a.id === apfId);
+  if (!apf) return res.status(404).json({ error: 'APF number not found' });
+
+  const normalizedNumber = String(number || '').trim();
+  const normalizedDescription = String(description || '').trim();
+
+  if (!normalizedNumber) {
+    return res.status(400).json({ error: 'APF number is required' });
+  }
+
+  const duplicate = db.apf_numbers.some(a => a.id !== apfId && a.number === normalizedNumber);
+  if (duplicate) return res.status(400).json({ error: 'APF number already exists' });
+
+  apf.number = normalizedNumber;
+  apf.description = normalizedDescription;
+  res.json(apf);
+});
+
+app.delete('/api/apf-numbers/:id', (req, res) => {
+  const { id } = req.params;
+  const apfId = Number(id);
+  const index = db.apf_numbers.findIndex(a => a.id === apfId);
+  if (index === -1) return res.status(404).json({ error: 'APF number not found' });
+
+  const apf = db.apf_numbers[index];
+  const inUse = db.bags.some(b => String(b.apf_number || '').trim() === apf.number);
+  if (inUse) return res.status(400).json({ error: 'APF number is in use and cannot be deleted' });
+
+  const deleted = db.apf_numbers.splice(index, 1)[0];
+  res.json({ success: true, apf: deleted });
+});
+
+// ── TOBACCO TYPES / VARIETIES ─────────────────────────────
+app.get('/api/tobacco-types', (req, res) => {
+  const rows = [...db.tobacco_types].sort((a, b) => a.type.localeCompare(b.type, undefined, { numeric: true }));
+  res.json(rows);
+});
+
+app.post('/api/tobacco-types', (req, res) => {
+  const { type, description } = req.body || {};
+  const normalizedType = String(type || '').trim();
+  const normalizedDescription = String(description || '').trim();
+
+  if (!normalizedType) {
+    return res.status(400).json({ error: 'Type is required' });
+  }
+
+  const duplicate = db.tobacco_types.some(t => t.type.toLowerCase() === normalizedType.toLowerCase());
+  if (duplicate) return res.status(400).json({ error: 'Type already exists' });
+
+  const tobaccoType = {
+    id: nextId.tobacco_types++,
+    type: normalizedType,
+    description: normalizedDescription,
+    created_at: new Date().toISOString(),
+  };
+
+  db.tobacco_types.push(tobaccoType);
+  res.json(tobaccoType);
+});
+
+app.put('/api/tobacco-types/:id', (req, res) => {
+  const { id } = req.params;
+  const typeId = Number(id);
+  const { type, description } = req.body || {};
+
+  const tobaccoType = db.tobacco_types.find(t => t.id === typeId);
+  if (!tobaccoType) return res.status(404).json({ error: 'Type not found' });
+
+  const normalizedType = String(type || '').trim();
+  const normalizedDescription = String(description || '').trim();
+
+  if (!normalizedType) {
+    return res.status(400).json({ error: 'Type is required' });
+  }
+
+  const duplicate = db.tobacco_types.some(t => t.id !== typeId && t.type.toLowerCase() === normalizedType.toLowerCase());
+  if (duplicate) return res.status(400).json({ error: 'Type already exists' });
+
+  tobaccoType.type = normalizedType;
+  tobaccoType.description = normalizedDescription;
+  res.json(tobaccoType);
+});
+
+app.delete('/api/tobacco-types/:id', (req, res) => {
+  const { id } = req.params;
+  const typeId = Number(id);
+  const index = db.tobacco_types.findIndex(t => t.id === typeId);
+  if (index === -1) return res.status(404).json({ error: 'Type not found' });
+
+  const tobaccoType = db.tobacco_types[index];
+  const inUse = db.bags.some(b => String(b.type_of_tobacco || '').trim().toLowerCase() === tobaccoType.type.toLowerCase());
+  if (inUse) return res.status(400).json({ error: 'Type is in use and cannot be deleted' });
+
+  const deleted = db.tobacco_types.splice(index, 1)[0];
+  res.json({ success: true, tobacco_type: deleted });
+});
+
 // ── GRADES ──────────────────────────────────────────────────
 app.get('/api/grades', (req, res) => {
-  const rows = [...db.grades].sort((a, b) => a.code.localeCompare(b.code));
+  const requestedType = resolveGradeType(req.query?.type, null);
+  if (req.query?.type && !requestedType) {
+    return res.status(400).json({ error: 'Invalid grade type' });
+  }
+
+  const rows = [...db.grades]
+    .filter(g => !requestedType || g.type === requestedType)
+    .sort((a, b) => a.code.localeCompare(b.code));
   res.json(rows);
 });
 
 app.post('/api/grades', (req, res) => {
-  const { code, description } = req.body || {};
+  const { code, description, type } = req.body || {};
   const normalizedCode = String(code || '').trim().toUpperCase();
   const normalizedDesc = String(description || '').trim();
+  const gradeType = resolveGradeType(type);
 
-  if (!normalizedCode || !normalizedDesc) {
-    return res.status(400).json({ error: 'code and description required' });
+  if (!normalizedCode) {
+    return res.status(400).json({ error: 'code required' });
   }
 
-  const duplicate = db.grades.some(g => g.code === normalizedCode);
+  if (!gradeType) {
+    return res.status(400).json({ error: 'Invalid grade type' });
+  }
+
+  const duplicate = db.grades.some(g => g.type === gradeType && g.code === normalizedCode);
   if (duplicate) return res.status(400).json({ error: 'Grade code already exists' });
 
   const grade = {
     id: nextId.grades++,
+    type: gradeType,
     code: normalizedCode,
     description: normalizedDesc,
     created_at: new Date().toISOString(),
@@ -127,20 +327,26 @@ app.post('/api/grades', (req, res) => {
 app.put('/api/grades/:id', (req, res) => {
   const { id } = req.params;
   const gradeId = Number(id);
-  const { code, description } = req.body || {};
+  const { code, description, type } = req.body || {};
 
   const grade = db.grades.find(g => g.id === gradeId);
   if (!grade) return res.status(404).json({ error: 'Grade not found' });
 
   const normalizedCode = String(code || '').trim().toUpperCase();
   const normalizedDesc = String(description || '').trim();
-  if (!normalizedCode || !normalizedDesc) {
-    return res.status(400).json({ error: 'code and description required' });
+  const gradeType = resolveGradeType(type, grade.type || DEFAULT_GRADE_TYPE);
+  if (!normalizedCode) {
+    return res.status(400).json({ error: 'code required' });
   }
 
-  const duplicate = db.grades.some(g => g.id !== gradeId && g.code === normalizedCode);
+  if (!gradeType) {
+    return res.status(400).json({ error: 'Invalid grade type' });
+  }
+
+  const duplicate = db.grades.some(g => g.id !== gradeId && g.type === gradeType && g.code === normalizedCode);
   if (duplicate) return res.status(400).json({ error: 'Grade code already exists' });
 
+  grade.type = gradeType;
   grade.code = normalizedCode;
   grade.description = normalizedDesc;
   res.json(grade);
@@ -153,7 +359,9 @@ app.delete('/api/grades/:id', (req, res) => {
   if (index === -1) return res.status(404).json({ error: 'Grade not found' });
 
   const grade = db.grades[index];
-  const inUse = db.bags.some(b => b.tobacco_grade === grade.code || b.buyer_grade === grade.code);
+  const inUse = grade.type === GRADE_TYPES.BUYER
+    ? db.bags.some(b => b.buyer_grade === grade.code)
+    : db.bags.some(b => b.tobacco_grade === grade.code);
   if (inUse) return res.status(400).json({ error: 'Grade is in use and cannot be deleted' });
 
   const deleted = db.grades.splice(index, 1)[0];
@@ -192,7 +400,8 @@ app.get('/api/qrcodes', (req, res) => {
 app.post('/api/qrcodes/generate', (req, res) => {
   const { startCode, count, buyerId } = req.body || {};
   const n = Math.max(1, parseInt(count, 10) || 1);
-  const parsedStart = parseInt(startCode, 10);
+  const normalizedStart = String(startCode || '').trim().toUpperCase();
+  const parsedStart = /^\d+$/.test(normalizedStart) ? parseInt(normalizedStart, 10) : NaN;
   const parsedBuyerId = buyerId ? parseInt(buyerId, 10) : null;
   const codes = [];
 
@@ -203,9 +412,24 @@ app.post('/api/qrcodes/generate', (req, res) => {
 
   const existing = new Set(db.qr_codes.map(q => q.unique_code));
 
-  if (Number.isFinite(parsedStart)) {
+  const trailingDigitsMatch = normalizedStart.match(/^(.*?)(\d+)$/);
+  const prefix = trailingDigitsMatch ? trailingDigitsMatch[1] : '';
+  const baseDigits = trailingDigitsMatch ? trailingDigitsMatch[2] : '';
+  const digitWidth = baseDigits.length;
+
+  const generateDeterministicCode = (index) => {
+    if (!normalizedStart) return null;
+    if (Number.isFinite(parsedStart)) return String(parsedStart + index);
+    if (trailingDigitsMatch) {
+      const next = String(parseInt(baseDigits, 10) + index).padStart(digitWidth, '0');
+      return `${prefix}${next}`;
+    }
+    return index === 0 ? normalizedStart : `${normalizedStart}${index}`;
+  };
+
+  if (normalizedStart) {
     for (let i = 0; i < n; i++) {
-      const candidate = String(parsedStart + i);
+      const candidate = generateDeterministicCode(i);
       if (existing.has(candidate)) {
         return res.status(400).json({ error: `QR code ${candidate} already exists` });
       }
@@ -215,8 +439,8 @@ app.post('/api/qrcodes/generate', (req, res) => {
   for (let i = 0; i < n; i++) {
     let generatedCode;
 
-    if (Number.isFinite(parsedStart)) {
-      generatedCode = String(parsedStart + i);
+    if (normalizedStart) {
+      generatedCode = generateDeterministicCode(i);
     } else {
       do {
         generatedCode = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
@@ -280,6 +504,16 @@ app.get('/api/bags', (req, res) => {
 
 app.post('/api/bags', (req, res) => {
   const body = req.body;
+  const fcvType = String(body.fcv || '').trim();
+  const apfNumber = String(body.apf_number || '').trim();
+  const lotNumber = String(body.lot_number || '').trim();
+  const apfExists = apfNumber ? db.apf_numbers.some(a => a.number === apfNumber) : false;
+  if (fcvType === 'FCV' && (!apfNumber || !apfExists)) {
+    return res.status(400).json({ error: 'Invalid APF number. Please select from APF master.' });
+  }
+  if (fcvType === 'FCV' && !lotNumber) {
+    return res.status(400).json({ error: 'Lot Number is required for FCV.' });
+  }
   const now = new Date().toISOString();
   const newBag = {
     id: nextId.bags++,
@@ -287,11 +521,16 @@ app.post('/api/bags', (req, res) => {
     buyer_id: body.buyer_id,
     buyer_code: body.buyer_code,
     buyer_name: body.buyer_name,
-    fcv: body.fcv,
-    apf_number: body.apf_number,
+    fcv: fcvType,
+    type_of_tobacco: body.type_of_tobacco,
+    apf_number: fcvType === 'FCV' ? apfNumber : '',
     tobacco_grade: body.tobacco_grade,
+    purchase_date: body.purchase_date,
     weight: body.weight,
+    rate: body.rate,
+    bale_value: body.bale_value,
     buyer_grade: body.buyer_grade,
+    lot_number: fcvType === 'FCV' ? lotNumber : '',
     date_of_purchase: body.date_of_purchase,
     purchase_location: body.purchase_location,
     moisture: body.moisture,
@@ -319,18 +558,40 @@ app.put('/api/bags/:id', (req, res) => {
 
   const editableFields = [
     'fcv',
+    'type_of_tobacco',
     'apf_number',
     'tobacco_grade',
+    'purchase_date',
     'weight',
+    'rate',
+    'bale_value',
     'buyer_grade',
+    'lot_number',
     'date_of_purchase',
     'purchase_location'
   ];
 
   for (const field of editableFields) {
     if (Object.prototype.hasOwnProperty.call(updates, field)) {
+      if (field === 'apf_number') {
+        const normalizedApf = String(updates.apf_number || '').trim();
+        if (normalizedApf) {
+          const apfExists = db.apf_numbers.some(a => a.number === normalizedApf);
+          if (!apfExists) return res.status(400).json({ error: 'Invalid APF number. Please select from APF master.' });
+        }
+        bag[field] = normalizedApf;
+        continue;
+      }
+      if (field === 'lot_number') {
+        bag[field] = String(updates.lot_number || '').trim();
+        continue;
+      }
       bag[field] = updates[field];
     }
+  }
+
+  if (String(bag.fcv || '').trim() === 'FCV' && !String(bag.lot_number || '').trim()) {
+    return res.status(400).json({ error: 'Lot Number is required for FCV.' });
   }
 
   bag.updated_at = new Date().toISOString();
@@ -375,6 +636,50 @@ app.get('/api/db/query', (req, res) => {
   if (!sql) return res.status(400).json({ error: 'No SQL provided' });
   // Simple query response
   res.json({ message: 'Query executed', sql });
+});
+
+// ── SETTINGS ───────────────────────────────────────────────
+app.get('/api/settings/buyer-bag-actions', (req, res) => {
+  const enabledBuyerIds = Array.isArray(db.settings?.buyer_actions_after_6pm_buyer_ids)
+    ? db.settings.buyer_actions_after_6pm_buyer_ids
+    : [];
+  res.json({
+    enabled_after_6pm: !!db.settings?.buyer_actions_after_6pm_enabled,
+    enabled_buyer_ids: enabledBuyerIds,
+    updated_at: db.settings?.updated_at || null,
+  });
+});
+
+app.put('/api/settings/buyer-bag-actions', (req, res) => {
+  const body = req.body || {};
+  const enabled = !!body.enabled_after_6pm;
+  const buyerId = Number(body.buyer_id);
+
+  const currentIds = Array.isArray(db.settings?.buyer_actions_after_6pm_buyer_ids)
+    ? [...db.settings.buyer_actions_after_6pm_buyer_ids]
+    : [];
+
+  if (Number.isFinite(buyerId) && buyerId > 0) {
+    const exists = currentIds.includes(buyerId);
+    if (enabled && !exists) currentIds.push(buyerId);
+    if (!enabled && exists) {
+      const idx = currentIds.indexOf(buyerId);
+      currentIds.splice(idx, 1);
+    }
+  }
+
+  db.settings = {
+    ...(db.settings || {}),
+    buyer_actions_after_6pm_enabled: enabled,
+    buyer_actions_after_6pm_buyer_ids: currentIds,
+    updated_at: new Date().toISOString(),
+  };
+  res.json({
+    success: true,
+    enabled_after_6pm: db.settings.buyer_actions_after_6pm_enabled,
+    enabled_buyer_ids: db.settings.buyer_actions_after_6pm_buyer_ids,
+    updated_at: db.settings.updated_at,
+  });
 });
 
 // ── STATS ───────────────────────────────────────────────────
