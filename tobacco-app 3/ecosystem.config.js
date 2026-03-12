@@ -2,8 +2,8 @@ module.exports = {
   apps: [
     {
       name: 'elite-backend',
-      cwd: '/home/vilmart/EliteTobaccoProject/tobacco-app 3',
-      script: 'server/index.js',
+      cwd: __dirname,
+      script: 'server/start.js',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
