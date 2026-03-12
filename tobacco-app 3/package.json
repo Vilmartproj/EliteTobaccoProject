@@ -7,8 +7,10 @@
     "client": "vite",
     "server": "cross-env NODE_ENV=development node server/start.js",
     "build": "vite build",
+    "build:qa": "vite build --mode qa",
     "preview": "vite preview",
-    "start": "cross-env NODE_ENV=production node server/start.js"
+    "start": "cross-env NODE_ENV=production node server/start.js",
+    "start:qa": "cross-env NODE_ENV=production APP_ENV=qa node server/start.js"
   },
   "dependencies": {
     "concurrently": "^8.2.2",
