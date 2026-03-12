@@ -8,11 +8,18 @@
     "server": "cross-env NODE_ENV=development node server/start.js",
     "build": "vite build",
     "build:qa": "vite build --mode qa",
+    "build:mobile": "vite build --mode mobile",
     "preview": "vite preview",
     "start": "cross-env NODE_ENV=production node server/start.js",
-    "start:qa": "cross-env NODE_ENV=production APP_ENV=qa node server/start.js"
+    "start:qa": "cross-env NODE_ENV=production APP_ENV=qa node server/start.js",
+    "cap:sync": "npx cap sync android",
+    "cap:open": "npx cap open android",
+    "android:build": "npm run build:mobile && npm run cap:sync"
   },
   "dependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
     "concurrently": "^8.2.2",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
