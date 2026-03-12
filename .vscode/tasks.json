@@ -1,0 +1,41 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "build-tobacco-app",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"--prefix",
+				"tobacco-app 3",
+				"run",
+				"build"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "dev-tobacco-app",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"--prefix",
+				"tobacco-app 3",
+				"run",
+				"dev"
+			],
+			"isBackground": true
+		},
+		{
+			"label": "dev-tobacco-app",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"--prefix",
+				"tobacco-app 3",
+				"run",
+				"dev"
+			],
+			"isBackground": true
+		}
+	]
+}

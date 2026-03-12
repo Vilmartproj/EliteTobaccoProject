@@ -90,6 +90,13 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     && typeof navigator.mediaDevices.getUserMedia === 'function'
     && 'BarcodeDetector' in window;
 
+  const requiredLabel = (text, isRequired = true) => (
+    <>
+      {text}
+      {isRequired ? <span style={{ color: '#d62839' }}> *</span> : ''}
+    </>
+  );
+
   const stopScanner = () => {
     if (scannerTimerRef.current) {
       clearInterval(scannerTimerRef.current);
@@ -244,7 +251,6 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     if (codeStatus === 'error')        return codeMsg;
     if (codeStatus === 'checking')     return 'Please wait — validating code…';
     if (isNonFCV && !typeOfTobacco)    return 'Type of Tobacco/Variety is required for NON-FCV';
-    if (isNonFCV && !purchaseLocation) return 'Location is required for NON-FCV';
     if (isFCV && !purchaseDate)        return 'Purchase Date is required for FCV';
     if (isFCV && !apfNumber)           return 'APF Number is required for FCV';
     if (isFCV && !tobaccoGrade)        return 'Tobacco Board Grade is required for FCV';
@@ -299,7 +305,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
       {error && <div style={S.error}>⚠️ {error}</div>}
 
       {/* FCV Toggle */}
-      <label style={S.label}>FCV / NON-FCV</label>
+      <label style={S.label}>{requiredLabel('FCV / NON-FCV')}</label>
       <div style={S.toggleGroup}>
         <button
           style={{ ...S.toggleBtn(fcv === 'FCV', fcv === 'NON-FCV'), borderRight: '2px solid #e63946' }}
@@ -323,7 +329,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       {/* Unique Code */}
       <div style={S.row}>
-        <label style={S.label}>Unique Code</label>
+        <label style={S.label}>{requiredLabel('Unique Code')}</label>
         <div style={{ position: 'relative' }}>
           <input
             style={{ ...S.input, borderColor, paddingRight: 38 }}
@@ -398,7 +404,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       {isNonFCV && (
         <div style={S.row}>
-          <label style={S.label}>Type of Tobacco / Variety</label>
+          <label style={S.label}>{requiredLabel('Type of Tobacco / Variety')}</label>
           <SearchableSelect
             options={tobaccoTypeOptions}
             value={typeOfTobacco}
@@ -411,7 +417,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       {isNonFCV && (
         <div style={S.row}>
-          <label style={S.label}>Location</label>
+          <label style={S.label}>{requiredLabel('Location', false)}</label>
           <SearchableSelect
             options={locationOptions}
             value={purchaseLocation}
@@ -424,7 +430,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       {isFCV && (
         <div style={S.row}>
-          <label style={S.label}>Date of Purchase (dd/mm/yyyy)</label>
+          <label style={S.label}>{requiredLabel('Date of Purchase (dd/mm/yyyy)')}</label>
           <input
             style={isPurchaseDateLocked ? lockedFieldStyle : S.input}
             type="date"
@@ -447,7 +453,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       {isFCV && (
         <div style={S.row}>
-          <label style={S.label}>APF Number</label>
+          <label style={S.label}>{requiredLabel('APF Number')}</label>
           <SearchableSelect
             options={apfNumberOptions}
             value={apfNumber}
@@ -466,7 +472,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       {isFCV && (
         <div style={S.row}>
-          <label style={S.label}>Tobacco Board Grade</label>
+          <label style={S.label}>{requiredLabel('Tobacco Board Grade')}</label>
           <SearchableSelect
             options={tobaccoBoardGradeOptions}
             value={tobaccoGrade}
@@ -478,7 +484,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
       )}
 
       <div style={S.row}>
-        <label style={S.label}>Buyer Grade</label>
+        <label style={S.label}>{requiredLabel('Buyer Grade')}</label>
         <SearchableSelect
           options={buyerGradeOptions}
           value={buyerGrade}
@@ -489,11 +495,11 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
       </div>
 
       <div style={S.row}>
-        <label style={S.label}>Lot Number</label>
+        <label style={S.label}>{requiredLabel('Lot Number', isFCV)}</label>
         <input
           style={S.input}
           type="text"
-          placeholder="Enter lot number (optional for NON-FCV)"
+          placeholder={isFCV ? 'Enter lot number' : 'Enter lot number (optional for NON-FCV)'}
           value={lotNumber}
           onChange={e => setLotNumber(e.target.value)}
         />
@@ -501,11 +507,11 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 2 }}>
         <div style={S.row}>
-          <label style={S.label}>Weight (kg)</label>
+          <label style={S.label}>{requiredLabel('Weight (kg)')}</label>
           <input style={S.input} type="number" placeholder="e.g. 22" value={weight} onChange={e => setWeight(e.target.value)} />
         </div>
         <div style={S.row}>
-          <label style={S.label}>Rate</label>
+          <label style={S.label}>{requiredLabel('Rate')}</label>
           <input style={S.input} type="number" step="0.01" placeholder="e.g. 120.5" value={rate} onChange={e => setRate(e.target.value)} />
         </div>
         <div style={S.row}>

@@ -1,7 +1,7 @@
 # 🌿 Elite Tobacco – Buying Management System
 
 A full-stack web application for managing tobacco buying operations.  
-**React + Vite** frontend · **Node.js + Express** backend · **SQLite** database
+**React + Vite** frontend · **Node.js + Express** backend · **MySQL** database
 
 ---
 
@@ -35,7 +35,7 @@ Terminal → New Terminal   (or Ctrl + `)
 npm install
 ```
 
-> ⚠️ This installs React, Vite, Express, better-sqlite3 and all other packages.
+> ⚠️ This installs React, Vite, Express, mysql2, dotenv and all other packages.
 > First install may take 1–2 minutes.
 
 ### 4. Run the app
@@ -65,12 +65,22 @@ Open **http://localhost:5173** in your browser.
 
 ## 🗄️ Database
 
-The SQLite database is stored at:
-```
-server/tobacco.db
+Backend uses **MySQL** connection parameters from environment variables.
+
+Use `.env.example` (copy to `.env`) or `server/database.properties` as key-value reference:
+
+```properties
+DB_HOST=194.238.17.174
+DB_PORT=3306
+DB_USER=eliteTadmin
+DB_PASSWORD=<your-password>
+DB_NAME=EliteTobacco
+DB_CONNECTION_LIMIT=10
+DB_AUTO_CREATE=false
+DB_CLEAN_SETUP=false
 ```
 
-It is **auto-created** when you first run `npm run dev`.
+`DB_CLEAN_SETUP=true` will truncate core tables on startup and reseed defaults.
 
 ### Tables
 
@@ -87,14 +97,10 @@ It is **auto-created** when you first run `npm run dev`.
 - Run custom SELECT queries
 - Quick query buttons for common reports
 
-**Option B – VS Code extension**:
-1. Install extension: **SQLite Viewer** (by Florian Klampfer)
-2. In VS Code Explorer, click `server/tobacco.db`
-3. Browse tables visually
-
-**Option C – DB Browser for SQLite** (desktop app):
-- Download from https://sqlitebrowser.org
-- Open `server/tobacco.db`
+**Option B – SQL client / extension**:
+1. Connect to MySQL using your DB env values
+2. Open schema `DB_NAME`
+3. Browse and run read-only queries
 
 ---
 
@@ -108,7 +114,8 @@ tobacco-app/
 │
 ├── server/
 │   ├── index.js                # Express API server
-│   └── tobacco.db              # SQLite database (auto-created)
+│   ├── start.js                # Loads .env then starts server
+│   └── database.properties     # Key-value DB config reference
 │
 └── src/
     ├── main.jsx                # React entry point
