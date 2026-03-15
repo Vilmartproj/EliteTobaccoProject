@@ -208,3 +208,13 @@ jobs:
         with:
           name: ios-deriveddata
           path: build
+
+      # --- IPA generation (requires code signing) ---
+      # To produce an IPA you need to archive for device, not simulator.
+      # This step is a placeholder; real IPA export requires provisioning profiles.
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-app
+          path: build/ipa/*.ipa
+          if-no-files-found: ignore
