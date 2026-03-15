@@ -43,6 +43,14 @@ jobs:
             echo "No ios/App/Podfile found; skipping pods"
           fi
 
+      - name: Upload ios/App directory for debug
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-app-tree
+          path: |
+            "tobacco-app 3/ios/App"
+
       # ---- Configure these 2 values for your repo ----
       - name: Build (Simulator)
         run: |
