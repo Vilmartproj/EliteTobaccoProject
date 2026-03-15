@@ -1,5 +1,5 @@
 // src/components/AdminDashboard.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import { S } from '../styles';
 import QRCode from './QRCode';
@@ -8,7 +8,8 @@ import SearchableSelect from './SearchableSelect';
 import ApiStatusBadge from './ApiStatusBadge';
 import { printQRCodes } from '../utils/printQR';
 import { exportCSV } from '../utils/exportCSV';
-import { exportBagsPDF, shareBagsWhatsApp } from '../utils/exportBags';
+import { exportBagsPDF } from '../utils/exportBags';
+import { generateInvoice } from '../utils/generateInvoice';
 import { formatDateTime, fromInputDateTime, nowInputDateTime, toInputDateTime } from '../utils/dateFormat';
 
 export default function AdminDashboard({ user, onLogout }) {
@@ -17,6 +18,7 @@ export default function AdminDashboard({ user, onLogout }) {
   const [buyers, setBuyers]   = useState([]);
   const [apfNumbers, setApfNumbers] = useState([]);
   const [tobaccoTypes, setTobaccoTypes] = useState([]);
+  const [purchaseLocations, setPurchaseLocations] = useState([]);
   const [tobaccoBoardGrades, setTobaccoBoardGrades] = useState([]);
   const [buyerGrades, setBuyerGrades] = useState([]);
   const [qrCodes, setQR]      = useState([]);
@@ -48,6 +50,10 @@ export default function AdminDashboard({ user, onLogout }) {
     purchase_location: '',
   });
   const [qrSort, setQrSort] = useState({ key: 'unique_code', direction: 'asc' });
+  const [qrTrackCode, setQrTrackCode] = useState('');
+  const [qrTrackLoading, setQrTrackLoading] = useState(false);
+  const [qrTrackResult, setQrTrackResult] = useState(null);
+  const [qrTrackMsg, setQrTrackMsg] = useState('');
   const [bagsSort, setBagsSort] = useState({ key: 'updated_at', direction: 'desc' });
   const [editingBagId, setEditingBagId] = useState(null);
   const [editBagForm, setEditBagForm] = useState(null);
@@ -67,13 +73,24 @@ export default function AdminDashboard({ user, onLogout }) {
   const [tobaccoTypeDescription, setTobaccoTypeDescription] = useState('');
   const [tobaccoTypeEditingId, setTobaccoTypeEditingId] = useState(null);
   const [tobaccoTypeMsg, setTobaccoTypeMsg] = useState('');
+  const [purchaseLocationCode, setPurchaseLocationCode] = useState('');
+  const [purchaseLocationDescription, setPurchaseLocationDescription] = useState('');
+  const [purchaseLocationEditingId, setPurchaseLocationEditingId] = useState(null);
+  const [purchaseLocationMsg, setPurchaseLocationMsg] = useState('');
+
+  const tbGradeCodeInputRef = useRef(null);
+  const buyerGradeCodeInputRef = useRef(null);
+  const apfCodeInputRef = useRef(null);
+  const tobaccoTypeCodeInputRef = useRef(null);
+  const purchaseLocationCodeInputRef = useRef(null);
 
   const refresh = async () => {
-    const [s, b, apf, tobaccoTypeRows, tbGrades, byGrades, q, bg, buyerActionSetting] = await Promise.all([
+    const [s, b, apf, tobaccoTypeRows, purchaseLocationRows, tbGrades, byGrades, q, bg, buyerActionSetting] = await Promise.all([
       api.getStats(),
       api.getBuyers(),
       api.getApfNumbers(),
       api.getTobaccoTypes(),
+      api.getPurchaseLocations(),
       api.getGrades('tobacco_board'),
       api.getGrades('buyer'),
       api.getQRCodes(),
@@ -84,6 +101,7 @@ export default function AdminDashboard({ user, onLogout }) {
     setBuyers(b);
     setApfNumbers(apf);
     setTobaccoTypes(tobaccoTypeRows);
+    setPurchaseLocations(purchaseLocationRows);
     setTobaccoBoardGrades(tbGrades);
     setBuyerGrades(byGrades);
     setQR(q);
@@ -137,6 +155,27 @@ export default function AdminDashboard({ user, onLogout }) {
     }
   };
 
+  const handleTrackQRCode = async () => {
+    const code = String(qrTrackCode || '').trim();
+    if (!code) {
+      setQrTrackMsg('Enter QR code to track');
+      setQrTrackResult(null);
+      return;
+    }
+    setQrTrackLoading(true);
+    setQrTrackMsg('');
+    try {
+      const result = await api.trackQRCode(code);
+      setQrTrackResult(result);
+      setQrTrackMsg('✅ Tracking details loaded');
+    } catch (e) {
+      setQrTrackResult(null);
+      setQrTrackMsg(e.message);
+    } finally {
+      setQrTrackLoading(false);
+    }
+  };
+
   const canDeleteQRCode = (qr) => {
     const usedValue = qr?.used;
     const isUsed = usedValue === true || usedValue === 1 || usedValue === '1';
@@ -162,6 +201,12 @@ export default function AdminDashboard({ user, onLogout }) {
     if (!Number.isNaN(aDate) && !Number.isNaN(bDate)) return (aDate - bDate) * order;
 
     return String(aValue ?? '').localeCompare(String(bValue ?? ''), undefined, { numeric: true }) * order;
+  };
+
+  const formatCurrencyINR = (value) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
+    return `₹${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const handleDeleteBag = async (bag) => {
@@ -271,12 +316,14 @@ export default function AdminDashboard({ user, onLogout }) {
     setTbGradeCode('');
     setTbGradeDescription('');
     setTbGradeEditingId(null);
+    setTimeout(() => tbGradeCodeInputRef.current?.focus(), 0);
   };
 
   const resetBuyerGradeForm = () => {
     setBuyerGradeCode('');
     setBuyerGradeDescription('');
     setBuyerGradeEditingId(null);
+    setTimeout(() => buyerGradeCodeInputRef.current?.focus(), 0);
   };
 
   const handleSaveTobaccoBoardGrade = async () => {
@@ -361,6 +408,7 @@ export default function AdminDashboard({ user, onLogout }) {
     setApfNumberCode('');
     setApfNumberDescription('');
     setApfNumberEditingId(null);
+    setTimeout(() => apfCodeInputRef.current?.focus(), 0);
   };
 
   const handleSaveApfNumber = async () => {
@@ -406,6 +454,7 @@ export default function AdminDashboard({ user, onLogout }) {
     setTobaccoTypeCode('');
     setTobaccoTypeDescription('');
     setTobaccoTypeEditingId(null);
+    setTimeout(() => tobaccoTypeCodeInputRef.current?.focus(), 0);
   };
 
   const handleSaveTobaccoType = async () => {
@@ -447,9 +496,56 @@ export default function AdminDashboard({ user, onLogout }) {
     }
   };
 
+  const resetPurchaseLocationForm = () => {
+    setPurchaseLocationCode('');
+    setPurchaseLocationDescription('');
+    setPurchaseLocationEditingId(null);
+    setTimeout(() => purchaseLocationCodeInputRef.current?.focus(), 0);
+  };
+
+  const handleSavePurchaseLocation = async () => {
+    if (!purchaseLocationCode.trim()) {
+      setPurchaseLocationMsg('Location is required');
+      return;
+    }
+    try {
+      if (purchaseLocationEditingId) {
+        await api.updatePurchaseLocation(purchaseLocationEditingId, { location: purchaseLocationCode.trim(), description: purchaseLocationDescription.trim() });
+        setPurchaseLocationMsg(`✅ Location ${purchaseLocationCode.trim()} updated`);
+      } else {
+        await api.addPurchaseLocation({ location: purchaseLocationCode.trim(), description: purchaseLocationDescription.trim() });
+        setPurchaseLocationMsg(`✅ Location ${purchaseLocationCode.trim()} added`);
+      }
+      resetPurchaseLocationForm();
+      await refresh();
+    } catch (e) {
+      setPurchaseLocationMsg(e.message);
+    }
+  };
+
+  const handleEditPurchaseLocation = (row) => {
+    setPurchaseLocationEditingId(row.id);
+    setPurchaseLocationCode(row.location || '');
+    setPurchaseLocationDescription(row.description || '');
+    setPurchaseLocationMsg('');
+  };
+
+  const handleDeletePurchaseLocation = async (row) => {
+    if (!window.confirm(`Delete location ${row.location}?`)) return;
+    try {
+      await api.deletePurchaseLocation(row.id);
+      setPurchaseLocationMsg(`✅ Location ${row.location} deleted`);
+      if (purchaseLocationEditingId === row.id) resetPurchaseLocationForm();
+      await refresh();
+    } catch (e) {
+      setPurchaseLocationMsg(e.message);
+    }
+  };
+
   const buyerMap = Object.fromEntries(buyers.map(b => [b.id, b]));
   const sortedApfNumbers = [...apfNumbers].sort((a, b) => String(a.number).localeCompare(String(b.number), undefined, { numeric: true }));
   const sortedTobaccoTypes = [...tobaccoTypes].sort((a, b) => String(a.type).localeCompare(String(b.type), undefined, { numeric: true }));
+  const sortedPurchaseLocations = [...purchaseLocations].sort((a, b) => String(a.location).localeCompare(String(b.location), undefined, { numeric: true }));
   const sortedTobaccoBoardGrades = [...tobaccoBoardGrades].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
   const sortedBuyerGrades = [...buyerGrades].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
   const tobaccoBoardGradeCodes = sortedTobaccoBoardGrades.map(g => g.code);
@@ -471,17 +567,57 @@ export default function AdminDashboard({ user, onLogout }) {
     ? sortedBags.filter((b) => Number(b.buyer_id) === selectedBuyerIdNum)
     : sortedBags;
   const displayedBuyer = buyers.find((b) => b.id === selectedBuyerIdNum) || null;
-  const getBagDateLabel = (bag) => bag.purchase_date || formatDateTime(bag.date_of_purchase).split(' ')[0] || '—';
+  const inputDateToDisplayDate = (value) => {
+    const text = String(value || '').trim();
+    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return '';
+    const [, yyyy, mm, dd] = match;
+    return `${dd}/${mm}/${yyyy}`;
+  };
   const parseDisplayDateToInputDate = (dateText) => {
     const text = String(dateText || '').trim();
+    if (!text) return '';
+
     const ddmmyyyy = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
     if (ddmmyyyy) {
       const [, dd, mm, yyyy] = ddmmyyyy;
       return `${yyyy}-${mm}-${dd}`;
     }
-    const yyyymmdd = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (yyyymmdd) return text;
+
+    const ddmmyyyyDash = text.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (ddmmyyyyDash) {
+      const [, dd, mm, yyyy] = ddmmyyyyDash;
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    const yyyymmdd = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (yyyymmdd) {
+      const [, yyyy, mm, dd] = yyyymmdd;
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    const inputDateTime = toInputDateTime(text);
+    if (inputDateTime) return inputDateTime.split('T')[0] || '';
+
     return '';
+  };
+  const getBagDateLabel = (bag) => {
+    const purchaseDate = parseDisplayDateToInputDate(bag.purchase_date);
+    if (purchaseDate) return inputDateToDisplayDate(purchaseDate);
+
+    const dateOfPurchase = parseDisplayDateToInputDate(bag.date_of_purchase);
+    if (dateOfPurchase) return inputDateToDisplayDate(dateOfPurchase);
+
+    const fallback = formatDateTime(bag.date_of_purchase).split(' ')[0] || '';
+    const fallbackDate = parseDisplayDateToInputDate(fallback);
+    return fallbackDate ? inputDateToDisplayDate(fallbackDate) : '—';
+  };
+  const formatPurchaseDateDash = (value) => {
+    const normalized = parseDisplayDateToInputDate(value);
+    if (!normalized) return '—';
+    const display = inputDateToDisplayDate(normalized);
+    const [dd, mm, yyyy] = display.split('/');
+    return dd && mm && yyyy ? `${dd}-${mm}-${yyyy}` : '—';
   };
   const isWithinSelectedRange = (dateLabel) => {
     const normalized = parseDisplayDateToInputDate(dateLabel);
@@ -504,7 +640,7 @@ export default function AdminDashboard({ user, onLogout }) {
   }, {});
   const dateWiseBaleTotals = Object.entries(dateWiseBaleTotalsMap)
     .map(([date, values]) => ({ date, total: values.total, bags: values.bags, kgs: values.kgs }))
-    .sort((a, b) => compareBy(a.date, b.date, 'asc'));
+    .sort((a, b) => compareBy(parseDisplayDateToInputDate(a.date), parseDisplayDateToInputDate(b.date), 'asc'));
   const filteredDateWiseBaleTotals = dateWiseBaleTotals.filter((row) => isWithinSelectedRange(row.date));
   const selectedDateTotal = filteredDateWiseBaleTotals.reduce((sum, row) => sum + row.total, 0);
   const selectedScopeBags = displayedBags.filter((bag) => isWithinSelectedRange(getBagDateLabel(bag)));
@@ -513,6 +649,8 @@ export default function AdminDashboard({ user, onLogout }) {
     const weight = Number(bag.weight);
     return sum + (Number.isFinite(weight) ? weight : 0);
   }, 0);
+  const hasPurchaseSummarySelection = !!selectedBuyerActionId || !!selectedBaleStartDate || !!selectedBaleEndDate;
+  const totalPurchaseTd = { ...S.td, fontWeight: 700 };
   const getUniqueColumnValues = (key) => {
     const values = Array.from(new Set(displayedBags.map((bag) => String(bag[key] || '').trim()).filter(Boolean)));
     return values.sort((a, b) => compareBy(a, b, 'asc'));
@@ -538,10 +676,28 @@ export default function AdminDashboard({ user, onLogout }) {
       && matches('purchase_location')
     );
   });
+  const totalPurchaseCsvRows = displayedBags.map((bag) => ({
+    buyer_code: bag.buyer_code || '',
+    buyer_name: bag.buyer_name || '',
+    unique_code: bag.unique_code || '',
+    apf_number: bag.apf_number || '',
+    tobacco_grade: bag.tobacco_grade || '',
+    type_of_tobacco: bag.type_of_tobacco || '',
+    purchase_location: bag.purchase_location || '',
+    purchase_date: getBagDateLabel(bag),
+    buyer_grade: bag.buyer_grade || '',
+    weight: bag.weight ?? '',
+    rate: bag.rate ?? '',
+    bale_value: Number.isFinite(Number(bag.bale_value))
+      ? Number(bag.bale_value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : '',
+    fcv: bag.fcv || '',
+    updated_at: formatDateTime(bag.updated_at),
+  }));
 
-  const SortableTh = ({ label, sortKey, sortState, onSort }) => (
+  const SortableTh = ({ label, sortKey, sortState, onSort, minWidth }) => (
     <th
-      style={{ ...S.th, cursor: 'pointer', userSelect: 'none' }}
+      style={{ ...S.th, cursor: 'pointer', userSelect: 'none', fontWeight: 700, ...(minWidth ? { minWidth } : {}) }}
       onClick={() => onSort(sortKey)}
       title="Click to sort"
     >
@@ -563,14 +719,6 @@ export default function AdminDashboard({ user, onLogout }) {
     ...S.btnPrimary,
     ...exportBtn,
     background: '#c62828',
-  };
-
-  const exportBtnWhatsApp = {
-    ...S.btnPrimary,
-    ...exportBtn,
-    background: '#25D366',
-    color: '#083b1f',
-    fontWeight: 800,
   };
 
   const exportBtnCsv = {
@@ -599,9 +747,9 @@ export default function AdminDashboard({ user, onLogout }) {
         </div>
       </div>
 
-      <div style={S.page}>
+      <div style={{ ...S.page, maxWidth: 1088 }}>
         <div style={S.tabs}>
-          {[['overview','📊 Overview'],['buyers','👥 Buyers'],['apf-maintenance','🔢 APF Maintenance'],['tobacco-types','🌿 Tobacco Types'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['generate','⚡ Generate QR'],['bags','📦 Total Purchase'],['database','🗄️ Database']].map(([id, label]) => (
+          {[['overview','📊 Overview'],['buyers','👥 Buyers'],['apf-maintenance','🔢 APF Maintenance'],['non-fcv-locations','📍 NON-FCV Locations'],['tobacco-types','🌿 Tobacco Types'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['qr-tracking','📡 QR Tracking'],['generate','⚡ Generate QR'],['bags','📦 Total Purchase'],['database','🗄️ Database']].map(([id, label]) => (
             <button key={id} style={S.tab(tab === id)} onClick={() => { setTab(id); refresh(); }}>{label}</button>
           ))}
         </div>
@@ -686,7 +834,7 @@ export default function AdminDashboard({ user, onLogout }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>APF Number</label>
-                  <input style={S.input} placeholder="e.g. 121" value={apfNumberCode} onChange={e => setApfNumberCode(e.target.value)} />
+                  <input ref={apfCodeInputRef} style={S.input} placeholder="e.g. 121" value={apfNumberCode} onChange={e => setApfNumberCode(e.target.value)} />
                 </div>
                 <div>
                   <label style={S.label}>Description (Optional)</label>
@@ -730,6 +878,59 @@ export default function AdminDashboard({ user, onLogout }) {
           </div>
         )}
 
+        {/* ── NON-FCV LOCATION MAINTENANCE ── */}
+        {tab === 'non-fcv-locations' && (
+          <div>
+            <div style={S.card}>
+              <div style={S.subheading}>NON-FCV Location Maintenance</div>
+              {purchaseLocationMsg && <div style={purchaseLocationMsg.startsWith('✅') ? S.success : S.error}>{purchaseLocationMsg}</div>}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
+                <div>
+                  <label style={S.label}>Location</label>
+                  <input ref={purchaseLocationCodeInputRef} style={S.input} placeholder="e.g. Godown A" value={purchaseLocationCode} onChange={e => setPurchaseLocationCode(e.target.value)} />
+                </div>
+                <div>
+                  <label style={S.label}>Description (Optional)</label>
+                  <input style={S.input} placeholder="Optional description" value={purchaseLocationDescription} onChange={e => setPurchaseLocationDescription(e.target.value)} />
+                </div>
+                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px' }} onClick={handleSavePurchaseLocation}>
+                  {purchaseLocationEditingId ? 'Update' : 'Add'}
+                </button>
+                {purchaseLocationEditingId && (
+                  <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 16px' }} onClick={resetPurchaseLocationForm}>
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div style={S.card}>
+              <div style={S.subheading}>All NON-FCV Locations ({purchaseLocations.length})</div>
+              <table style={S.table}>
+                <thead><tr>{['Location','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {sortedPurchaseLocations.map(row => (
+                    <tr key={row.id}>
+                      <td style={S.td}><b>{row.location}</b></td>
+                      <td style={S.td}>{row.description || '—'}</td>
+                      <td style={S.td}>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditPurchaseLocation(row)}>
+                            ✏️ Edit
+                          </button>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeletePurchaseLocation(row)}>
+                            🗑 Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* ── TOBACCO TYPE / VARIETY MAINTENANCE ── */}
         {tab === 'tobacco-types' && (
           <div>
@@ -739,7 +940,7 @@ export default function AdminDashboard({ user, onLogout }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>Type / Variety</label>
-                  <input style={S.input} placeholder="e.g. FCV Virginia" value={tobaccoTypeCode} onChange={e => setTobaccoTypeCode(e.target.value)} />
+                  <input ref={tobaccoTypeCodeInputRef} style={S.input} placeholder="e.g. FCV Virginia" value={tobaccoTypeCode} onChange={e => setTobaccoTypeCode(e.target.value)} />
                 </div>
                 <div>
                   <label style={S.label}>Description (Optional)</label>
@@ -792,7 +993,7 @@ export default function AdminDashboard({ user, onLogout }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>Grade Code</label>
-                  <input style={S.input} placeholder="e.g. H1" value={tbGradeCode} onChange={e => setTbGradeCode(e.target.value.toUpperCase())} />
+                  <input ref={tbGradeCodeInputRef} style={S.input} placeholder="e.g. H1" value={tbGradeCode} onChange={e => setTbGradeCode(e.target.value.toUpperCase())} />
                 </div>
                 <div>
                   <label style={S.label}>Description</label>
@@ -845,7 +1046,7 @@ export default function AdminDashboard({ user, onLogout }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>Grade Code</label>
-                  <input style={S.input} placeholder="e.g. A1" value={buyerGradeCode} onChange={e => setBuyerGradeCode(e.target.value.toUpperCase())} />
+                  <input ref={buyerGradeCodeInputRef} style={S.input} placeholder="e.g. A1" value={buyerGradeCode} onChange={e => setBuyerGradeCode(e.target.value.toUpperCase())} />
                 </div>
                 <div>
                   <label style={S.label}>Description</label>
@@ -952,6 +1153,76 @@ export default function AdminDashboard({ user, onLogout }) {
           </div>
         )}
 
+        {/* ── QR TRACKING ── */}
+        {tab === 'qr-tracking' && (
+          <div>
+            <div style={S.card}>
+              <div style={S.subheading}>Track QR Code</div>
+              {qrTrackMsg && <div style={qrTrackMsg.startsWith('✅') ? S.success : S.error}>{qrTrackMsg}</div>}
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr auto auto', gap: 12, alignItems: 'end' }}>
+                <div>
+                  <label style={S.label}>QR Code</label>
+                  <input
+                    style={S.input}
+                    placeholder="Scan or type QR code"
+                    value={qrTrackCode}
+                    onChange={(e) => setQrTrackCode(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleTrackQRCode(); }}
+                  />
+                </div>
+                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 18px', opacity: qrTrackLoading ? 0.6 : 1 }} onClick={handleTrackQRCode} disabled={qrTrackLoading}>
+                  {qrTrackLoading ? 'Tracking...' : 'Track'}
+                </button>
+                <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 18px' }} onClick={() => { setQrTrackCode(''); setQrTrackResult(null); setQrTrackMsg(''); }}>
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {qrTrackResult && (
+              <div style={S.card}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <div style={S.subheading}>Tracking Result: {qrTrackResult.code}</div>
+                  <span style={S.badge(qrTrackResult.status === 'USED' ? 'red' : 'green')}>{qrTrackResult.status}</span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(220px,1fr))', gap: 14, marginTop: 12 }}>
+                  <div>
+                    <div style={{ ...S.label, marginBottom: 6 }}>QR Details</div>
+                    <div style={{ fontSize: 13, color: '#444', lineHeight: 1.7 }}>
+                      <div><b>Code:</b> {qrTrackResult.qr?.unique_code || '—'}</div>
+                      <div><b>Assigned Buyer:</b> {qrTrackResult.qr?.buyer_code ? `${qrTrackResult.qr.buyer_code} - ${qrTrackResult.qr.buyer_name || '—'}` : 'Unassigned'}</div>
+                      <div><b>Used:</b> {qrTrackResult.qr?.used ? 'Yes' : 'No'}</div>
+                      <div><b>QR Created:</b> {formatDateTime(qrTrackResult.qr?.created_at)}</div>
+                      <div><b>Tracked At:</b> {formatDateTime(qrTrackResult.tracked_at)}</div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ ...S.label, marginBottom: 6 }}>Latest Purchase Link</div>
+                    {!qrTrackResult.bag ? (
+                      <div style={{ fontSize: 13, color: '#777' }}>No bag linked to this QR code yet.</div>
+                    ) : (
+                      <div style={{ fontSize: 13, color: '#444', lineHeight: 1.7 }}>
+                        <div><b>Bag ID:</b> {qrTrackResult.bag.id}</div>
+                        <div><b>Buyer:</b> {qrTrackResult.bag.buyer_code || '—'} {qrTrackResult.bag.buyer_name ? `- ${qrTrackResult.bag.buyer_name}` : ''}</div>
+                        <div><b>FCV Type:</b> {qrTrackResult.bag.fcv || '—'}</div>
+                        <div><b>APF:</b> {qrTrackResult.bag.apf_number || '—'}</div>
+                        <div><b>Type/Variety:</b> {qrTrackResult.bag.type_of_tobacco || '—'}</div>
+                        <div><b>Location:</b> {qrTrackResult.bag.purchase_location || '—'}</div>
+                        <div><b>Weight:</b> {qrTrackResult.bag.weight ?? '—'}</div>
+                        <div><b>Bale Value:</b> {qrTrackResult.bag.bale_value ?? '—'}</div>
+                        <div><b>Purchase Time:</b> {formatDateTime(qrTrackResult.bag.date_of_purchase)}</div>
+                        <div><b>Last Updated:</b> {formatDateTime(qrTrackResult.bag.updated_at)}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── GENERATE QR ── */}
         {tab === 'generate' && (
           <div>
@@ -1011,7 +1282,7 @@ export default function AdminDashboard({ user, onLogout }) {
             {bagsMsg && <div style={bagsMsg.startsWith('✅') ? S.success : S.error}>{bagsMsg}</div>}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 10, flexWrap: 'wrap' }}>
               <select
-                style={{ ...S.input, minWidth: 190, width: 200, marginBottom: 0 }}
+                style={{ ...S.input, minWidth: 190, width: 200, marginBottom: 0, fontWeight: 700 }}
                 value={selectedBuyerActionId}
                 onChange={e => setSelectedBuyerActionId(e.target.value)}
               >
@@ -1025,22 +1296,31 @@ export default function AdminDashboard({ user, onLogout }) {
                 {bags.length > 0 && (
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button
-                    style={{ ...exportBtnPdf, padding: '6px 10px', fontSize: 11, fontWeight: 400 }}
+                    style={{ ...exportBtnPdf, padding: '6px 10px', fontSize: 11, fontWeight: 700 }}
                     onClick={() => exportBagsPDF(displayedBags, `Total Purchase Report - ${new Date().toISOString().split('T')[0]}`)}
                   >
                     📄 Export PDF
                   </button>
                   <button
-                    style={{ ...exportBtnWhatsApp, padding: '6px 10px', fontSize: 11, fontWeight: 400 }}
-                    onClick={() => shareBagsWhatsApp(displayedBags)}
-                  >
-                    💬 WhatsApp
-                  </button>
-                  <button
-                    style={{ ...exportBtnCsv, padding: '6px 10px', fontSize: 11, fontWeight: 400 }}
-                    onClick={() => exportCSV(displayedBags, `all_bags_${new Date().toISOString().split('T')[0]}.csv`)}
+                    style={{ ...exportBtnCsv, padding: '6px 10px', fontSize: 11, fontWeight: 700 }}
+                    onClick={() => exportCSV(totalPurchaseCsvRows, `all_bags_${new Date().toISOString().split('T')[0]}.csv`)}
                   >
                     ⬇ CSV
+                  </button>
+                  <button
+                    style={{ ...exportBtnCsv, padding: '6px 10px', fontSize: 11, fontWeight: 700, color: '#d62839', borderColor: '#d62839' }}
+                    onClick={() => {
+                      const invoiceBags = filteredDisplayedBags.filter((bag) => isWithinSelectedRange(getBagDateLabel(bag)));
+                      generateInvoice(invoiceBags, {
+                        buyerName: displayedBuyer?.name || '',
+                        buyerCode: displayedBuyer?.code || '',
+                        dateFrom: selectedBaleStartDate,
+                        dateTo: selectedBaleEndDate,
+                        getBagDate: getBagDateLabel,
+                      });
+                    }}
+                  >
+                    🧾 Invoice
                   </button>
                 </div>
                 )}
@@ -1051,64 +1331,84 @@ export default function AdminDashboard({ user, onLogout }) {
                 Enabled buyers after 6 PM: {buyers.filter(b => enabledBuyerActionIds.includes(Number(b.id))).map(b => b.name).join(', ')}
               </div>
             )}
-            {dateWiseBaleTotals.length > 0 && (
-              <div style={{ marginBottom: 14, overflowX: 'auto' }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'end', flexWrap: 'wrap', marginBottom: 8 }}>
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    <div>
-                      <label style={S.label}>From Date</label>
-                      <input
-                        style={{ ...S.input, minWidth: 190, width: 200, marginBottom: 0 }}
-                        type="date"
-                        value={selectedBaleStartDate}
-                        onChange={(e) => setSelectedBaleStartDate(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label style={S.label}>To Date</label>
-                      <input
-                        style={{ ...S.input, minWidth: 190, width: 200, marginBottom: 0 }}
-                        type="date"
-                        value={selectedBaleEndDate}
-                        onChange={(e) => setSelectedBaleEndDate(e.target.value)}
-                      />
-                    </div>
+            <div style={{ marginBottom: 14, overflowX: 'auto' }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'end', flexWrap: 'wrap', marginBottom: 8 }}>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <div>
+                    <label style={S.label}>From Date</label>
+                    <input
+                      style={{ ...S.input, minWidth: 190, width: 200, marginBottom: 0 }}
+                      type="date"
+                      lang="en-GB"
+                      value={selectedBaleStartDate}
+                      onChange={(e) => setSelectedBaleStartDate(e.target.value)}
+                    />
+                    {selectedBaleStartDate && (
+                      <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+                        Selected: {inputDateToDisplayDate(selectedBaleStartDate)}
+                      </div>
+                    )}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 16, fontWeight: 700, color: '#166534' }}>
-                      Total Purchase Value: ₹{selectedDateTotal.toFixed(2)}
-                    </span>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: '#334155' }}>
-                      Total Bags: {selectedScopeBagCount}
-                    </span>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: '#334155' }}>
-                      Total Kgs: {selectedScopeTotalKgs.toFixed(2)}
-                    </span>
-                    <button
-                      style={{ ...S.btnSecondary, flex: 'none', padding: '8px 14px', fontSize: 12 }}
-                      onClick={handleToggleBuyerActionAfter6pm}
-                    >
-                      {enabledBuyerActionIds.includes(Number(selectedBuyerActionId))
-                        ? 'Disable Selected Buyer After 6 PM'
-                        : 'Enable Selected Buyer After 6 PM'}
-                    </button>
+                  <div>
+                    <label style={S.label}>To Date</label>
+                    <input
+                      style={{ ...S.input, minWidth: 190, width: 200, marginBottom: 0 }}
+                      type="date"
+                      lang="en-GB"
+                      value={selectedBaleEndDate}
+                      onChange={(e) => setSelectedBaleEndDate(e.target.value)}
+                    />
+                    {selectedBaleEndDate && (
+                      <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+                        Selected: {inputDateToDisplayDate(selectedBaleEndDate)}
+                      </div>
+                    )}
                   </div>
                 </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  {hasPurchaseSummarySelection && (
+                    <>
+                      <span style={{ fontSize: 16, fontWeight: 700, color: '#166534' }}>
+                        Total Purchase Value: {formatCurrencyINR(selectedDateTotal)}
+                      </span>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: '#334155' }}>
+                        Total Bags: {selectedScopeBagCount}
+                      </span>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: '#334155' }}>
+                        Total Kgs: {selectedScopeTotalKgs.toFixed(2)}
+                      </span>
+                    </>
+                  )}
+                  <button
+                    style={{ ...S.btnSecondary, flex: 'none', padding: '12px 22px', fontSize: 14, fontWeight: 800, minWidth: 250 }}
+                    onClick={handleToggleBuyerActionAfter6pm}
+                  >
+                    {enabledBuyerActionIds.includes(Number(selectedBuyerActionId))
+                      ? 'Disable Selected Buyer After 6 PM'
+                      : 'Enable Selected Buyer After 6 PM'}
+                  </button>
+                </div>
+              </div>
+              {filteredDateWiseBaleTotals.length > 0 ? (
                 <table style={{ ...S.table, minWidth: 520 }}>
-                  <thead><tr><th style={S.th}>Date</th><th style={S.th}>Total Bags</th><th style={S.th}>Total Kgs</th><th style={S.th}>Total Purchase Value</th></tr></thead>
+                  <thead><tr><th style={{ ...S.th, fontWeight: 700 }}>Date</th><th style={{ ...S.th, fontWeight: 700 }}>Total Bags</th><th style={{ ...S.th, fontWeight: 700 }}>Total Kgs</th><th style={{ ...S.th, fontWeight: 700 }}>Total Purchase Value</th></tr></thead>
                   <tbody>
                     {filteredDateWiseBaleTotals.map((row, idx) => (
                       <tr key={`${row.date}-${idx}`}>
-                        <td style={S.td}>{row.date}</td>
+                        <td style={{ ...S.td, fontWeight: 700 }}>{row.date}</td>
                         <td style={{ ...S.td, fontWeight: 700 }}>{row.bags}</td>
                         <td style={{ ...S.td, fontWeight: 700 }}>{row.kgs.toFixed(2)}</td>
-                        <td style={{ ...S.td, fontWeight: 700 }}>₹{row.total.toFixed(2)}</td>
+                        <td style={{ ...S.td, fontWeight: 700 }}>{formatCurrencyINR(row.total)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
-            )}
+              ) : (
+                <div style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+                  No purchases found for selected buyer/date range.
+                </div>
+              )}
+            </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={S.table}>
                 <thead><tr>
@@ -1119,21 +1419,21 @@ export default function AdminDashboard({ user, onLogout }) {
                       <SortableTh label="TB Grade" sortKey="tobacco_grade" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
                       <SortableTh label="Type" sortKey="type_of_tobacco" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
                       <SortableTh label="Location" sortKey="purchase_location" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Purchase Date" sortKey="purchase_date" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
+                      <SortableTh label="Purchase Date" sortKey="purchase_date" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={170} />
                       <SortableTh label="Buyer Grade" sortKey="buyer_grade" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
                       <SortableTh label="Weight" sortKey="weight" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
                       <SortableTh label="Rate" sortKey="rate" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
                       <SortableTh label="Bale Value" sortKey="bale_value" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Date & Time" sortKey="date_of_purchase" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
+                      <SortableTh label="Date & Time" sortKey="date_of_purchase" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={220} />
                       <SortableTh label="FCV" sortKey="fcv" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Updated" sortKey="updated_at" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
+                      <SortableTh label="Updated" sortKey="updated_at" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={200} />
                       <th style={S.th}>Action</th>
                     </tr>
                     <tr>
                       <th style={S.th}></th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 120, marginBottom: 0 }}
+                          style={{ ...S.input, minWidth: 120, marginBottom: 0, fontWeight: 700 }}
                           value={bagsColumnFilters.buyer_name}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, buyer_name: e.target.value }))}
                         >
@@ -1145,7 +1445,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       </th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 110, marginBottom: 0 }}
+                          style={{ ...S.input, minWidth: 110, marginBottom: 0, fontWeight: 700 }}
                           value={bagsColumnFilters.unique_code}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, unique_code: e.target.value }))}
                         >
@@ -1157,7 +1457,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       </th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 100, marginBottom: 0 }}
+                          style={{ ...S.input, minWidth: 100, marginBottom: 0, fontWeight: 700 }}
                           value={bagsColumnFilters.apf_number}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, apf_number: e.target.value }))}
                         >
@@ -1169,7 +1469,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       </th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 110, marginBottom: 0 }}
+                          style={{ ...S.input, minWidth: 110, marginBottom: 0, fontWeight: 700 }}
                           value={bagsColumnFilters.tobacco_grade}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, tobacco_grade: e.target.value }))}
                         >
@@ -1181,7 +1481,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       </th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 110, marginBottom: 0 }}
+                          style={{ ...S.input, minWidth: 110, marginBottom: 0, fontWeight: 700 }}
                           value={bagsColumnFilters.type_of_tobacco}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, type_of_tobacco: e.target.value }))}
                         >
@@ -1193,7 +1493,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       </th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 110, marginBottom: 0 }}
+                          style={{ ...S.input, minWidth: 110, marginBottom: 0, fontWeight: 700 }}
                           value={bagsColumnFilters.purchase_location}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, purchase_location: e.target.value }))}
                         >
@@ -1216,7 +1516,7 @@ export default function AdminDashboard({ user, onLogout }) {
                     <tbody>
                       {filteredDisplayedBags.length === 0 ? (
                         <tr>
-                          <td style={{ ...S.td, textAlign: 'center', color: '#888', padding: 24 }} colSpan={16}>
+                          <td style={{ ...totalPurchaseTd, textAlign: 'center', color: '#888', padding: 24 }} colSpan={16}>
                             {displayedBags.length === 0
                               ? (displayedBuyer
                                 ? `No records for ${displayedBuyer.name}. Select another buyer from the dropdown.`
@@ -1227,10 +1527,10 @@ export default function AdminDashboard({ user, onLogout }) {
                       ) : filteredDisplayedBags.map((b, i) => (
                         editingBagId === b.id ? (
                           <tr key={b.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
-                            <td style={S.td}><b>{b.buyer_code}</b></td>
-                            <td style={S.td}>{b.buyer_name}</td>
-                            <td style={S.td}>{b.unique_code}</td>
-                            <td style={S.td}>
+                            <td style={totalPurchaseTd}>{b.buyer_code}</td>
+                            <td style={totalPurchaseTd}>{b.buyer_name}</td>
+                            <td style={totalPurchaseTd}>{b.unique_code}</td>
+                            <td style={totalPurchaseTd}>
                               <SearchableSelect
                                 options={apfNumberOptions}
                                 value={editBagForm?.apf_number ?? ''}
@@ -1239,7 +1539,7 @@ export default function AdminDashboard({ user, onLogout }) {
                                 placeholder="Search APF"
                               />
                             </td>
-                            <td style={S.td}>
+                            <td style={totalPurchaseTd}>
                               <SearchableSelect
                                 options={tobaccoBoardGradeOptions}
                                 value={editBagForm?.tobacco_grade ?? ''}
@@ -1248,29 +1548,29 @@ export default function AdminDashboard({ user, onLogout }) {
                                 placeholder="Search"
                               />
                             </td>
-                            <td style={S.td}><input style={{ ...S.input, minWidth: 120 }} value={editBagForm?.type_of_tobacco ?? ''} onChange={e => setEditBagForm(f => ({ ...f, type_of_tobacco: e.target.value }))} /></td>
-                            <td style={S.td}><input style={{ ...S.input, minWidth: 120 }} value={editBagForm?.purchase_location ?? ''} onChange={e => setEditBagForm(f => ({ ...f, purchase_location: e.target.value }))} /></td>
-                            <td style={S.td}><input style={{ ...S.input, minWidth: 110 }} value={editBagForm?.purchase_date ?? ''} onChange={e => setEditBagForm(f => ({ ...f, purchase_date: e.target.value }))} /></td>
-                            <td style={S.td}><input style={{ ...S.input, minWidth: 110 }} value={editBagForm?.buyer_grade ?? ''} onChange={e => setEditBagForm(f => ({ ...f, buyer_grade: e.target.value }))} /></td>
-                            <td style={S.td}><input style={{ ...S.input, minWidth: 90 }} type="number" value={editBagForm?.weight ?? ''} onChange={e => setEditBagForm(f => ({ ...f, weight: e.target.value }))} /></td>
-                            <td style={S.td}><input style={{ ...S.input, minWidth: 90 }} type="number" step="0.01" value={editBagForm?.rate ?? ''} onChange={e => setEditBagForm(f => ({ ...f, rate: e.target.value }))} /></td>
-                            <td style={S.td}>
+                            <td style={totalPurchaseTd}><input style={{ ...S.input, minWidth: 120 }} value={editBagForm?.type_of_tobacco ?? ''} onChange={e => setEditBagForm(f => ({ ...f, type_of_tobacco: e.target.value }))} /></td>
+                            <td style={totalPurchaseTd}><input style={{ ...S.input, minWidth: 120 }} value={editBagForm?.purchase_location ?? ''} onChange={e => setEditBagForm(f => ({ ...f, purchase_location: e.target.value }))} /></td>
+                            <td style={totalPurchaseTd}><input style={{ ...S.input, minWidth: 110 }} value={editBagForm?.purchase_date ?? ''} onChange={e => setEditBagForm(f => ({ ...f, purchase_date: e.target.value }))} /></td>
+                            <td style={totalPurchaseTd}><input style={{ ...S.input, minWidth: 110 }} value={editBagForm?.buyer_grade ?? ''} onChange={e => setEditBagForm(f => ({ ...f, buyer_grade: e.target.value }))} /></td>
+                            <td style={totalPurchaseTd}><input style={{ ...S.input, minWidth: 90 }} type="number" value={editBagForm?.weight ?? ''} onChange={e => setEditBagForm(f => ({ ...f, weight: e.target.value }))} /></td>
+                            <td style={totalPurchaseTd}><input style={{ ...S.input, minWidth: 90 }} type="number" step="0.01" value={editBagForm?.rate ?? ''} onChange={e => setEditBagForm(f => ({ ...f, rate: e.target.value }))} /></td>
+                            <td style={totalPurchaseTd}>
                               {Number.isFinite(Number(editBagForm?.weight)) && Number.isFinite(Number(editBagForm?.rate))
                                 ? Number((Number(editBagForm.weight) * Number(editBagForm.rate)).toFixed(2))
                                 : (editBagForm?.bale_value ?? '—')}
                             </td>
-                            <td style={S.td}>
+                            <td style={totalPurchaseTd}>
                               <input style={{ ...S.input, minWidth: 180 }} type="datetime-local" value={editBagForm?.date_of_purchase ?? nowInputDateTime()} onChange={e => setEditBagForm(f => ({ ...f, date_of_purchase: e.target.value }))} />
                             </td>
-                            <td style={S.td}>
+                            <td style={totalPurchaseTd}>
                               <select style={{ ...S.input, minWidth: 95 }} value={editBagForm?.fcv ?? ''} onChange={e => setEditBagForm(f => ({ ...f, fcv: e.target.value }))}>
                                 <option value="">Select</option>
                                 <option value="FCV">FCV</option>
                                 <option value="NON-FCV">NON-FCV</option>
                               </select>
                             </td>
-                            <td style={S.td}>{formatDateTime(b.updated_at)}</td>
-                            <td style={S.td}>
+                            <td style={totalPurchaseTd}>{formatDateTime(b.updated_at)}</td>
+                            <td style={totalPurchaseTd}>
                               <div style={{ display: 'flex', gap: 6 }}>
                                 <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={handleSaveBag} title="Save bag">💾</button>
                                 <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={handleCancelEditBag} title="Cancel edit">✖</button>
@@ -1280,22 +1580,22 @@ export default function AdminDashboard({ user, onLogout }) {
                           </tr>
                         ) : (
                           <tr key={b.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
-                            <td style={S.td}><b>{b.buyer_code}</b></td>
-                            <td style={S.td}>{b.buyer_name}</td>
-                            <td style={S.td}>{b.unique_code}</td>
-                            <td style={S.td}>{b.apf_number}</td>
-                            <td style={S.td}>{b.tobacco_grade}</td>
-                            <td style={S.td}>{b.type_of_tobacco || '—'}</td>
-                            <td style={S.td}>{b.purchase_location || '—'}</td>
-                            <td style={S.td}>{b.purchase_date || '—'}</td>
-                            <td style={S.td}>{b.buyer_grade || '—'}</td>
-                            <td style={S.td}>{b.weight} kg</td>
-                            <td style={S.td}>{b.rate ?? '—'}</td>
-                            <td style={S.td}>{b.bale_value ?? '—'}</td>
-                            <td style={S.td}>{formatDateTime(b.date_of_purchase)}</td>
-                            <td style={S.td}><span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span></td>
-                            <td style={S.td}>{formatDateTime(b.updated_at)}</td>
-                            <td style={S.td}>
+                            <td style={totalPurchaseTd}>{b.buyer_code}</td>
+                            <td style={totalPurchaseTd}>{b.buyer_name}</td>
+                            <td style={totalPurchaseTd}>{b.unique_code}</td>
+                            <td style={totalPurchaseTd}>{b.apf_number}</td>
+                            <td style={totalPurchaseTd}>{b.tobacco_grade}</td>
+                            <td style={totalPurchaseTd}>{b.type_of_tobacco || '—'}</td>
+                            <td style={totalPurchaseTd}>{b.purchase_location || '—'}</td>
+                            <td style={totalPurchaseTd}>{formatPurchaseDateDash(b.purchase_date || b.date_of_purchase)}</td>
+                            <td style={totalPurchaseTd}>{b.buyer_grade || '—'}</td>
+                            <td style={totalPurchaseTd}>{b.weight} kg</td>
+                            <td style={totalPurchaseTd}>{b.rate ?? '—'}</td>
+                            <td style={totalPurchaseTd}>{formatCurrencyINR(b.bale_value)}</td>
+                            <td style={totalPurchaseTd}>{formatDateTime(b.date_of_purchase)}</td>
+                            <td style={totalPurchaseTd}><span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span></td>
+                            <td style={totalPurchaseTd}>{formatDateTime(b.updated_at)}</td>
+                            <td style={totalPurchaseTd}>
                               <div style={{ display: 'flex', gap: 6 }}>
                                 <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditBag(b)} title="Edit bag">✏️</button>
                                 <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteBag(b)} title="Delete bag">🗑</button>
