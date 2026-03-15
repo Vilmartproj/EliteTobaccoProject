@@ -1,0 +1,77 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [ "Elite_Mobile" ]
+  pull_request:
+    branches: [ "Elite_Mobile" ]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode (optional)
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Install Node (if you use JS tooling)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install JS dependencies (if needed)
+        run: npm ci
+        # If you use yarn/pnpm, tell me and I’ll adjust
+
+      - name: Install CocoaPods (if ios/Podfile exists)
+        run: |
+          if [ -f "ios/Podfile" ]; then
+            cd ios
+            pod install
+          else
+            echo "No ios/Podfile found; skipping pods"
+          fi
+
+      # ---- Configure these 2 values for your repo ----
+      - name: Build (Simulator)
+        run: |
+          # Set these to your actual workspace/project + scheme:
+          WORKSPACE="ios/YourApp.xcworkspace"
+          PROJECT="ios/YourApp.xcodeproj"
+          SCHEME="YourApp"
+
+          if [ -f "$WORKSPACE" ]; then
+            xcodebuild \
+              -workspace "$WORKSPACE" \
+              -scheme "$SCHEME" \
+              -configuration Debug \
+              -sdk iphonesimulator \
+              -destination 'platform=iOS Simulator,name=iPhone 15' \
+              -derivedDataPath build \
+              clean build
+          elif [ -f "$PROJECT" ]; then
+            xcodebuild \
+              -project "$PROJECT" \
+              -scheme "$SCHEME" \
+              -configuration Debug \
+              -sdk iphonesimulator \
+              -destination 'platform=iOS Simulator,name=iPhone 15' \
+              -derivedDataPath build \
+              clean build
+          else
+            echo "No .xcworkspace or .xcodeproj found under ios/. Please confirm your iOS path."
+            exit 1
+          fi
+
+      - name: Upload build artifacts (DerivedData)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-deriveddata
+          path: build
