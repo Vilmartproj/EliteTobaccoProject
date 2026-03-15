@@ -59,6 +59,22 @@ jobs:
           exit 1
         # If you use yarn, let me know and I'll adapt to yarn
 
+      - name: Debug JS install (list rollup files and try require)
+        run: |
+          ROOT="$GITHUB_WORKSPACE/tobacco-app 3"
+          echo "Inspecting $ROOT/node_modules"
+          echo "-- Node/npm info --"
+          node -v || true
+          npm -v || true
+          echo "-- rollup listing --"
+          ls -la "$ROOT/node_modules/rollup" || true
+          ls -la "$ROOT/node_modules/@rollup" || true
+          echo "-- npm ls rollup --"
+          npm --prefix "$ROOT" ls rollup --depth=0 || true
+          echo "-- attempt to require rollup/dist/native (non-fatal) --"
+          node -e "try{console.log('resolve:',require.resolve('rollup')); const n=require('rollup/dist/native'); console.log('native loaded:',Object.keys(n).slice(0,10))}catch(e){console.error('require error:',e.stack);}
+          echo "-- end debug --"
+
       - name: Build web assets and sync to iOS
         run: |
           ROOT="$GITHUB_WORKSPACE/tobacco-app 3"
