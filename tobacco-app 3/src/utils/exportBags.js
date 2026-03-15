@@ -12,15 +12,37 @@ const columns = [
   { key: 'fcv', label: 'FCV' },
 ];
 
+const pdfColumns = [
+  { key: 'buyer_code', label: 'Buyer' },
+  { key: 'buyer_name', label: 'Name' },
+  { key: 'unique_code', label: 'Code' },
+  { key: 'apf_number', label: 'APF' },
+  { key: 'tobacco_grade', label: 'TB Grade' },
+  { key: 'type_of_tobacco', label: 'Type' },
+  { key: 'purchase_location', label: 'Location' },
+  { key: 'purchase_date', label: 'Purchase Date' },
+  { key: 'buyer_grade', label: 'Buyer Grade' },
+  { key: 'weight', label: 'Weight (kg)' },
+  { key: 'rate', label: 'Rate' },
+  { key: 'bale_value', label: 'Bale Value' },
+  { key: 'date_of_purchase', label: 'Date & Time' },
+  { key: 'fcv', label: 'FCV' },
+];
+
 const mapRows = (rows = []) => rows.map((row) => ({
   buyer_code: row.buyer_code || '',
   buyer_name: row.buyer_name || '',
   unique_code: row.unique_code || '',
   apf_number: row.apf_number || '',
   tobacco_grade: row.tobacco_grade || '',
-  weight: row.weight ?? '',
-  date_of_purchase: formatDateTime(row.date_of_purchase),
+  type_of_tobacco: row.type_of_tobacco || '',
   purchase_location: row.purchase_location || '',
+  purchase_date: row.purchase_date || '',
+  buyer_grade: row.buyer_grade || '',
+  weight: row.weight ?? '',
+  rate: row.rate ?? '',
+  bale_value: row.bale_value ?? '',
+  date_of_purchase: formatDateTime(row.date_of_purchase),
   fcv: row.fcv || '',
 }));
 
@@ -48,7 +70,7 @@ export function exportBagsPDF(rows, title = 'All Bags Report') {
 
   const printableRows = normalized.map((row) => `
     <tr>
-      ${columns.map((column) => `<td>${row[column.key]}</td>`).join('')}
+      ${pdfColumns.map((column) => `<td>${row[column.key]}</td>`).join('')}
     </tr>
   `).join('');
 
@@ -76,7 +98,7 @@ export function exportBagsPDF(rows, title = 'All Bags Report') {
         <div class="meta">Generated: ${formatDateTime(new Date())} | Bags: ${normalized.length} | Total Weight: ${totalWeight.toFixed(2)} kg</div>
         <table>
           <thead>
-            <tr>${columns.map((column) => `<th>${column.label}</th>`).join('')}</tr>
+            <tr>${pdfColumns.map((column) => `<th>${column.label}</th>`).join('')}</tr>
           </thead>
           <tbody>${printableRows}</tbody>
         </table>
