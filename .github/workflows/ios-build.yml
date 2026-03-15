@@ -64,15 +64,17 @@ jobs:
           if [ -d "$WORKSPACE" ]; then
             # choose the first available iPhone simulator dynamically (fallback to iPad)
             DEST=""
-            FIRST_IPHONE_LINE=$(xcrun simctl list devices available | grep "platform:iOS Simulator" | grep "name:iPhone" | head -n1 || true)
+            # parse human-readable simctl output: look for lines starting with whitespace + device name
+            FIRST_IPHONE_LINE=$(xcrun simctl list devices available | grep -E '^[[:space:]]*iPhone' | head -n1 || true)
             if [ -n "$FIRST_IPHONE_LINE" ]; then
-              NAME=$(echo "$FIRST_IPHONE_LINE" | sed -E 's/.*name: *([^,}]+).*/\1/')
+              # extract name up to the first ' (' and trim
+              NAME=$(echo "$FIRST_IPHONE_LINE" | sed -E 's/^[[:space:]]*([^\(]+)\(.*/\1/' | sed 's/[[:space:]]*$//')
               DEST="platform=iOS Simulator,name=$NAME"
             else
               # fallback to any iPad simulator
-              FIRST_IPAD_LINE=$(xcrun simctl list devices available | grep "platform:iOS Simulator" | grep "name:iPad" | head -n1 || true)
+              FIRST_IPAD_LINE=$(xcrun simctl list devices available | grep -E '^[[:space:]]*iPad' | head -n1 || true)
               if [ -n "$FIRST_IPAD_LINE" ]; then
-                NAME=$(echo "$FIRST_IPAD_LINE" | sed -E 's/.*name: *([^,}]+).*/\1/')
+                NAME=$(echo "$FIRST_IPAD_LINE" | sed -E 's/^[[:space:]]*([^\(]+)\(.*/\1/' | sed 's/[[:space:]]*$//')
                 DEST="platform=iOS Simulator,name=$NAME"
               fi
             fi
@@ -93,14 +95,14 @@ jobs:
           elif [ -d "$PROJECT" ]; then
             # choose the first available iPhone simulator dynamically (fallback to iPad)
             DEST=""
-            FIRST_IPHONE_LINE=$(xcrun simctl list devices available | grep "platform:iOS Simulator" | grep "name:iPhone" | head -n1 || true)
+            FIRST_IPHONE_LINE=$(xcrun simctl list devices available | grep -E '^[[:space:]]*iPhone' | head -n1 || true)
             if [ -n "$FIRST_IPHONE_LINE" ]; then
-              NAME=$(echo "$FIRST_IPHONE_LINE" | sed -E 's/.*name: *([^,}]+).*/\1/')
+              NAME=$(echo "$FIRST_IPHONE_LINE" | sed -E 's/^[[:space:]]*([^\(]+)\(.*/\1/' | sed 's/[[:space:]]*$//')
               DEST="platform=iOS Simulator,name=$NAME"
             else
-              FIRST_IPAD_LINE=$(xcrun simctl list devices available | grep "platform:iOS Simulator" | grep "name:iPad" | head -n1 || true)
+              FIRST_IPAD_LINE=$(xcrun simctl list devices available | grep -E '^[[:space:]]*iPad' | head -n1 || true)
               if [ -n "$FIRST_IPAD_LINE" ]; then
-                NAME=$(echo "$FIRST_IPAD_LINE" | sed -E 's/.*name: *([^,}]+).*/\1/')
+                NAME=$(echo "$FIRST_IPAD_LINE" | sed -E 's/^[[:space:]]*([^\(]+)\(.*/\1/' | sed 's/[[:space:]]*$//')
                 DEST="platform=iOS Simulator,name=$NAME"
               fi
             fi
