@@ -52,8 +52,8 @@ jobs:
           fi
 
           # Set these to your actual workspace/project + scheme for this repo
-          WORKSPACE="ios/App/App.xcworkspace"
-          PROJECT="ios/App/App.xcodeproj"
+          WORKSPACE="tobacco-app 3/ios/App/App.xcworkspace"
+          PROJECT="tobacco-app 3/ios/App/App.xcodeproj"
           SCHEME="App"
 
           echo "Checking for workspace/project at: $WORKSPACE or $PROJECT"
