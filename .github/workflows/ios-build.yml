@@ -26,19 +26,38 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      - name: Install JS dependencies for app (try fast, fallback to reinstall)
+      - name: Install JS dependencies for app (try npm, fallback to pnpm)
         run: |
           set -e
           ROOT="$GITHUB_WORKSPACE/tobacco-app 3"
-          echo "Attempting fast install in $ROOT (no optional deps)"
+          echo "Runner arch: $(uname -m)"
+          echo "Node: $(node -v) npm: $(npm -v)"
+          echo "Attempting npm ci --no-optional in $ROOT"
           if npm ci --no-optional --prefix "$ROOT"; then
-            echo "npm ci succeeded"
-          else
-            echo "npm ci failed — removing node_modules and package-lock.json and retrying with npm i"
-            rm -rf "$ROOT/node_modules" "$ROOT/package-lock.json"
-            npm i --prefix "$ROOT"
+            echo "npm ci --no-optional succeeded"
+            exit 0
           fi
-        # If you use yarn/pnpm, tell me and I’ll adjust
+
+          echo "npm ci failed — trying remove lockfile and full npm i"
+          rm -rf "$ROOT/node_modules" "$ROOT/package-lock.json"
+          if npm i --prefix "$ROOT" --no-optional; then
+            echo "npm i --no-optional succeeded"
+            exit 0
+          fi
+
+          echo "npm install attempts failed — falling back to pnpm (via corepack)"
+          corepack enable || true
+          corepack prepare pnpm@7.28.0 --activate || true
+          if pnpm install --prefix "$ROOT" --no-optional; then
+            echo "pnpm install succeeded"
+            exit 0
+          fi
+
+          echo "All installer attempts failed; printing $ROOT tree for debugging"
+          ls -la "$ROOT" || true
+          ls -la "$ROOT/node_modules" || true
+          exit 1
+        # If you use yarn, let me know and I'll adapt to yarn
 
       - name: Build web assets and sync to iOS
         run: |
