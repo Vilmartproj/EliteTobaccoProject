@@ -17,6 +17,7 @@
     "android:build": "npm run build:mobile && npm run cap:sync"
   },
   "dependencies": {
+    "@capacitor-mlkit/barcode-scanning": "^8.0.1",
     "@capacitor/android": "^8.2.0",
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
@@ -24,6 +25,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.18.2",
+    "jsqr": "^1.4.0",
     "mysql2": "^3.14.3",
     "qrcode": "^1.5.4",
     "react": "^19.2.4",

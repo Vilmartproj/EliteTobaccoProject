@@ -1,5 +1,7 @@
 // src/components/BuyingForm.jsx
 import { useEffect, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import jsQR from 'jsqr';
 import { api } from '../api';
 import { S } from '../styles';
 import { fromInputDateTime, nowInputDateTime } from '../utils/dateFormat';
@@ -46,11 +48,15 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
   const [scannerError, setScannerError] = useState('');
   const debounceRef = useRef(null);
   const videoRef = useRef(null);
-  const uniqueCodeInputRef = useRef(null);
   const scannerStreamRef = useRef(null);
   const scannerTimerRef = useRef(null);
-  const latestCodeRef = useRef('');
+  const canvasRef = useRef(null);
+  const uniqueCodeInputRef = useRef(null);
   const validateRequestRef = useRef(0);
+  const latestCodeRef = useRef('');
+  const scannerDetectingRef = useRef(false);
+  const scannerLastFrameTimeRef = useRef(0);
+  const scannerStallCountRef = useRef(0);
   const isFCV = fcv === 'FCV';
   const isNonFCV = fcv === 'NON-FCV';
   const tobaccoBoardGrades = [...grades.tobaccoBoard].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
@@ -85,10 +91,10 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     .map((q) => String(q.unique_code));
   const qrListId = `assigned-qr-codes-${buyer?.id || 'buyer'}`;
   const isMobileDevice = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+  const isNativeAndroid = typeof window !== 'undefined' && Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
   const scannerSupported = typeof window !== 'undefined'
     && 'mediaDevices' in navigator
-    && typeof navigator.mediaDevices.getUserMedia === 'function'
-    && 'BarcodeDetector' in window;
+    && typeof navigator.mediaDevices.getUserMedia === 'function';
 
   const requiredLabel = (text, isRequired = true) => (
     <>
@@ -99,9 +105,12 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
   const stopScanner = () => {
     if (scannerTimerRef.current) {
-      clearInterval(scannerTimerRef.current);
+      clearTimeout(scannerTimerRef.current);
       scannerTimerRef.current = null;
     }
+    scannerDetectingRef.current = false;
+    scannerLastFrameTimeRef.current = 0;
+    scannerStallCountRef.current = 0;
     if (scannerStreamRef.current) {
       scannerStreamRef.current.getTracks().forEach((track) => track.stop());
       scannerStreamRef.current = null;
@@ -214,13 +223,52 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
   const startScanner = async () => {
     setScannerError('');
+
+    if (isNativeAndroid) {
+      setScannerActive(true);
+      try {
+        const { BarcodeScanner } = await import('@capacitor-mlkit/barcode-scanning');
+        const support = await BarcodeScanner.isSupported();
+        if (!support?.supported) {
+          setScannerError('Native scanner is not supported on this device.');
+          return;
+        }
+
+        const permission = await BarcodeScanner.requestPermissions();
+        if (permission?.camera !== 'granted') {
+          setScannerError('Camera permission denied. Please allow camera permission in app settings.');
+          return;
+        }
+
+        const result = await BarcodeScanner.scan();
+        const first = Array.isArray(result?.barcodes) ? result.barcodes[0] : null;
+        const scannedValue = String(first?.rawValue || first?.displayValue || '').trim();
+
+        if (scannedValue) {
+          handleCodeChange(scannedValue);
+        } else {
+          setScannerError('No QR code detected. Please try again.');
+        }
+      } catch {
+        setScannerError('Unable to open native scanner. Please try again.');
+      } finally {
+        setScannerActive(false);
+      }
+      return;
+    }
+
     if (!scannerSupported) {
       setScannerError('Scanner not supported on this device/browser.');
       return;
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 24, max: 30 },
+        },
         audio: false,
       });
       scannerStreamRef.current = stream;
@@ -228,25 +276,92 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.muted = true;
+        videoRef.current.setAttribute('muted', 'true');
+        videoRef.current.setAttribute('playsinline', 'true');
+        videoRef.current.setAttribute('webkit-playsinline', 'true');
+        videoRef.current.setAttribute('autoplay', 'true');
+        videoRef.current.playsInline = true;
+        videoRef.current.autoplay = true;
         await videoRef.current.play();
       }
 
-      const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-      scannerTimerRef.current = setInterval(async () => {
-        if (!videoRef.current || videoRef.current.readyState < 2) return;
-        try {
-          const codes = await detector.detect(videoRef.current);
-          if (codes.length > 0) {
-            const scannedValue = String(codes[0].rawValue || '').trim();
-            if (scannedValue) {
-              handleCodeChange(scannedValue);
-              stopScanner();
+      const canUseBarcodeDetector = typeof window !== 'undefined' && 'BarcodeDetector' in window;
+      const detector = canUseBarcodeDetector
+        ? new window.BarcodeDetector({ formats: ['qr_code'] })
+        : null;
+
+      const scanLoop = async () => {
+        if (!scannerActive && !scannerStreamRef.current) return;
+        if (!videoRef.current || videoRef.current.readyState < 2) {
+          scannerTimerRef.current = setTimeout(scanLoop, 250);
+          return;
+        }
+
+        const videoEl = videoRef.current;
+        if (videoEl.currentTime === scannerLastFrameTimeRef.current) {
+          scannerStallCountRef.current += 1;
+          if (scannerStallCountRef.current >= 10) {
+            try {
+              await videoEl.play();
+            } catch {
+              // ignore play retry errors
             }
+            scannerStallCountRef.current = 0;
+          }
+        } else {
+          scannerLastFrameTimeRef.current = videoEl.currentTime;
+          scannerStallCountRef.current = 0;
+        }
+
+        if (scannerDetectingRef.current) {
+          scannerTimerRef.current = setTimeout(scanLoop, 250);
+          return;
+        }
+
+        scannerDetectingRef.current = true;
+        try {
+          let scannedValue = '';
+
+          if (detector) {
+            const codes = await detector.detect(videoEl);
+            if (codes.length > 0) {
+              scannedValue = String(codes[0].rawValue || '').trim();
+            }
+          } else if (canvasRef.current) {
+            const canvas = canvasRef.current;
+            const width = videoEl.videoWidth || 640;
+            const height = videoEl.videoHeight || 360;
+            if (width > 0 && height > 0) {
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d', { willReadFrequently: true });
+              if (ctx) {
+                ctx.drawImage(videoEl, 0, 0, width, height);
+                const imageData = ctx.getImageData(0, 0, width, height);
+                const result = jsQR(imageData.data, width, height, { inversionAttempts: 'dontInvert' });
+                if (result?.data) {
+                  scannedValue = String(result.data).trim();
+                }
+              }
+            }
+          }
+
+          if (scannedValue) {
+            handleCodeChange(scannedValue);
+            stopScanner();
+            return;
           }
         } catch {
           // keep scanner alive on transient detect errors
+        } finally {
+          scannerDetectingRef.current = false;
         }
-      }, 400);
+
+        scannerTimerRef.current = setTimeout(scanLoop, 250);
+      };
+
+      scannerTimerRef.current = setTimeout(scanLoop, 250);
     } catch (error) {
       stopScanner();
       const name = String(error?.name || '').toLowerCase();
@@ -462,7 +577,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
         )}
         {isMobileDevice && (
           <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {!scannerActive ? (
+            {isNativeAndroid ? (
               <button
                 type="button"
                 style={{ ...S.btnSecondary, color: buyerButtonTextColor, flex: 'none', padding: '8px 12px', fontSize: 12 }}
@@ -473,7 +588,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
             ) : (
               <button
                 type="button"
-                style={{ ...S.btnSecondary, color: buyerButtonTextColor, flex: 'none', padding: '8px 12px', fontSize: 12 }}
+                style={{ ...S.btnSecondary, flex: 'none', padding: '8px 12px', fontSize: 12 }}
                 onClick={stopScanner}
               >
                 Stop Scanner
@@ -482,9 +597,10 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
             {scannerError && <span style={{ fontSize: 12, color: '#c0392b' }}>{scannerError}</span>}
           </div>
         )}
-        {scannerActive && (
+        {scannerActive && !isNativeAndroid && (
           <div style={{ marginTop: 10, border: '1px solid #ffd0d6', borderRadius: 10, overflow: 'hidden' }}>
-            <video ref={videoRef} style={{ width: '100%', maxHeight: 260, objectFit: 'cover', background: '#000' }} playsInline muted />
+            <video ref={videoRef} style={{ width: '100%', maxHeight: 260, objectFit: 'cover', background: '#000' }} autoPlay playsInline muted />
+            <canvas ref={canvasRef} style={{ display: 'none' }} />
           </div>
         )}
       </div>
