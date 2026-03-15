@@ -59,13 +59,7 @@ const BUYER_SEED = [
   { code: 'B003', name: 'Anitha Devi', password: 'B003' },
 ];
 
-const APF_SEED = [
-  { number: '101', description: 'Default APF 101' },
-  { number: '102', description: 'Default APF 102' },
-  { number: '103', description: 'Default APF 103' },
-  { number: '104', description: 'Default APF 104' },
-  { number: '105', description: 'Default APF 105' },
-];
+const APF_SEED = [];
 
 const TOBACCO_TYPE_SEED = [
   { type: 'FCV Virginia', description: '' },
@@ -76,6 +70,15 @@ const TOBACCO_TYPE_SEED = [
   { type: 'Other', description: '' },
 ];
 
+const PURCHASE_LOCATION_SEED = [
+  { location: 'Godown A', description: '' },
+  { location: 'Godown B', description: '' },
+  { location: 'Godown C', description: '' },
+  { location: 'Warehouse 1', description: '' },
+  { location: 'Warehouse 2', description: '' },
+  { location: 'Warehouse 3', description: '' },
+];
+
 const QR_SEED = [
   { unique_code: '113', buyer_code: 'B001' },
   { unique_code: '114', buyer_code: 'B001' },
@@ -84,7 +87,7 @@ const QR_SEED = [
   { unique_code: '117', buyer_code: null },
 ];
 
-const ALLOWED_TABLES = ['buyers', 'apf_numbers', 'tobacco_types', 'grades', 'qr_codes', 'bags', 'settings'];
+const ALLOWED_TABLES = ['buyers', 'apf_numbers', 'tobacco_types', 'purchase_locations', 'grades', 'qr_codes', 'bags', 'settings'];
 
 let pool;
 
@@ -171,6 +174,15 @@ async function initDatabase() {
     CREATE TABLE IF NOT EXISTS tobacco_types (
       id INT AUTO_INCREMENT PRIMARY KEY,
       type VARCHAR(120) NOT NULL UNIQUE,
+      description VARCHAR(255) NOT NULL DEFAULT '',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB;
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS purchase_locations (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      location VARCHAR(160) NOT NULL UNIQUE,
       description VARCHAR(255) NOT NULL DEFAULT '',
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB;
@@ -264,11 +276,16 @@ async function initDatabase() {
     await q('TRUNCATE TABLE grades');
     await q('TRUNCATE TABLE apf_numbers');
     await q('TRUNCATE TABLE tobacco_types');
+    await q('TRUNCATE TABLE purchase_locations');
     await q('TRUNCATE TABLE settings');
     await q('TRUNCATE TABLE buyers');
     await q('SET FOREIGN_KEY_CHECKS = 1');
     console.log('🧹 DB_CLEAN_SETUP=true -> existing rows removed from core tables');
   }
+
+  await q(
+    "DELETE FROM apf_numbers WHERE number IN ('101','102','103','104','105') AND description LIKE 'Default APF %'"
+  );
 
   for (const buyer of BUYER_SEED) {
     await q(
@@ -288,6 +305,13 @@ async function initDatabase() {
     await q(
       'INSERT IGNORE INTO tobacco_types (type, description, created_at) VALUES (?, ?, NOW())',
       [tobaccoType.type, tobaccoType.description]
+    );
+  }
+
+  for (const purchaseLocation of PURCHASE_LOCATION_SEED) {
+    await q(
+      'INSERT IGNORE INTO purchase_locations (location, description, created_at) VALUES (?, ?, NOW())',
+      [purchaseLocation.location, purchaseLocation.description]
     );
   }
 
@@ -499,6 +523,64 @@ app.delete('/api/tobacco-types/:id', withAsync(async (req, res) => {
   res.json({ success: true, tobacco_type: tobaccoType });
 }));
 
+app.get('/api/purchase-locations', withAsync(async (_req, res) => {
+  const rows = await q('SELECT * FROM purchase_locations ORDER BY location ASC');
+  res.json(rows);
+}));
+
+app.post('/api/purchase-locations', withAsync(async (req, res) => {
+  const { location, description } = req.body || {};
+  const normalizedLocation = String(location || '').trim();
+  const normalizedDescription = String(description || '').trim();
+
+  if (!normalizedLocation) return res.status(400).json({ error: 'Location is required' });
+
+  try {
+    const result = await q(
+      'INSERT INTO purchase_locations (location, description, created_at) VALUES (?, ?, NOW())',
+      [normalizedLocation, normalizedDescription]
+    );
+    const rows = await q('SELECT * FROM purchase_locations WHERE id = ?', [result.insertId]);
+    return res.json(rows[0]);
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Location already exists' });
+    throw error;
+  }
+}));
+
+app.put('/api/purchase-locations/:id', withAsync(async (req, res) => {
+  const locationId = Number(req.params.id);
+  const { location, description } = req.body || {};
+
+  const normalizedLocation = String(location || '').trim();
+  const normalizedDescription = String(description || '').trim();
+
+  if (!normalizedLocation) return res.status(400).json({ error: 'Location is required' });
+
+  const rows = await q('SELECT * FROM purchase_locations WHERE id = ? LIMIT 1', [locationId]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Location not found' });
+
+  const duplicate = await q('SELECT id FROM purchase_locations WHERE LOWER(location) = LOWER(?) AND id <> ? LIMIT 1', [normalizedLocation, locationId]);
+  if (duplicate.length > 0) return res.status(400).json({ error: 'Location already exists' });
+
+  await q('UPDATE purchase_locations SET location = ?, description = ? WHERE id = ?', [normalizedLocation, normalizedDescription, locationId]);
+  const updated = await q('SELECT * FROM purchase_locations WHERE id = ?', [locationId]);
+  res.json(updated[0]);
+}));
+
+app.delete('/api/purchase-locations/:id', withAsync(async (req, res) => {
+  const locationId = Number(req.params.id);
+  const rows = await q('SELECT * FROM purchase_locations WHERE id = ? LIMIT 1', [locationId]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Location not found' });
+
+  const locationRow = rows[0];
+  const inUse = await q('SELECT COUNT(*) AS total FROM bags WHERE LOWER(TRIM(IFNULL(purchase_location, ""))) = LOWER(?)', [String(locationRow.location || '').trim()]);
+  if (inUse[0].total > 0) return res.status(400).json({ error: 'Location is in use and cannot be deleted' });
+
+  await q('DELETE FROM purchase_locations WHERE id = ?', [locationId]);
+  res.json({ success: true, purchase_location: locationRow });
+}));
+
 app.get('/api/grades', withAsync(async (req, res) => {
   const requestedType = resolveGradeType(req.query?.type, null);
   if (req.query?.type && !requestedType) return res.status(400).json({ error: 'Invalid grade type' });
@@ -682,6 +764,44 @@ app.get('/api/qrcodes/validate/:code', withAsync(async (req, res) => {
   if (qr.used) return res.json({ valid: false, alreadyUsed: true, error: 'QR code already used' });
 
   res.json({ valid: true, qr });
+}));
+
+app.get('/api/qrcodes/track/:code', withAsync(async (req, res) => {
+  const code = String(req.params.code || '').trim();
+  if (!code) return res.status(400).json({ error: 'QR code is required' });
+
+  const qrRows = await q(
+    `SELECT q.id, q.unique_code, q.buyer_id, q.used, q.created_at, b.code AS buyer_code, b.name AS buyer_name
+     FROM qr_codes q
+     LEFT JOIN buyers b ON b.id = q.buyer_id
+     WHERE q.unique_code = ?
+     LIMIT 1`,
+    [code]
+  );
+  if (qrRows.length === 0) return res.status(404).json({ error: 'QR code not found' });
+
+  const qr = qrRows[0];
+  const bagRows = await q(
+    `SELECT id, unique_code, buyer_id, buyer_code, buyer_name, fcv, apf_number, tobacco_grade, type_of_tobacco,
+            purchase_location, purchase_date, weight, rate, bale_value, buyer_grade, lot_number,
+            date_of_purchase, saved_at, updated_at
+     FROM bags
+     WHERE unique_code = ?
+     ORDER BY id DESC
+     LIMIT 1`,
+    [code]
+  );
+
+  const bag = bagRows.length > 0 ? bagRows[0] : null;
+  const status = qr.used ? 'USED' : (qr.buyer_id ? 'ASSIGNED' : 'UNASSIGNED');
+
+  res.json({
+    code,
+    status,
+    qr,
+    bag,
+    tracked_at: new Date().toISOString(),
+  });
 }));
 
 app.delete('/api/qrcodes/:id', withAsync(async (req, res) => {

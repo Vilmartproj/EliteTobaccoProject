@@ -51,12 +51,7 @@ export default function LoginPage({ onLogin }) {
           {loading ? 'Logging in…' : 'Login →'}
         </button>
 
-        {mode === 'buyer' && (
-          <p style={{ fontSize: 11, color: '#aaa', textAlign: 'center', marginTop: 14 }}>Default password = your buyer code (e.g. B001)</p>
-        )}
-        {mode === 'admin' && (
-          <p style={{ fontSize: 11, color: '#aaa', textAlign: 'center', marginTop: 14 }}>Username: <b>admin</b> · Password: <b>admin123</b></p>
-        )}
+
       </div>
     </div>
   );
