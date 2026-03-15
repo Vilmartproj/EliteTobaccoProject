@@ -172,6 +172,18 @@ tobacco-app/
 | `npm run client`| Start frontend only (port 5173)    |
 | `npm run server`| Start backend only  (port 3001)    |
 | `npm run build` | Build frontend for production      |
+| `npm run build:mobile` | Build frontend for mobile mode |
+| `npm run cap:sync` | Sync `dist` assets to Android project |
+| `npm run cap:open` | Open Android Studio project |
+| `npm run android:build` | Build mobile assets + sync Android |
+
+---
+
+## 📱 Mobile Deployment
+
+See complete Android deployment steps in:
+
+`MOBILE_DEPLOYMENT.md`
 
 ---
 

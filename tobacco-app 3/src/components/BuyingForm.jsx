@@ -247,9 +247,18 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
           // keep scanner alive on transient detect errors
         }
       }, 400);
-    } catch {
+    } catch (error) {
       stopScanner();
-      setScannerError('Unable to access camera. Please allow camera permission.');
+      const name = String(error?.name || '').toLowerCase();
+      if (name.includes('notallowed') || name.includes('permission')) {
+        setScannerError('Camera permission denied. Please allow camera permission in app settings.');
+      } else if (name.includes('notfound') || name.includes('overconstrained')) {
+        setScannerError('No usable camera found on this device.');
+      } else if (name.includes('notreadable')) {
+        setScannerError('Camera is busy or unavailable. Close other camera apps and try again.');
+      } else {
+        setScannerError('Unable to access camera. Please allow camera permission.');
+      }
     }
   };
 
