@@ -72,7 +72,15 @@ jobs:
           echo "-- npm ls rollup --"
           npm --prefix "$ROOT" ls rollup --depth=0 || true
           echo "-- attempt to require rollup/dist/native (non-fatal) --"
-          node -e "try{console.log('resolve:',require.resolve('rollup')); const n=require('rollup/dist/native'); console.log('native loaded:',Object.keys(n).slice(0,10))}catch(e){console.error('require error:',e.stack);}
+          node <<'NODE'
+          try {
+            console.log('resolve:', require.resolve('rollup'));
+            const n = require('rollup/dist/native');
+            console.log('native loaded:', Object.keys(n).slice(0,10));
+          } catch (e) {
+            console.error('require error:', e && e.stack ? e.stack : e);
+          }
+          NODE
           echo "-- end debug --"
 
       - name: Build web assets and sync to iOS
