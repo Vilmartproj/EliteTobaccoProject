@@ -23,7 +23,7 @@ jobs:
       - name: Install Node (if you use JS tooling)
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
 
       - name: Install JS dependencies for app (try npm, fallback to pnpm)
