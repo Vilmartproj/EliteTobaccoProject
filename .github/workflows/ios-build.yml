@@ -83,6 +83,23 @@ jobs:
           NODE
           echo "-- end debug --"
 
+      - name: Install rollup native optional package if missing
+        run: |
+          ROOT="$GITHUB_WORKSPACE/tobacco-app 3"
+          echo "Checking rollup native availability"
+          if node -e "try{require('rollup/dist/native'); console.log('rollup native ok');}catch(e){process.exit(1)}"; then
+            echo "rollup native already available"
+          else
+            PLATFORM=$(uname -s | tr '[:upper:]' '[:lower:]')
+            ARCH=$(uname -m)
+            if [ "$ARCH" = "x86_64" ]; then ARCH="x64"; fi
+            PKG="@rollup/rollup-${PLATFORM}-${ARCH}"
+            echo "Attempting to install optional native package: $PKG into $ROOT"
+            npm i --prefix "$ROOT" "$PKG" --no-save || true
+            echo "Listing @rollup entries after install:"
+            ls -la "$ROOT/node_modules/@rollup" || true
+          fi
+
       - name: Build web assets and sync to iOS
         run: |
           ROOT="$GITHUB_WORKSPACE/tobacco-app 3"
