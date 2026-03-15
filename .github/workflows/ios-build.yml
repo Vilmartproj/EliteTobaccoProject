@@ -30,22 +30,22 @@ jobs:
         run: npm ci
         # If you use yarn/pnpm, tell me and I’ll adjust
 
-      - name: Install CocoaPods (if ios/Podfile exists)
+      - name: Install CocoaPods (if ios/App/Podfile exists)
         run: |
-          if [ -f "ios/Podfile" ]; then
-            cd ios
+          if [ -f "ios/App/Podfile" ]; then
+            cd ios/App
             pod install
           else
-            echo "No ios/Podfile found; skipping pods"
+            echo "No ios/App/Podfile found; skipping pods"
           fi
 
       # ---- Configure these 2 values for your repo ----
       - name: Build (Simulator)
         run: |
-          # Set these to your actual workspace/project + scheme:
-          WORKSPACE="ios/YourApp.xcworkspace"
-          PROJECT="ios/YourApp.xcodeproj"
-          SCHEME="YourApp"
+          # Set these to your actual workspace/project + scheme for this repo
+          WORKSPACE="ios/App/App.xcworkspace"
+          PROJECT="ios/App/App.xcodeproj"
+          SCHEME="App"
 
           if [ -f "$WORKSPACE" ]; then
             xcodebuild \
