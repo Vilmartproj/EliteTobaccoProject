@@ -26,8 +26,11 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      - name: Install JS dependencies (if needed)
-        run: npm ci
+      - name: Install JS dependencies for app
+        run: |
+          ROOT="$GITHUB_WORKSPACE/tobacco-app 3"
+          echo "Installing JS deps in $ROOT"
+          npm ci --prefix "$ROOT"
         # If you use yarn/pnpm, tell me and I’ll adjust
 
       - name: Build web assets and sync to iOS
