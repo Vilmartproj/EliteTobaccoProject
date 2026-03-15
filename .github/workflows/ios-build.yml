@@ -26,11 +26,18 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      - name: Install JS dependencies for app (skip optional native deps)
+      - name: Install JS dependencies for app (try fast, fallback to reinstall)
         run: |
+          set -e
           ROOT="$GITHUB_WORKSPACE/tobacco-app 3"
-          echo "Installing JS deps in $ROOT (no optional deps)"
-          npm ci --no-optional --prefix "$ROOT"
+          echo "Attempting fast install in $ROOT (no optional deps)"
+          if npm ci --no-optional --prefix "$ROOT"; then
+            echo "npm ci succeeded"
+          else
+            echo "npm ci failed — removing node_modules and package-lock.json and retrying with npm i"
+            rm -rf "$ROOT/node_modules" "$ROOT/package-lock.json"
+            npm i --prefix "$ROOT"
+          fi
         # If you use yarn/pnpm, tell me and I’ll adjust
 
       - name: Build web assets and sync to iOS
