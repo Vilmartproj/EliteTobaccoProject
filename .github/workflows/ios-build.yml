@@ -30,8 +30,12 @@ jobs:
         run: npm ci
         # If you use yarn/pnpm, tell me and I’ll adjust
 
-      - name: Install CocoaPods (if ios/App/Podfile exists)
+      - name: Install CocoaPods (if Podfile exists in project)
         run: |
+          # Work from the webapp folder where iOS lives
+          if [ -d "tobacco-app 3" ]; then
+            cd "tobacco-app 3"
+          fi
           if [ -f "ios/App/Podfile" ]; then
             cd ios/App
             pod install
@@ -42,12 +46,20 @@ jobs:
       # ---- Configure these 2 values for your repo ----
       - name: Build (Simulator)
         run: |
+          # Work from webapp folder if present
+          if [ -d "tobacco-app 3" ]; then
+            cd "tobacco-app 3"
+          fi
+
           # Set these to your actual workspace/project + scheme for this repo
           WORKSPACE="ios/App/App.xcworkspace"
           PROJECT="ios/App/App.xcodeproj"
           SCHEME="App"
 
-          if [ -f "$WORKSPACE" ]; then
+          echo "Checking for workspace/project at: $WORKSPACE or $PROJECT"
+          ls -la ios || true
+
+          if [ -d "$WORKSPACE" ]; then
             xcodebuild \
               -workspace "$WORKSPACE" \
               -scheme "$SCHEME" \
@@ -56,7 +68,7 @@ jobs:
               -destination 'platform=iOS Simulator,name=iPhone 15' \
               -derivedDataPath build \
               clean build
-          elif [ -f "$PROJECT" ]; then
+          elif [ -d "$PROJECT" ]; then
             xcodebuild \
               -project "$PROJECT" \
               -scheme "$SCHEME" \
@@ -66,7 +78,8 @@ jobs:
               -derivedDataPath build \
               clean build
           else
-            echo "No .xcworkspace or .xcodeproj found under ios/. Please confirm your iOS path."
+            echo "No .xcworkspace or .xcodeproj found at expected paths. Listing ios/App contents for debugging:";
+            ls -la ios/App || true
             exit 1
           fi
 
