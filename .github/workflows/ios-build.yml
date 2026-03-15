@@ -30,6 +30,13 @@ jobs:
         run: npm ci
         # If you use yarn/pnpm, tell me and I’ll adjust
 
+      - name: Build web assets and sync to iOS
+        run: |
+          ROOT="$GITHUB_WORKSPACE/tobacco-app 3"
+          echo "ROOT=$ROOT"
+          cd "$ROOT"
+          npm run ios:build
+
       - name: Install CocoaPods (if Podfile exists in project)
         run: |
           ROOT="$GITHUB_WORKSPACE/tobacco-app 3"
