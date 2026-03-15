@@ -62,14 +62,20 @@ jobs:
           ls -la "$ROOT/ios" || true
 
           if [ -d "$WORKSPACE" ]; then
-            # choose a simulator that exists on the runner (fallback list)
+            # choose the first available iPhone simulator dynamically (fallback to iPad)
             DEST=""
-            for NAME in "iPhone 15" "iPhone 14" "iPhone 13" "iPhone 12" "iPhone 11" "iPhone SE (2nd generation)"; do
-              if xcrun simctl list devices available | grep -q "$NAME ("; then
+            FIRST_IPHONE_LINE=$(xcrun simctl list devices available | grep "platform:iOS Simulator" | grep "name:iPhone" | head -n1 || true)
+            if [ -n "$FIRST_IPHONE_LINE" ]; then
+              NAME=$(echo "$FIRST_IPHONE_LINE" | sed -E 's/.*name: *([^,}]+).*/\1/')
+              DEST="platform=iOS Simulator,name=$NAME"
+            else
+              # fallback to any iPad simulator
+              FIRST_IPAD_LINE=$(xcrun simctl list devices available | grep "platform:iOS Simulator" | grep "name:iPad" | head -n1 || true)
+              if [ -n "$FIRST_IPAD_LINE" ]; then
+                NAME=$(echo "$FIRST_IPAD_LINE" | sed -E 's/.*name: *([^,}]+).*/\1/')
                 DEST="platform=iOS Simulator,name=$NAME"
-                break
               fi
-            done
+            fi
             if [ -z "$DEST" ]; then
               echo "No suitable iOS Simulator found on runner. Listing available devices:";
               xcrun simctl list devices
@@ -85,14 +91,19 @@ jobs:
               -derivedDataPath build \
               clean build
           elif [ -d "$PROJECT" ]; then
-            # choose a simulator that exists on the runner (fallback list)
+            # choose the first available iPhone simulator dynamically (fallback to iPad)
             DEST=""
-            for NAME in "iPhone 15" "iPhone 14" "iPhone 13" "iPhone 12" "iPhone 11" "iPhone SE (2nd generation)"; do
-              if xcrun simctl list devices available | grep -q "$NAME ("; then
+            FIRST_IPHONE_LINE=$(xcrun simctl list devices available | grep "platform:iOS Simulator" | grep "name:iPhone" | head -n1 || true)
+            if [ -n "$FIRST_IPHONE_LINE" ]; then
+              NAME=$(echo "$FIRST_IPHONE_LINE" | sed -E 's/.*name: *([^,}]+).*/\1/')
+              DEST="platform=iOS Simulator,name=$NAME"
+            else
+              FIRST_IPAD_LINE=$(xcrun simctl list devices available | grep "platform:iOS Simulator" | grep "name:iPad" | head -n1 || true)
+              if [ -n "$FIRST_IPAD_LINE" ]; then
+                NAME=$(echo "$FIRST_IPAD_LINE" | sed -E 's/.*name: *([^,}]+).*/\1/')
                 DEST="platform=iOS Simulator,name=$NAME"
-                break
               fi
-            done
+            fi
             if [ -z "$DEST" ]; then
               echo "No suitable iOS Simulator found on runner. Listing available devices:";
               xcrun simctl list devices
