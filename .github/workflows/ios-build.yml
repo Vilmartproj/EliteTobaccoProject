@@ -32,15 +32,13 @@ jobs:
 
       - name: Install CocoaPods (if Podfile exists in project)
         run: |
-          # Work from the webapp folder where iOS lives
-          if [ -d "tobacco-app 3" ]; then
-            cd "tobacco-app 3"
-          fi
-          if [ -f "ios/App/Podfile" ]; then
-            cd ios/App
+          ROOT="$GITHUB_WORKSPACE/tobacco-app 3"
+          echo "ROOT=$ROOT"
+          if [ -f "$ROOT/ios/App/Podfile" ]; then
+            cd "$ROOT/ios/App"
             pod install
           else
-            echo "No ios/App/Podfile found; skipping pods"
+            echo "No ios/App/Podfile found at $ROOT/ios/App/Podfile; skipping pods"
           fi
 
       - name: Upload ios/App directory for debug
@@ -54,18 +52,14 @@ jobs:
       # ---- Configure these 2 values for your repo ----
       - name: Build (Simulator)
         run: |
-          # Work from webapp folder if present
-          if [ -d "tobacco-app 3" ]; then
-            cd "tobacco-app 3"
-          fi
-
-          # Set these to your actual workspace/project + scheme for this repo
-          WORKSPACE="tobacco-app 3/ios/App/App.xcworkspace"
-          PROJECT="tobacco-app 3/ios/App/App.xcodeproj"
+          ROOT="$GITHUB_WORKSPACE/tobacco-app 3"
+          echo "ROOT=$ROOT"
+          WORKSPACE="$ROOT/ios/App/App.xcworkspace"
+          PROJECT="$ROOT/ios/App/App.xcodeproj"
           SCHEME="App"
 
           echo "Checking for workspace/project at: $WORKSPACE or $PROJECT"
-          ls -la ios || true
+          ls -la "$ROOT/ios" || true
 
           if [ -d "$WORKSPACE" ]; then
             xcodebuild \
@@ -86,8 +80,8 @@ jobs:
               -derivedDataPath build \
               clean build
           else
-            echo "No .xcworkspace or .xcodeproj found at expected paths. Listing ios/App contents for debugging:";
-            ls -la ios/App || true
+            echo "No .xcworkspace or .xcodeproj found at expected paths. Listing $ROOT/ios/App contents for debugging:";
+            ls -la "$ROOT/ios/App" || true
             exit 1
           fi
 
