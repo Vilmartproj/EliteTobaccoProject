@@ -4,6 +4,9 @@ import { api } from '../api';
 import { S } from '../styles';
 import QRCode from './QRCode';
 import DatabaseViewer from './DatabaseViewer';
+import BuyingListScreen from './BuyingListScreen';
+import InvoiceScreen from './InvoiceScreen';
+import InvoiceManagementScreen from './InvoiceManagementScreen';
 import SearchableSelect from './SearchableSelect';
 import ApiStatusBadge from './ApiStatusBadge';
 import { printQRCodes } from '../utils/printQR';
@@ -91,11 +94,11 @@ export default function AdminDashboard({ user, onLogout }) {
       api.getApfNumbers(),
       api.getTobaccoTypes(),
       api.getPurchaseLocations(),
-      api.getGrades('tobacco_board'),
+      api.getGrades(),
       api.getGrades('buyer'),
       api.getQRCodes(),
       api.getBags(),
-      api.getBuyerBagActionSetting(),
+      api.getBuyerBagActionSetting()
     ]);
     setStats(s);
     setBuyers(b);
@@ -106,9 +109,13 @@ export default function AdminDashboard({ user, onLogout }) {
     setBuyerGrades(byGrades);
     setQR(q);
     setBags(bg);
-    setEnabledBuyerActionIds(Array.isArray(buyerActionSetting?.enabled_buyer_ids)
-      ? buyerActionSetting.enabled_buyer_ids.map(Number)
-      : []);
+    setEnabledBuyerActionIds(Array.isArray(buyerActionSetting?.enabled_buyer_ids) ? buyerActionSetting.enabled_buyer_ids.map(Number) : []);
+    
+    // Also refresh buying list when switching tabs
+    if (tab === 'buying-list') {
+      // This will trigger the BuyingListScreen to refresh its data
+      window.buyingListRefresh = Date.now();
+    }
   };
 
   useEffect(() => { refresh(); }, []);
@@ -749,7 +756,7 @@ export default function AdminDashboard({ user, onLogout }) {
 
       <div style={{ ...S.page, maxWidth: 1088 }}>
         <div style={S.tabs}>
-          {[['overview','📊 Overview'],['buyers','👥 Buyers'],['apf-maintenance','🔢 APF Maintenance'],['non-fcv-locations','📍 NON-FCV Locations'],['tobacco-types','🌿 Tobacco Types'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['qr-tracking','📡 QR Tracking'],['generate','⚡ Generate QR'],['bags','📦 Total Purchase'],['database','🗄️ Database']].map(([id, label]) => (
+          {[['overview','📊 Overview'],['buyers','👥 Buyers'],['apf-maintenance','🔢 APF Maintenance'],['non-fcv-locations','📍 NON-FCV Locations'],['tobacco-types','🌿 Tobacco Types'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['qr-tracking','📡 QR Tracking'],['generate','⚡ Generate QR'],['bags','📦 Total Purchase'],['buying-list','📋 Buying List'],['invoices','📑 Invoices'],['invoice-management','⚙️ Invoice Management'],['database','🗄️ Database']].map(([id, label]) => (
             <button key={id} style={S.tab(tab === id)} onClick={() => { setTab(id); refresh(); }}>{label}</button>
           ))}
         </div>
@@ -1608,6 +1615,41 @@ export default function AdminDashboard({ user, onLogout }) {
                   </table>
                 </div>
           </div>
+        )}
+
+        {/* ── BUYING LIST ── */}
+        {tab === 'buying-list' && (
+          <BuyingListScreen 
+            user={user} 
+            onLogout={onLogout} 
+            onNavigateToInvoice={(selectedItems) => {
+              setTab('invoices');
+              // Store selected items in a way that InvoiceScreen can access
+              window.adminSelectedItems = selectedItems;
+            }}
+          />
+        )}
+
+        {/* ── INVOICES ── */}
+        {tab === 'invoices' && (
+          <InvoiceScreen 
+            user={user} 
+            onLogout={onLogout} 
+            selectedItems={window.adminSelectedItems || []}
+            onBackToList={() => {
+              setTab('buying-list');
+              window.adminSelectedItems = null;
+            }}
+          />
+        )}
+
+        {/* ── INVOICE MANAGEMENT ── */}
+        {tab === 'invoice-management' && (
+          <InvoiceManagementScreen 
+            user={user} 
+            onLogout={onLogout} 
+            onBackToList={() => setTab('invoices')}
+          />
         )}
 
         {/* ── DATABASE VIEWER ── */}

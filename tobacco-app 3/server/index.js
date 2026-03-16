@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
+const bcrypt = require('bcrypt');
+const SALT_ROUNDS = 10;
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -13,6 +15,10 @@ const DB_NAME = process.env.DB_NAME || 'EliteTobacco';
 const DB_CONNECTION_LIMIT = Number(process.env.DB_CONNECTION_LIMIT || 10);
 const DB_AUTO_CREATE = String(process.env.DB_AUTO_CREATE || 'false').toLowerCase() === 'true';
 const DB_CLEAN_SETUP = String(process.env.DB_CLEAN_SETUP || 'false').toLowerCase() === 'true';
+
+// Admin credentials from environment variables
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
 const GRADE_TYPES = {
   TOBACCO_BOARD: 'tobacco_board',
@@ -87,7 +93,7 @@ const QR_SEED = [
   { unique_code: '117', buyer_code: null },
 ];
 
-const ALLOWED_TABLES = ['buyers', 'apf_numbers', 'tobacco_types', 'purchase_locations', 'grades', 'qr_codes', 'bags', 'settings'];
+const ALLOWED_TABLES = ['buyers', 'apf_numbers', 'tobacco_types', 'purchase_locations', 'grades', 'qr_codes', 'bags', 'settings', 'invoices', 'invoice_items', 'dispatch', 'dispatch_items', 'review_tasks'];
 
 let pool;
 
@@ -114,6 +120,24 @@ function normalizeDbDate(value) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed;
+}
+
+async function hashPassword(password) {
+  if (!password) return null;
+  return await bcrypt.hash(password, SALT_ROUNDS);
+}
+
+async function verifyPassword(password, hashedPassword) {
+  if (!password || !hashedPassword) return false;
+  // For backward compatibility, check if password is plain text
+  if (password === hashedPassword) return true;
+  // Check if hashed password
+  try {
+    return await bcrypt.compare(password, hashedPassword);
+  } catch (error) {
+    // If comparison fails, fall back to plain text comparison for backward compatibility
+    return password === hashedPassword;
+  }
 }
 
 async function q(sql, params = []) {
@@ -215,34 +239,144 @@ async function initDatabase() {
       id INT AUTO_INCREMENT PRIMARY KEY,
       unique_code VARCHAR(120) NOT NULL,
       buyer_id INT NULL,
-      buyer_code VARCHAR(50),
-      buyer_name VARCHAR(255),
-      fcv VARCHAR(30),
-      type_of_tobacco VARCHAR(120),
-      apf_number VARCHAR(80),
-      tobacco_grade VARCHAR(50),
-      purchase_date DATETIME NULL,
-      weight DECIMAL(12,3) NULL,
-      rate DECIMAL(12,3) NULL,
-      bale_value DECIMAL(12,3) NULL,
-      buyer_grade VARCHAR(50),
-      lot_number VARCHAR(120),
-      date_of_purchase DATETIME NULL,
-      purchase_location VARCHAR(255),
-      moisture VARCHAR(80),
-      colour VARCHAR(80),
-      sandy_leaves VARCHAR(80),
-      total_bales VARCHAR(80),
+      buyer_code VARCHAR(50) NULL,
+      buyer_name VARCHAR(255) NULL,
+      fcv VARCHAR(40) NULL,
+      type_of_tobacco VARCHAR(120) NULL,
+      apf_number VARCHAR(80) NULL,
+      tobacco_grade VARCHAR(50) NULL,
+      purchase_date DATE NULL,
+      weight DECIMAL(8,2) NULL,
+      rate DECIMAL(10,2) NULL,
+      bale_value DECIMAL(10,2) NULL,
+      buyer_grade VARCHAR(50) NULL,
+      lot_number VARCHAR(80) NULL,
+      date_of_purchase DATE NULL,
+      purchase_location VARCHAR(160) NULL,
+      moisture VARCHAR(80) NULL,
+      colour VARCHAR(80) NULL,
+      sandy_leaves VARCHAR(80) NULL,
+      total_bales VARCHAR(80) NULL,
       saved_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      INDEX idx_bags_buyer_id (buyer_id),
-      INDEX idx_bags_unique_code (unique_code),
+      status VARCHAR(50) NOT NULL DEFAULT 'available',
+      INDEX idx_buyer_id (buyer_id),
+      INDEX idx_status (status),
+      INDEX idx_unique_code (unique_code),
       CONSTRAINT fk_bags_buyer FOREIGN KEY (buyer_id) REFERENCES buyers(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;
   `);
 
-  await q('ALTER TABLE bags MODIFY COLUMN buyer_code VARCHAR(50) NULL');
-  await q('ALTER TABLE bags MODIFY COLUMN buyer_name VARCHAR(255) NULL');
+  // Add status column if it doesn't exist
+  try {
+    await q('ALTER TABLE bags ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT \'available\'');
+    await q('ALTER TABLE bags ADD INDEX idx_status (status)');
+    console.log('✅ Added status column to bags table');
+  } catch (error) {
+    if (error.code === 'ER_DUP_FIELDNAME') {
+      console.log('ℹ️ Status column already exists in bags table');
+    } else {
+      console.log('⚠️ Error adding status column:', error.message);
+    }
+  }
+
+  // Add updated_at column if it doesn't exist
+  try {
+    await q('ALTER TABLE bags ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+    console.log('✅ Added updated_at column to bags table');
+  } catch (error) {
+    if (error.code === 'ER_DUP_FIELDNAME') {
+      console.log('ℹ️ updated_at column already exists in bags table');
+    } else {
+      console.log('⚠️ Error adding updated_at column:', error.message);
+    }
+  }
+
+  // Add updated_at column to invoices table if it doesn't exist
+  try {
+    await q('ALTER TABLE invoices ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+    console.log('✅ Added updated_at column to invoices table');
+  } catch (error) {
+    if (error.code === 'ER_DUP_FIELDNAME') {
+      console.log('ℹ️ updated_at column already exists in invoices table');
+    } else {
+      console.log('⚠️ Error adding updated_at column to invoices:', error.message);
+    }
+  }
+
+  // Add updated_at column to invoice_items table if it doesn't exist
+  try {
+    await q('ALTER TABLE invoice_items ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+    console.log('✅ Added updated_at column to invoice_items table');
+  } catch (error) {
+    if (error.code === 'ER_DUP_FIELDNAME') {
+      console.log('ℹ️ updated_at column already exists in invoice_items table');
+    } else {
+      console.log('⚠️ Error adding updated_at column to invoice_items:', error.message);
+    }
+  }
+
+  // Add updated_at column to dispatch table if it doesn't exist
+  try {
+    await q('ALTER TABLE dispatch ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+    console.log('✅ Added updated_at column to dispatch table');
+  } catch (error) {
+    if (error.code === 'ER_DUP_FIELDNAME') {
+      console.log('ℹ️ updated_at column already exists in dispatch table');
+    } else {
+      console.log('⚠️ Error adding updated_at column to dispatch:', error.message);
+    }
+  }
+
+  // Add updated_at column to dispatch_items table if it doesn't exist
+  try {
+    await q('ALTER TABLE dispatch_items ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+    console.log('✅ Added updated_at column to dispatch_items table');
+  } catch (error) {
+    if (error.code === 'ER_DUP_FIELDNAME') {
+      console.log('ℹ️ updated_at column already exists in dispatch_items table');
+    } else {
+      console.log('⚠️ Error adding updated_at column to dispatch_items:', error.message);
+    }
+  }
+
+  // Add updated_at column to review_tasks table if it doesn't exist
+  try {
+    await q('ALTER TABLE review_tasks ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+    console.log('✅ Added updated_at column to review_tasks table');
+  } catch (error) {
+    if (error.code === 'ER_DUP_FIELDNAME') {
+      console.log('ℹ️ updated_at column already exists in review_tasks table');
+    } else {
+      console.log('⚠️ Error adding updated_at column to review_tasks:', error.message);
+    }
+  }
+
+  // Add performance indexes
+  try {
+    // Bags table indexes for better query performance
+    await q('CREATE INDEX IF NOT EXISTS idx_bags_buyer_id_date ON bags(buyer_id, date_of_purchase)');
+    await q('CREATE INDEX IF NOT EXISTS idx_bags_status_date ON bags(status, date_of_purchase)');
+    await q('CREATE INDEX IF NOT EXISTS idx_bags_unique_code ON bags(unique_code)');
+    await q('CREATE INDEX IF NOT EXISTS idx_bags_buyer_code ON bags(buyer_code)');
+    
+    // QR codes indexes
+    await q('CREATE INDEX IF NOT EXISTS idx_qr_codes_buyer_id ON qr_codes(buyer_id)');
+    await q('CREATE INDEX IF NOT EXISTS idx_qr_codes_used ON qr_codes(used)');
+    
+    // Invoice indexes
+    await q('CREATE INDEX IF NOT EXISTS idx_invoices_buyer_code_date ON invoices(buyer_code, invoice_date)');
+    await q('CREATE INDEX IF NOT EXISTS idx_invoices_status_date ON invoices(status, created_at)');
+    
+    // Invoice items indexes
+    await q('CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON invoice_items(invoice_id)');
+    await q('CREATE INDEX IF NOT EXISTS idx_invoice_items_qr_number ON invoice_items(qr_number)');
+    
+    console.log('✅ Performance indexes created successfully');
+  } catch (error) {
+    console.log('⚠️ Error creating performance indexes:', error.message);
+  }
+
   await q('ALTER TABLE bags MODIFY COLUMN fcv VARCHAR(30) NULL');
   await q('ALTER TABLE bags MODIFY COLUMN type_of_tobacco VARCHAR(120) NULL');
   await q('ALTER TABLE bags MODIFY COLUMN apf_number VARCHAR(80) NULL');
@@ -269,6 +403,93 @@ async function initDatabase() {
     ) ENGINE=InnoDB;
   `);
 
+  await q(`
+    CREATE TABLE IF NOT EXISTS invoices (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      buyer_code VARCHAR(50) NOT NULL,
+      total_weight DECIMAL(10,2) NOT NULL DEFAULT 0,
+      total_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+      invoice_date DATE NOT NULL,
+      status VARCHAR(50) NOT NULL DEFAULT 'generated',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_buyer_code (buyer_code),
+      INDEX idx_invoice_date (invoice_date),
+      INDEX idx_status (status)
+    ) ENGINE=InnoDB;
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS invoice_items (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      invoice_id INT NOT NULL,
+      qr_number VARCHAR(120) NOT NULL,
+      buyer_code VARCHAR(50) NOT NULL,
+      tobacco_type VARCHAR(120) NOT NULL,
+      grade VARCHAR(50) NOT NULL,
+      bag_weight DECIMAL(8,2) NOT NULL DEFAULT 0,
+      bag_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+      INDEX idx_invoice_id (invoice_id),
+      INDEX idx_qr_number (qr_number),
+      INDEX idx_buyer_code (buyer_code)
+    ) ENGINE=InnoDB;
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS dispatch (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      lorry_number VARCHAR(50) NOT NULL,
+      load_bundle_number VARCHAR(50) NOT NULL,
+      max_load_capacity DECIMAL(10,2) NOT NULL DEFAULT 0,
+      total_weight DECIMAL(10,2) NOT NULL DEFAULT 0,
+      dispatch_user_id INT NOT NULL,
+      status VARCHAR(50) NOT NULL DEFAULT 'in_progress',
+      completed_at DATETIME NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_lorry_number (lorry_number),
+      INDEX idx_status (status),
+      INDEX idx_dispatch_user_id (dispatch_user_id)
+    ) ENGINE=InnoDB;
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS dispatch_items (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      dispatch_lorry_number VARCHAR(50) NOT NULL,
+      dispatch_bundle_number VARCHAR(50) NOT NULL,
+      qr_number VARCHAR(120) NOT NULL,
+      bag_weight DECIMAL(8,2) NOT NULL DEFAULT 0,
+      scanned_at DATETIME NOT NULL,
+      scan_order INT NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_dispatch_bundle (dispatch_lorry_number, dispatch_bundle_number),
+      INDEX idx_qr_number (qr_number),
+      INDEX idx_scanned_at (scanned_at)
+    ) ENGINE=InnoDB;
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS review_tasks (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      load_bundle_id INT NOT NULL,
+      load_bundle_number VARCHAR(50) NOT NULL,
+      lorry_number VARCHAR(50) NOT NULL,
+      total_weight DECIMAL(10,2) NOT NULL DEFAULT 0,
+      assigned_to_user_id INT NULL,
+      assigned_by_user_id INT NOT NULL,
+      updated_by_user_id INT NULL,
+      status VARCHAR(50) NOT NULL DEFAULT 'not_assigned',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_load_bundle_number (load_bundle_number),
+      INDEX idx_assigned_to_user_id (assigned_to_user_id),
+      INDEX idx_status (status)
+    ) ENGINE=InnoDB;
+  `);
+
   if (DB_CLEAN_SETUP) {
     await q('SET FOREIGN_KEY_CHECKS = 0');
     await q('TRUNCATE TABLE bags');
@@ -279,6 +500,11 @@ async function initDatabase() {
     await q('TRUNCATE TABLE purchase_locations');
     await q('TRUNCATE TABLE settings');
     await q('TRUNCATE TABLE buyers');
+    await q('TRUNCATE TABLE invoice_items');
+    await q('TRUNCATE TABLE invoices');
+    await q('TRUNCATE TABLE dispatch_items');
+    await q('TRUNCATE TABLE dispatch');
+    await q('TRUNCATE TABLE review_tasks');
     await q('SET FOREIGN_KEY_CHECKS = 1');
     console.log('🧹 DB_CLEAN_SETUP=true -> existing rows removed from core tables');
   }
@@ -347,22 +573,27 @@ app.post('/api/login', withAsync(async (req, res) => {
   const { code, password, role } = req.body || {};
 
   if (role === 'admin') {
-    if (code === 'admin' && password === 'admin123') {
-      return res.json({ success: true, user: { role: 'admin', name: 'Administrator' } });
+    if (code === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+      return res.json({ success: true, user: { id: 1, role: 'admin', name: 'Administrator', code: 'ADMIN' } });
     }
     return res.status(401).json({ error: 'Invalid admin credentials' });
   }
 
   const buyerCode = String(code || '').trim().toUpperCase();
-  const buyerPassword = String(password || '').trim().toUpperCase();
+  const buyerPassword = String(password || '').trim();
   const rows = await q(
-    'SELECT id, code, name, password, created_at FROM buyers WHERE code = ? AND password = ? LIMIT 1',
-    [buyerCode, buyerPassword]
+    'SELECT id, code, name, password, created_at FROM buyers WHERE code = ? LIMIT 1',
+    [buyerCode]
   );
 
   if (rows.length === 0) return res.status(401).json({ error: 'Invalid buyer code or password' });
 
-  return res.json({ success: true, user: { role: 'buyer', ...rows[0] } });
+  const buyer = rows[0];
+  const isValidPassword = await verifyPassword(buyerPassword, buyer.password);
+  
+  if (!isValidPassword) return res.status(401).json({ error: 'Invalid buyer code or password' });
+
+  return res.json({ success: true, user: { role: 'buyer', ...buyer } });
 }));
 
 app.get('/api/buyers', withAsync(async (_req, res) => {
@@ -371,18 +602,20 @@ app.get('/api/buyers', withAsync(async (_req, res) => {
 }));
 
 app.post('/api/buyers', withAsync(async (req, res) => {
-  const { code, name } = req.body || {};
+  const { code, name, password } = req.body || {};
   const normalizedCode = String(code || '').trim().toUpperCase();
   const normalizedName = String(name || '').trim();
+  const normalizedPassword = String(password || '').trim() || normalizedCode; // Default to code if no password provided
 
   if (!normalizedCode || !normalizedName) {
     return res.status(400).json({ error: 'code and name required' });
   }
 
   try {
+    const hashedPassword = await hashPassword(normalizedPassword);
     const result = await q(
       'INSERT INTO buyers (code, name, password, created_at) VALUES (?, ?, ?, NOW())',
-      [normalizedCode, normalizedName, normalizedCode]
+      [normalizedCode, normalizedName, hashedPassword]
     );
     const rows = await q('SELECT * FROM buyers WHERE id = ?', [result.insertId]);
     return res.json(rows[0]);
@@ -675,36 +908,38 @@ app.post('/api/qrcodes/generate', withAsync(async (req, res) => {
     if (buyerExists.length === 0) return res.status(400).json({ error: 'Invalid buyerId' });
   }
 
-  const existingRows = await q('SELECT unique_code FROM qr_codes');
-  const existing = new Set(existingRows.map((row) => row.unique_code));
-
-  const trailingDigitsMatch = normalizedStart.match(/^(.*?)(\d+)$/);
-  const prefix = trailingDigitsMatch ? trailingDigitsMatch[1] : '';
-  const baseDigits = trailingDigitsMatch ? trailingDigitsMatch[2] : '';
-  const digitWidth = baseDigits.length;
-
-  const generateDeterministicCode = (index) => {
-    if (!normalizedStart) return null;
-    if (Number.isFinite(parsedStart)) return String(parsedStart + index);
-    if (trailingDigitsMatch) {
-      const next = String(parseInt(baseDigits, 10) + index).padStart(digitWidth, '0');
-      return `${prefix}${next}`;
-    }
-    return index === 0 ? normalizedStart : `${normalizedStart}${index}`;
-  };
-
-  if (normalizedStart) {
-    for (let i = 0; i < n; i += 1) {
-      const candidate = generateDeterministicCode(i);
-      if (existing.has(candidate)) {
-        return res.status(400).json({ error: `QR code ${candidate} already exists` });
-      }
-    }
-  }
-
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+
+    // Get fresh existing codes within transaction to prevent race conditions
+    const [existingRows] = await conn.query('SELECT unique_code FROM qr_codes FOR UPDATE');
+    const existing = new Set(existingRows.map((row) => row.unique_code));
+
+    const trailingDigitsMatch = normalizedStart.match(/^(.*?)(\d+)$/);
+    const prefix = trailingDigitsMatch ? trailingDigitsMatch[1] : '';
+    const baseDigits = trailingDigitsMatch ? trailingDigitsMatch[2] : '';
+    const digitWidth = baseDigits.length;
+
+    const generateDeterministicCode = (index) => {
+      if (!normalizedStart) return null;
+      if (Number.isFinite(parsedStart)) return String(parsedStart + index);
+      if (trailingDigitsMatch) {
+        const next = String(parseInt(baseDigits, 10) + index).padStart(digitWidth, '0');
+        return `${prefix}${next}`;
+      }
+      return index === 0 ? normalizedStart : `${normalizedStart}${index}`;
+    };
+
+    if (normalizedStart) {
+      for (let i = 0; i < n; i += 1) {
+        const candidate = generateDeterministicCode(i);
+        if (existing.has(candidate)) {
+          await conn.rollback();
+          return res.status(400).json({ error: `QR code ${candidate} already exists` });
+        }
+      }
+    }
 
     const codes = [];
 
@@ -874,6 +1109,17 @@ app.post('/api/bags', withAsync(async (req, res) => {
   );
 
   if (body.unique_code) {
+    // Verify QR code exists and is not already used
+    const qrCheck = await q('SELECT id, used FROM qr_codes WHERE unique_code = ? LIMIT 1', [String(body.unique_code)]);
+    if (qrCheck.length === 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Invalid QR code. Please select from available QR codes.' });
+    }
+    if (qrCheck[0].used) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'QR code is already used. Please select a different QR code.' });
+    }
+    
     await q('UPDATE qr_codes SET used = 1 WHERE unique_code = ?', [String(body.unique_code)]);
   }
 
@@ -983,6 +1229,785 @@ app.delete('/api/bags/:id', withAsync(async (req, res) => {
   } finally {
     conn.release();
   }
+}));
+
+app.get('/api/buying-list', withAsync(async (req, res) => {
+  const { date, buyer_id } = req.query;
+  let query = `
+    SELECT 
+      b.id,
+      b.unique_code as qr_number,
+      b.buyer_id,
+      b.buyer_code,
+      b.buyer_name,
+      b.type_of_tobacco as tobacco_type,
+      b.tobacco_grade as grade,
+      b.weight as bag_weight,
+      b.bale_value as bag_price,
+      b.purchase_location,
+      b.date_of_purchase,
+      b.saved_at,
+      b.status,
+      b.updated_at
+    FROM bags b
+    WHERE 1=1
+  `;
+  const params = [];
+
+  if (date) {
+    query += ` AND DATE(b.date_of_purchase) = ?`;
+    params.push(date);
+  }
+
+  if (buyer_id) {
+    query += ` AND b.buyer_id = ?`;
+    params.push(buyer_id);
+  }
+
+  query += ` ORDER BY b.date_of_purchase DESC, b.id DESC`;
+
+  const items = await q(query, params);
+  
+  // Debug: Log status distribution
+  const statusCounts = items.reduce((acc, item) => {
+    acc[item.status] = (acc[item.status] || 0) + 1;
+    return acc;
+  }, {});
+  console.log('Buying list status distribution:', statusCounts);
+  
+  res.json({ items });
+}));
+
+function validateInvoiceData(data) {
+  const errors = [];
+  
+  // Validate items array
+  if (!data.items || !Array.isArray(data.items) || data.items.length === 0) {
+    errors.push('Invoice items are required and must be a non-empty array');
+  } else {
+    // Validate each item
+    data.items.forEach((item, index) => {
+      if (!item.qr_number || typeof item.qr_number !== 'string') {
+        errors.push(`Item ${index + 1}: QR number is required`);
+      }
+      if (!item.buyer_code || typeof item.buyer_code !== 'string') {
+        errors.push(`Item ${index + 1}: Buyer code is required`);
+      }
+      if (!item.tobacco_type || typeof item.tobacco_type !== 'string') {
+        errors.push(`Item ${index + 1}: Tobacco type is required`);
+      }
+      if (!item.grade || typeof item.grade !== 'string') {
+        errors.push(`Item ${index + 1}: Grade is required`);
+      }
+      const weight = parseFloat(item.bag_weight);
+      if (!Number.isFinite(weight) || weight <= 0) {
+        errors.push(`Item ${index + 1}: Valid bag weight is required`);
+      }
+      const price = parseFloat(item.bag_price);
+      if (!Number.isFinite(price) || price < 0) {
+        errors.push(`Item ${index + 1}: Valid bag price is required`);
+      }
+    });
+  }
+  
+  // Validate user_id
+  const userId = parseInt(data.user_id);
+  if (!Number.isFinite(userId) || userId <= 0) {
+    errors.push('Valid user ID is required');
+  }
+  
+  // Validate buyer_code
+  if (!data.buyer_code || typeof data.buyer_code !== 'string' || data.buyer_code.trim().length === 0) {
+    errors.push('Buyer code is required');
+  }
+  
+  // Validate total_weight
+  const totalWeight = parseFloat(data.total_weight);
+  if (!Number.isFinite(totalWeight) || totalWeight <= 0) {
+    errors.push('Valid total weight is required');
+  }
+  
+  // Validate total_price
+  const totalPrice = parseFloat(data.total_price);
+  if (!Number.isFinite(totalPrice) || totalPrice < 0) {
+    errors.push('Valid total price is required');
+  }
+  
+  // Validate invoice_date
+  if (!data.invoice_date) {
+    errors.push('Invoice date is required');
+  } else {
+    const invoiceDate = new Date(data.invoice_date);
+    if (Number.isNaN(invoiceDate.getTime())) {
+      errors.push('Valid invoice date is required');
+    } else if (invoiceDate > new Date()) {
+      errors.push('Invoice date cannot be in the future');
+    }
+  }
+  
+  return errors;
+}
+
+app.post('/api/invoices', withAsync(async (req, res) => {
+  console.log('Invoice request received:', req.body);
+  
+  const { items, user_id, buyer_code, total_weight, total_price, invoice_date } = req.body;
+  
+  console.log('Extracted data:', { items, user_id, buyer_code, total_weight, total_price, invoice_date });
+  
+  // Validate input data
+  const validationErrors = validateInvoiceData(req.body);
+  if (validationErrors.length > 0) {
+    console.log('Validation errors:', validationErrors);
+    return res.status(400).json({ error: validationErrors.join('; ') });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // Create invoice record
+    const [invoiceResult] = await conn.query(`
+      INSERT INTO invoices (
+        user_id, buyer_code, total_weight, total_price, invoice_date, status, created_at
+      ) VALUES (?, ?, ?, ?, ?, 'generated', NOW())
+    `, [user_id, buyer_code, total_weight, total_price, invoice_date]);
+
+    const invoiceId = invoiceResult.insertId;
+    console.log('Invoice created with ID:', invoiceId);
+
+    // Create invoice items and update bag statuses
+    for (const item of items) {
+      console.log('Creating invoice item:', {
+        itemData: item,
+        qrNumber: item.qr_number
+      });
+      
+      await conn.query(`
+        INSERT INTO invoice_items (
+          invoice_id, qr_number, buyer_code, tobacco_type, grade, bag_weight, bag_price, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+      `, [
+        invoiceId,
+        item.qr_number,
+        item.buyer_code,
+        item.tobacco_type,
+        item.grade,
+        item.bag_weight,
+        item.bag_price
+      ]);
+
+      // Update bag status to 'invoiced'
+      await conn.query(`
+        UPDATE bags 
+        SET status = 'invoiced', updated_at = NOW()
+        WHERE unique_code = ?
+      `, [item.qr_number]);
+    }
+
+    await conn.commit();
+    
+    console.log('Invoice saved successfully');
+    res.json({ 
+      success: true, 
+      invoice_id: invoiceId,
+      message: 'Invoice generated successfully'
+    });
+  } catch (error) {
+    console.error('Invoice creation error:', error);
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}));
+
+app.get('/api/invoices', withAsync(async (req, res) => {
+  const { buyer_id } = req.query;
+  
+  let query = `
+    SELECT 
+      i.id,
+      i.user_id,
+      i.buyer_code,
+      i.total_weight,
+      i.total_price,
+      i.invoice_date,
+      i.status,
+      i.created_at,
+      COUNT(ii.id) as item_count
+    FROM invoices i
+    LEFT JOIN invoice_items ii ON i.id = ii.invoice_id
+    WHERE 1=1
+  `;
+  const params = [];
+
+  if (buyer_id) {
+    query += ` AND i.buyer_code = (SELECT code FROM buyers WHERE id = ?)`;
+    params.push(buyer_id);
+  }
+
+  query += ` GROUP BY i.id ORDER BY i.created_at DESC`;
+
+  const invoices = await q(query, params);
+  res.json({ invoices });
+}));
+
+app.get('/api/invoices/:id/items', withAsync(async (req, res) => {
+  const invoiceId = Number(req.params.id);
+  
+  const items = await q(`
+    SELECT 
+      ii.id,
+      ii.invoice_id,
+      ii.qr_number,
+      ii.buyer_code,
+      ii.tobacco_type,
+      ii.grade,
+      ii.bag_weight,
+      ii.bag_price,
+      ii.created_at,
+      b.status as bag_status
+    FROM invoice_items ii
+    LEFT JOIN bags b ON ii.qr_number = b.unique_code
+    WHERE ii.invoice_id = ?
+    ORDER BY ii.id ASC
+  `, [invoiceId]);
+  
+  res.json({ items });
+}));
+
+app.put('/api/invoices/:id/items/:itemId/remove', withAsync(async (req, res) => {
+  const invoiceId = Number(req.params.id);
+  const itemId = Number(req.params.itemId);
+  const { user_id } = req.body;
+  
+  console.log('Invoice item removal request:', {
+    invoiceId,
+    itemId,
+    user_id,
+    fullBody: req.body
+  });
+  
+  if (!user_id) {
+    console.log('Missing user_id in request');
+    return res.status(400).json({ error: 'User ID is required' });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // Get the invoice item details
+    const itemResult = await conn.query(`
+      SELECT ii.*, 
+             b.unique_code as bag_unique_code
+      FROM invoice_items ii
+      LEFT JOIN bags b ON b.unique_code = ii.qr_number
+      WHERE ii.id = ? AND ii.invoice_id = ?
+    `, [itemId, invoiceId]);
+
+    console.log('Invoice item query result:', {
+      itemId,
+      invoiceId,
+      foundItems: itemResult.length,
+      itemData: itemResult[0],
+      isArray: Array.isArray(itemResult[0]),
+      dataType: typeof itemResult[0]
+    });
+
+    if (itemResult.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Invoice item not found' });
+    }
+
+    const item = itemResult[0];
+    
+    // Handle if item is an array (shouldn't happen but just in case)
+    const itemData = Array.isArray(item) ? item[0] : item;
+    
+    console.log('Processed item data:', {
+      originalItem: item,
+      processedItem: itemData,
+      qrNumberField: itemData.qr_number,
+      bagUniqueCodeField: itemData.bag_unique_code
+    });
+    
+    // Try multiple ways to get the QR number
+    let qrNumber = itemData.qr_number || itemData.bag_unique_code;
+    
+    // If still undefined, try to find by other means
+    if (!qrNumber) {
+      console.log('QR number not found, trying alternative methods...');
+      
+      // Try to find by buyer_code, weight, and price combination
+      const fallbackResult = await conn.query(`
+        SELECT unique_code 
+        FROM bags 
+        WHERE buyer_code = ? AND weight = ? AND bale_value = ?
+        LIMIT 1
+      `, [itemData.buyer_code, itemData.bag_weight, itemData.bag_price]);
+      
+      if (fallbackResult.length > 0) {
+        qrNumber = fallbackResult[0].unique_code;
+        console.log('Found QR number via fallback method:', qrNumber);
+      }
+    }
+
+    console.log('Processing bag removal:', {
+      qrNumber,
+      itemId,
+      invoiceId,
+      originalQrNumber: itemData.qr_number,
+      bagUniqueCode: itemData.bag_unique_code,
+      itemData: itemData
+    });
+
+    if (!qrNumber) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'QR number not found for invoice item. Item data: ' + JSON.stringify(itemData) });
+    }
+
+    // Remove the invoice item
+    await conn.query(`
+      DELETE FROM invoice_items 
+      WHERE id = ? AND invoice_id = ?
+    `, [itemId, invoiceId]);
+
+    // Check if bag exists and get current status before update
+    const bagBeforeUpdate = await conn.query(`
+      SELECT id, unique_code, status, updated_at
+      FROM bags 
+      WHERE unique_code = ?
+    `, [qrNumber]);
+
+    // Also check for any similar QR codes (might be formatting issues)
+    const similarBags = await conn.query(`
+      SELECT id, unique_code, status, updated_at
+      FROM bags 
+      WHERE unique_code LIKE ? OR unique_code = ?
+    `, [`%${qrNumber}%`, qrNumber]);
+
+    console.log('Bag search results:', {
+      searchingFor: qrNumber,
+      exactMatch: bagBeforeUpdate.length,
+      similarMatches: similarBags.length,
+      exactMatchData: bagBeforeUpdate[0],
+      allSimilarData: similarBags
+    });
+
+    // Update bag status back to 'available'
+    const updateResult = await conn.query(`
+      UPDATE bags 
+      SET status = 'available', updated_at = NOW()
+      WHERE unique_code = ?
+    `, [qrNumber]);
+    
+    console.log(`Updated bag ${qrNumber} status:`, {
+      qrNumber,
+      affectedRows: updateResult.affectedRows,
+      changedRows: updateResult.changedRows
+    });
+
+    // Verify the bag status was updated
+    const verifyResult = await conn.query(`
+      SELECT status, updated_at 
+      FROM bags 
+      WHERE unique_code = ?
+    `, [qrNumber]);
+    
+    console.log(`Verified bag ${qrNumber} status:`, verifyResult[0]);
+
+    // Update invoice totals
+    const [totalsResult] = await conn.query(`
+      SELECT 
+        COUNT(*) as item_count,
+        COALESCE(SUM(bag_weight), 0) as total_weight,
+        COALESCE(SUM(bag_price), 0) as total_price
+      FROM invoice_items 
+      WHERE invoice_id = ?
+    `, [invoiceId]);
+
+    const totals = totalsResult[0];
+
+    await conn.query(`
+      UPDATE invoices 
+      SET total_weight = ?, total_price = ?, updated_at = NOW()
+      WHERE id = ?
+    `, [totals.total_weight, totals.total_price, invoiceId]);
+
+    await conn.commit();
+    
+    res.json({ 
+      success: true, 
+      message: 'Item removed from invoice successfully',
+      updated_totals: {
+        item_count: totals.item_count,
+        total_weight: totals.total_weight,
+        total_price: totals.total_price
+      }
+    });
+  } catch (error) {
+    console.error('Remove item error:', error);
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}));
+
+app.put('/api/bags/:qrNumber/status', withAsync(async (req, res) => {
+  const qrNumber = String(req.params.qrNumber);
+  const { status, user_id } = req.body;
+  
+  if (!status || !user_id) {
+    return res.status(400).json({ error: 'Status and user ID are required' });
+  }
+
+  const validStatuses = ['available', 'admin_review', 'assigned_to_invoice', 'invoiced'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+
+  // Get current status before update
+  const beforeUpdate = await q('SELECT status FROM bags WHERE unique_code = ?', [qrNumber]);
+  
+  await q(`
+    UPDATE bags 
+    SET status = ?, updated_at = NOW()
+    WHERE unique_code = ?
+  `, [status, qrNumber]);
+
+  // Get updated status
+  const afterUpdate = await q('SELECT * FROM bags WHERE unique_code = ?', [qrNumber]);
+
+  console.log(`Bag ${qrNumber} status updated:`, {
+    before: beforeUpdate[0]?.status,
+    after: status,
+    updated_by: user_id
+  });
+
+  res.json({ 
+    success: true, 
+    bag: afterUpdate[0] || null,
+    previous_status: beforeUpdate[0]?.status
+  });
+}));
+
+// Debug endpoint to check bag status
+app.get('/api/bags/:qrNumber/status', withAsync(async (req, res) => {
+  const qrNumber = String(req.params.qrNumber);
+  
+  const bag = await q(`
+    SELECT 
+      id, unique_code, buyer_code, status, saved_at, updated_at,
+      (SELECT COUNT(*) FROM invoice_items WHERE qr_number = ?) as invoice_count
+    FROM bags 
+    WHERE unique_code = ?
+  `, [qrNumber, qrNumber]);
+
+  if (bag.length === 0) {
+    return res.status(404).json({ error: 'Bag not found' });
+  }
+
+  res.json({ 
+    bag: bag[0],
+    invoice_count: bag[0].invoice_count
+  });
+}));
+
+// Check all bag statuses for debugging
+app.get('/api/bags/status-summary', withAsync(async (req, res) => {
+  const statusSummary = await q(`
+    SELECT 
+      status,
+      COUNT(*) as count,
+      GROUP_CONCAT(unique_code) as qr_codes
+    FROM bags 
+    GROUP BY status
+    ORDER BY count DESC
+  `);
+
+  const invoiceItems = await q(`
+    SELECT 
+      qr_number,
+      COUNT(*) as invoice_count
+    FROM invoice_items 
+    GROUP BY qr_number
+  `);
+
+  // Find inconsistencies
+  const inconsistencies = await q(`
+    SELECT 
+      b.unique_code,
+      b.status as bag_status,
+      COUNT(ii.id) as invoice_item_count
+    FROM bags b
+    LEFT JOIN invoice_items ii ON b.unique_code = ii.qr_number
+    GROUP BY b.unique_code, b.status
+    HAVING 
+      (b.status = 'invoiced' AND COUNT(ii.id) = 0) OR
+      (b.status = 'available' AND COUNT(ii.id) > 0) OR
+      (b.status = 'assigned_to_invoice' AND COUNT(ii.id) = 0)
+  `);
+
+  res.json({
+    status_summary: statusSummary,
+    invoice_items: invoiceItems,
+    inconsistencies: inconsistencies
+  });
+}));
+
+// Fix inconsistent bag statuses
+app.post('/api/bags/fix-statuses', withAsync(async (req, res) => {
+  const { user_id } = req.body;
+  
+  if (!user_id) {
+    return res.status(400).json({ error: 'User ID is required' });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // First, normalize all status values to lowercase
+    await conn.query(`
+      UPDATE bags 
+      SET status = LOWER(status)
+      WHERE status IN ('Available', 'INVOICED', 'ASSIGNED_TO_INVOICE', 'ADMIN_REVIEW')
+    `);
+
+    console.log('Normalized status values to lowercase');
+
+    // Find bags with inconsistent statuses
+    const inconsistentBags = await conn.query(`
+      SELECT 
+        b.unique_code,
+        b.status as bag_status,
+        COUNT(ii.id) as invoice_item_count
+      FROM bags b
+      LEFT JOIN invoice_items ii ON b.unique_code = ii.qr_number
+      GROUP BY b.unique_code, b.status
+      HAVING 
+        (b.status = 'invoiced' AND COUNT(ii.id) = 0) OR
+        (b.status = 'available' AND COUNT(ii.id) > 0) OR
+        (b.status = 'assigned_to_invoice' AND COUNT(ii.id) = 0)
+    `);
+
+    console.log('Found inconsistent bag statuses:', inconsistentBags);
+
+    const fixes = [];
+    
+    for (const bag of inconsistentBags) {
+      let newStatus;
+      
+      if (bag.invoice_item_count > 0) {
+        newStatus = 'invoiced';
+      } else {
+        newStatus = 'available';
+      }
+      
+      await conn.query(`
+        UPDATE bags 
+        SET status = ?, updated_at = NOW()
+        WHERE unique_code = ?
+      `, [newStatus, bag.unique_code]);
+      
+      fixes.push({
+        qr_number: bag.unique_code,
+        old_status: bag.bag_status,
+        new_status: newStatus,
+        invoice_items: bag.invoice_item_count
+      });
+    }
+
+    await conn.commit();
+    
+    console.log('Fixed bag statuses:', fixes);
+    
+    res.json({ 
+      success: true, 
+      fixes_applied: fixes.length,
+      details: fixes
+    });
+  } catch (error) {
+    console.error('Error fixing bag statuses:', error);
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}));
+app.post('/api/dispatch', withAsync(async (req, res) => {
+  const { lorry_number, load_bundle_number, max_load_capacity, dispatch_user_id, status } = req.body;
+  
+  if (!lorry_number || !load_bundle_number || !max_load_capacity || !dispatch_user_id) {
+    return res.status(400).json({ error: 'All dispatch fields are required' });
+  }
+
+  const result = await q(`
+    INSERT INTO dispatch (
+      lorry_number, load_bundle_number, max_load_capacity, dispatch_user_id, status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+  `, [lorry_number, load_bundle_number, max_load_capacity, dispatch_user_id, status || 'in_progress']);
+
+  const rows = await q('SELECT * FROM dispatch WHERE id = ?', [result.insertId]);
+  res.json({ success: true, dispatch: rows[0] });
+}));
+
+app.put('/api/dispatch/complete', withAsync(async (req, res) => {
+  const { lorry_number, load_bundle_number, items, total_weight, completed_at, status } = req.body;
+  
+  if (!lorry_number || !load_bundle_number || !items || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Dispatch completion data is required' });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // Update dispatch status
+    await conn.query(`
+      UPDATE dispatch 
+      SET status = ?, total_weight = ?, completed_at = ?, updated_at = NOW()
+      WHERE lorry_number = ? AND load_bundle_number = ?
+    `, [status || 'completed', total_weight, completed_at, lorry_number, load_bundle_number]);
+
+    // Create dispatch items
+    for (const item of items) {
+      await conn.query(`
+        INSERT INTO dispatch_items (
+          dispatch_lorry_number, dispatch_bundle_number, qr_number, bag_weight, scanned_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, NOW())
+      `, [lorry_number, load_bundle_number, item.qr_number, item.bag_weight, item.scanned_at]);
+    }
+
+    await conn.commit();
+    res.json({ success: true, message: 'Dispatch completed successfully' });
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}));
+
+app.get('/api/dispatch', withAsync(async (req, res) => {
+  const rows = await q('SELECT * FROM dispatch ORDER BY created_at DESC');
+  res.json(rows);
+}));
+
+// Warehouse Module Endpoints
+app.get('/api/load-bundles', withAsync(async (req, res) => {
+  const rows = await q(`
+    SELECT 
+      d.lorry_number,
+      d.load_bundle_number,
+      d.total_weight,
+      d.status as review_status,
+      COUNT(di.id) as items_count
+    FROM dispatch d
+    LEFT JOIN dispatch_items di ON d.lorry_number = di.dispatch_lorry_number AND d.load_bundle_number = di.dispatch_bundle_number
+    WHERE d.status = 'completed'
+    GROUP BY d.lorry_number, d.load_bundle_number, d.total_weight, d.status
+    ORDER BY d.created_at DESC
+  `);
+  res.json(rows);
+}));
+
+app.get('/api/warehouse-users', withAsync(async (req, res) => {
+  const rows = await q(`
+    SELECT id, code, name 
+    FROM buyers 
+    WHERE code LIKE 'W%' 
+    ORDER BY code
+  `);
+  res.json(rows);
+}));
+
+app.get('/api/review-tasks', withAsync(async (req, res) => {
+  const rows = await q(`
+    SELECT 
+      rt.id,
+      rt.load_bundle_number,
+      rt.lorry_number,
+      rt.total_weight,
+      rt.status,
+      rt.assigned_to_user_id,
+      assigned_user.name as assigned_to_name,
+      rt.assigned_by_user_id,
+      assigned_by_user.name as assigned_by_name,
+      rt.created_at,
+      COUNT(lb.id) as items_count
+    FROM review_tasks rt
+    LEFT JOIN buyers assigned_user ON rt.assigned_to_user_id = assigned_user.id
+    LEFT JOIN buyers assigned_by_user ON rt.assigned_by_user_id = assigned_by_user.id
+    LEFT JOIN load_bundles lb ON rt.load_bundle_number = lb.bundle_number
+    GROUP BY rt.id
+    ORDER BY rt.created_at DESC
+  `);
+  res.json(rows);
+}));
+
+app.get('/api/review-tasks/user/:userId', withAsync(async (req, res) => {
+  const userId = Number(req.params.userId);
+  const rows = await q(`
+    SELECT 
+      rt.id,
+      rt.load_bundle_number,
+      rt.lorry_number,
+      rt.total_weight,
+      rt.status,
+      rt.assigned_to_user_id,
+      assigned_user.name as assigned_to_name,
+      rt.assigned_by_user_id,
+      assigned_by_user.name as assigned_by_name,
+      rt.created_at,
+      COUNT(lb.id) as items_count
+    FROM review_tasks rt
+    LEFT JOIN buyers assigned_user ON rt.assigned_to_user_id = assigned_user.id
+    LEFT JOIN buyers assigned_by_user ON rt.assigned_by_user_id = assigned_by_user.id
+    LEFT JOIN load_bundles lb ON rt.load_bundle_number = lb.bundle_number
+    WHERE rt.assigned_to_user_id = ?
+    GROUP BY rt.id
+    ORDER BY rt.created_at DESC
+  `, [userId]);
+  res.json(rows);
+}));
+
+app.post('/api/review-tasks', withAsync(async (req, res) => {
+  const { load_bundle_id, assigned_to_user_id, assigned_by_user_id, status } = req.body;
+  
+  if (!load_bundle_id || !assigned_to_user_id || !assigned_by_user_id) {
+    return res.status(400).json({ error: 'All task fields are required' });
+  }
+
+  const result = await q(`
+    INSERT INTO review_tasks (
+      load_bundle_id, assigned_to_user_id, assigned_by_user_id, status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, NOW(), NOW())
+  `, [load_bundle_id, assigned_to_user_id, assigned_by_user_id, status || 'assigned']);
+
+  const rows = await q('SELECT * FROM review_tasks WHERE id = ?', [result.insertId]);
+  res.json({ success: true, task: rows[0] });
+}));
+
+app.put('/api/review-tasks/:taskId/status', withAsync(async (req, res) => {
+  const taskId = Number(req.params.taskId);
+  const { status, updated_by_user_id } = req.body;
+  
+  if (!status || !updated_by_user_id) {
+    return res.status(400).json({ error: 'Status and user ID are required' });
+  }
+
+  await q(`
+    UPDATE review_tasks 
+    SET status = ?, updated_by_user_id = ?, updated_at = NOW()
+    WHERE id = ?
+  `, [status, updated_by_user_id, taskId]);
+
+  const rows = await q('SELECT * FROM review_tasks WHERE id = ?', [taskId]);
+  res.json({ success: true, task: rows[0] });
 }));
 
 app.get('/api/db/tables', (_req, res) => {

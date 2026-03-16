@@ -5,21 +5,51 @@ const BASE = import.meta.env.VITE_API_BASE || '/api';
 async function req(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(BASE + path, opts);
-  const contentType = res.headers.get('content-type') || '';
-  const isJson = contentType.includes('application/json');
-  const data = isJson ? await res.json() : await res.text();
+  
+  try {
+    const res = await fetch(BASE + path, opts);
+    const contentType = res.headers.get('content-type') || '';
+    const isJson = contentType.includes('application/json');
+    const data = isJson ? await res.json() : await res.text();
 
-  if (!res.ok) {
-    if (isJson && data?.error) throw new Error(data.error);
-    if (typeof data === 'string' && data.trim()) {
-      const cleaned = data.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-      throw new Error(cleaned || `Request failed (${res.status})`);
+    if (!res.ok) {
+      // Handle different error scenarios consistently
+      if (isJson && data?.error) {
+        throw new Error(data.error);
+      }
+      if (typeof data === 'string' && data.trim()) {
+        const cleaned = data.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        throw new Error(cleaned || `Request failed (${res.status})`);
+      }
+      // Handle HTTP error status codes with meaningful messages
+      switch (res.status) {
+        case 400:
+          throw new Error('Bad request - Please check your input data');
+        case 401:
+          throw new Error('Unauthorized - Please check your credentials');
+        case 403:
+          throw new Error('Forbidden - You do not have permission to perform this action');
+        case 404:
+          throw new Error('Not found - The requested resource does not exist');
+        case 409:
+          throw new Error('Conflict - The resource already exists or is in use');
+        case 422:
+          throw new Error('Unprocessable entity - The data format is invalid');
+        case 500:
+          throw new Error('Server error - Please try again later');
+        default:
+          throw new Error(`Request failed (${res.status})`);
+      }
     }
-    throw new Error(`Request failed (${res.status})`);
-  }
 
-  return data;
+    return data;
+  } catch (error) {
+    // Re-throw known errors, wrap unknown errors
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('Network error - Please check your connection');
+  }
 }
 
 export const api = {
@@ -60,4 +90,25 @@ export const api = {
   getDbTables:      ()             => req('GET',  '/db/tables'),
   getDbTable:       (name)         => req('GET',  `/db/table/${name}`),
   runDbQuery:       (sql)          => req('GET',  `/db/query?sql=${encodeURIComponent(sql)}`),
+  
+  // Buying List and Invoice
+  getBuyingList:    (queryString)         => req('GET',  `/buying-list${queryString ? `?${queryString}` : ''}`),
+  generateInvoice:  (body)         => req('POST', '/invoices', body),
+  getInvoices:      (buyerId)      => req('GET',  `/invoices${buyerId ? `?buyer_id=${buyerId}` : ''}`),
+  getInvoiceItems:  (invoiceId)    => req('GET',  `/invoices/${invoiceId}/items`),
+  removeInvoiceItem: (invoiceId, itemId, body) => req('PUT', `/invoices/${invoiceId}/items/${itemId}/remove`, body),
+  updateBagStatus:  (qrNumber, body) => req('PUT', `/bags/${qrNumber}/status`, body),
+  
+  // Dispatch Module
+  createDispatch:   (body)         => req('POST', '/dispatch', body),
+  completeDispatch: (body)         => req('PUT', '/dispatch/complete', body),
+  getDispatches:    ()             => req('GET',  '/dispatch'),
+  
+  // Warehouse Module
+  getLoadBundles:   ()             => req('GET',  '/load-bundles'),
+  getWarehouseUsers:()             => req('GET',  '/warehouse-users'),
+  getReviewTasks:   ()             => req('GET',  '/review-tasks'),
+  getUserReviewTasks:(userId)       => req('GET',  `/review-tasks/user/${userId}`),
+  assignReviewTask: (body)         => req('POST', '/review-tasks', body),
+  updateReviewTaskStatus:(taskId, body) => req('PUT', `/review-tasks/${taskId}/status`, body),
 };
