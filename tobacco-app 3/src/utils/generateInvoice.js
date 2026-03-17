@@ -29,8 +29,10 @@ function invoiceNumber() {
  * @param {string} opts.dateFrom      - ISO date string yyyy-mm-dd (or empty)
  * @param {string} opts.dateTo        - ISO date string yyyy-mm-dd (or empty)
  * @param {function} opts.getBagDate  - (bag) => display date string
+ * @param {string} opts.vehicleNumber - Vehicle number for transport invoice (optional)
+ * @param {string} opts.customTitle   - Override invoice title (optional)
  */
-export function generateInvoice(bags, { buyerName, buyerCode, dateFrom, dateTo, getBagDate } = {}) {
+export function generateInvoice(bags, { buyerName, buyerCode, dateFrom, dateTo, getBagDate, vehicleNumber, customTitle } = {}) {
   if (!bags || bags.length === 0) {
     alert('No data to generate invoice. Please adjust your filters.');
     return;
@@ -81,6 +83,8 @@ export function generateInvoice(bags, { buyerName, buyerCode, dateFrom, dateTo, 
     ? `${buyerCode ? buyerCode + ' — ' : ''}${buyerName || ''}`
     : 'All Buyers';
 
+  const invoiceTitle = String(customTitle || 'Invoice');
+
   const invNo = invoiceNumber();
   const invDate = today();
 
@@ -88,7 +92,7 @@ export function generateInvoice(bags, { buyerName, buyerCode, dateFrom, dateTo, 
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Invoice ${invNo}</title>
+  <title>${invoiceTitle} ${invNo}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #1a1a1a; background: #fff; padding: 28px 32px; }
@@ -148,7 +152,7 @@ export function generateInvoice(bags, { buyerName, buyerCode, dateFrom, dateTo, 
       <div class="company-sub">Tobacco Purchase Management System</div>
     </div>
     <div class="inv-meta">
-      <div class="inv-title">Invoice</div>
+      <div class="inv-title">${invoiceTitle}</div>
       <div class="inv-detail">
         <b>Invoice #:</b> ${invNo}<br/>
         <b>Date:</b> ${invDate}
@@ -169,6 +173,7 @@ export function generateInvoice(bags, { buyerName, buyerCode, dateFrom, dateTo, 
       <div class="inv-box-title">Invoice Date</div>
       <div class="inv-box-value">${invDate}</div>
     </div>
+    ${vehicleNumber ? `<div class="inv-box"><div class="inv-box-title">Vehicle Number</div><div class="inv-box-value">${vehicleNumber}</div></div>` : ''}
   </div>
 
   <div class="summary">

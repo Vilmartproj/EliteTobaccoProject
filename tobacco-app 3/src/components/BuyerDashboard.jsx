@@ -5,6 +5,8 @@ import { S } from '../styles';
 import BuyingForm from './BuyingForm';
 import QRCode from './QRCode';
 import SearchableSelect from './SearchableSelect';
+import BuyerVehicleDispatch from './BuyerVehicleDispatch';
+import QRCameraScanner from './QRCameraScanner';
 import { printQRCodes } from '../utils/printQR';
 import { formatDateTime, fromInputDateTime, nowInputDateTime, toInputDateTime } from '../utils/dateFormat';
 
@@ -31,6 +33,11 @@ export default function BuyerDashboard({ user, onLogout }) {
   const [bagsSort, setBagsSort] = useState({ key: 'updated_at', direction: 'desc' });
   const [reportSort, setReportSort] = useState({ key: 'date_of_purchase', direction: 'desc' });
   const [selectedReportDate, setSelectedReportDate] = useState('');
+  const [dispatchScanCode, setDispatchScanCode] = useState('');
+  const [dispatchScanLoading, setDispatchScanLoading] = useState(false);
+  const [dispatchInvoiceNumber, setDispatchInvoiceNumber] = useState('');
+  const [selectedDispatchBagIds, setSelectedDispatchBagIds] = useState([]);
+  const [dispatchAssignLoading, setDispatchAssignLoading] = useState(false);
 
   const inputDateToDisplayDate = (value) => {
     const text = String(value || '').trim();
@@ -214,6 +221,22 @@ export default function BuyerDashboard({ user, onLogout }) {
   const totalWeight = filteredReportRows.reduce((sum, row) => sum + row.weightValue, 0);
   const sortedBags = [...bags].sort((a, b) => compareBy(a?.[bagsSort.key], b?.[bagsSort.key], bagsSort.direction));
   const sortedReportRows = [...filteredReportRows].sort((a, b) => compareBy(a?.[reportSort.key], b?.[reportSort.key], reportSort.direction));
+  const getDispatchState = (bag) => {
+    const alreadyMoved = Number(bag.dispatch_list_added) === 1;
+    const alreadyDispatched = Number(bag.vehicle_dispatch_id) > 0;
+    return { alreadyMoved, alreadyDispatched, selectable: !alreadyMoved && !alreadyDispatched };
+  };
+
+  const selectedDispatchBags = selectedDispatchBagIds
+    .map((id) => bags.find((bag) => Number(bag.id) === Number(id)))
+    .filter(Boolean);
+
+  useEffect(() => {
+    setSelectedDispatchBagIds((prev) => prev.filter((id) => {
+      const bag = bags.find((item) => Number(item.id) === Number(id));
+      return bag ? getDispatchState(bag).selectable : false;
+    }));
+  }, [bags]);
 
   const SortableTh = ({ label, sortKey, sortState, onSort, minWidth }) => (
     <th
@@ -306,6 +329,92 @@ export default function BuyerDashboard({ user, onLogout }) {
     setEditMsg('');
   };
 
+  const scanBagToDispatch = async (inputCode) => {
+    const scannedCode = String((inputCode ?? dispatchScanCode) || '').trim();
+    if (!scannedCode) {
+      setEditMsg('Scan QR code to select a purchase');
+      return;
+    }
+
+    const matchedBag = bags.find((bag) => String(bag.unique_code || '').trim().toUpperCase() === scannedCode.toUpperCase());
+    if (!matchedBag) {
+      setEditMsg('Scanned QR code does not match any purchase in My Purchases');
+      return;
+    }
+    const { alreadyMoved, alreadyDispatched } = getDispatchState(matchedBag);
+    if (alreadyMoved) {
+      setEditMsg('This purchase is already moved to vehicle dispatch');
+      return;
+    }
+    if (alreadyDispatched) {
+      setEditMsg('This purchase is already dispatched');
+      return;
+    }
+
+    try {
+      setDispatchScanLoading(true);
+      setSelectedDispatchBagIds((prev) => {
+        if (prev.includes(matchedBag.id)) return prev;
+        return [...prev, matchedBag.id];
+      });
+      setEditMsg(`✅ ${matchedBag.unique_code} selected. Assign invoice to move it to vehicle dispatch`);
+      setDispatchScanCode('');
+    } catch (e) {
+      setEditMsg(e.message);
+    } finally {
+      setDispatchScanLoading(false);
+    }
+  };
+
+  const toggleDispatchSelection = (bagId) => {
+    setSelectedDispatchBagIds((prev) => (prev.includes(bagId)
+      ? prev.filter((id) => id !== bagId)
+      : [...prev, bagId]));
+  };
+
+  const removeSelectedDispatchBag = (bagId) => {
+    const bag = bags.find((item) => Number(item.id) === Number(bagId));
+    setSelectedDispatchBagIds((prev) => prev.filter((id) => id !== bagId));
+    if (bag?.unique_code) {
+      setEditMsg(`Removed ${bag.unique_code} from selected list`);
+    }
+  };
+
+  const assignInvoiceAndMoveToDispatch = async () => {
+    if (selectedDispatchBagIds.length === 0) {
+      setEditMsg('Select at least one purchase to move');
+      return;
+    }
+
+    const invoiceNumber = String(dispatchInvoiceNumber || '').trim();
+    if (!invoiceNumber) {
+      setEditMsg('Invoice number is required before moving purchases');
+      return;
+    }
+
+    const eligibleBags = selectedDispatchBagIds
+      .map((id) => bags.find((bag) => Number(bag.id) === Number(id)))
+      .filter((bag) => bag && getDispatchState(bag).selectable);
+
+    if (eligibleBags.length === 0) {
+      setEditMsg('No eligible purchases found in selected list');
+      return;
+    }
+
+    try {
+      setDispatchAssignLoading(true);
+      await Promise.all(eligibleBags.map((bag) => api.addBagToDispatchList(bag.id, { invoice_number: invoiceNumber })));
+      setEditMsg(`✅ ${eligibleBags.length} purchase(s) moved to vehicle dispatch with invoice ${invoiceNumber}`);
+      setSelectedDispatchBagIds([]);
+      setDispatchInvoiceNumber('');
+      await loadBags();
+    } catch (e) {
+      setEditMsg(e.message);
+    } finally {
+      setDispatchAssignLoading(false);
+    }
+  };
+
   return (
     <div style={{ ...S.app, background: buyerBgColor }}>
       {/* Top bar */}
@@ -339,6 +448,7 @@ export default function BuyerDashboard({ user, onLogout }) {
           <button style={{ ...S.tab(view === 'bags'), background: view === 'bags' ? buyerNavColor : '#fff', color: view === 'bags' ? '#fff' : buyerNavColor, border: `2px solid ${buyerNavColor}`, fontSize: 16, fontWeight: 800, flex: '1 1 220px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('bags')}>📦 My Purchases <span style={{ fontSize: '124%', fontWeight: 900, marginLeft: 5, color: view === 'bags' ? '#ffe082' : '#c62828' }}>{bags.length}</span></button>
           <button style={{ ...S.tab(view === 'bale-report'), background: view === 'bale-report' ? buyerNavColor : '#fff', color: view === 'bale-report' ? '#fff' : buyerNavColor, border: `2px solid ${buyerNavColor}`, fontSize: 16, fontWeight: 800, flex: '1 1 220px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('bale-report')}>📊 Purchase Value Report</button>
           <button style={{ ...S.tab(view === 'qr'), background: view === 'qr' ? buyerNavColor : '#fff', color: view === 'qr' ? '#fff' : buyerNavColor, border: `2px solid ${buyerNavColor}`, fontSize: 16, fontWeight: 800, flex: '1 1 220px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('qr')}>🔲 My QR Codes ({qrCodes.length})</button>
+          <button style={{ ...S.tab(view === 'vehicle-dispatch'), background: view === 'vehicle-dispatch' ? buyerNavColor : '#fff', color: view === 'vehicle-dispatch' ? '#fff' : buyerNavColor, border: `2px solid ${buyerNavColor}`, fontSize: 16, fontWeight: 800, flex: '1 1 220px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('vehicle-dispatch')}>🚚 Vehicle Dispatch</button>
         </div>
 
         {view === 'form' && (
@@ -359,12 +469,67 @@ export default function BuyerDashboard({ user, onLogout }) {
               <div style={{ ...S.subheading, color: buyerTitleColor }}>All Bags ({bags.length})</div>
             </div>
             {editMsg && <div style={editMsg.startsWith('✅') ? S.success : S.error}>{editMsg}</div>}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+              <input
+                style={{ ...S.input, minWidth: 220, marginBottom: 0 }}
+                placeholder="Scan QR code to select purchase"
+                value={dispatchScanCode}
+                onChange={(e) => setDispatchScanCode(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && scanBagToDispatch()}
+              />
+              <button
+                style={{ ...S.btnPrimary, flex: 'none', padding: '6px 14px', opacity: dispatchScanLoading ? 0.65 : 1 }}
+                disabled={dispatchScanLoading}
+                onClick={scanBagToDispatch}
+              >
+                {dispatchScanLoading ? 'Selecting...' : 'Scan QR code'}
+              </button>
+              <QRCameraScanner
+                buttonLabel="Scan with Camera"
+                onDetected={(value) => {
+                  setDispatchScanCode(value);
+                  scanBagToDispatch(value);
+                }}
+              />
+              <input
+                style={{ ...S.input, minWidth: 220, marginBottom: 0 }}
+                placeholder="Assign invoice number"
+                value={dispatchInvoiceNumber}
+                onChange={(e) => setDispatchInvoiceNumber(e.target.value)}
+              />
+              <button
+                style={{ ...S.btnPrimary, flex: 'none', padding: '6px 14px', opacity: dispatchAssignLoading ? 0.65 : 1 }}
+                disabled={dispatchAssignLoading || selectedDispatchBagIds.length === 0}
+                onClick={assignInvoiceAndMoveToDispatch}
+              >
+                {dispatchAssignLoading ? 'Moving...' : `Assign Invoice + Move (${selectedDispatchBagIds.length})`}
+              </button>
+            </div>
+            {selectedDispatchBags.length > 0 && (
+              <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, border: '1px solid #e8b1b1', background: '#fff7f7' }}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>Selected QR codes ({selectedDispatchBags.length})</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {selectedDispatchBags.map((bag) => (
+                    <span key={bag.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 999, background: '#f1f5f9', border: '1px solid #cbd5e1', fontSize: 12, fontWeight: 700 }}>
+                      {bag.unique_code}
+                      <button
+                        style={{ ...S.btnSecondary, flex: 'none', padding: '2px 8px', fontSize: 11 }}
+                        onClick={() => removeSelectedDispatchBag(bag.id)}
+                      >
+                        Delete
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             {loading ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>Loading…</p>
             : bags.length === 0 ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>No bags saved yet.</p>
             : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={S.table}>
                   <thead><tr>
+                    <th style={S.th}>Select</th>
                     <SortableTh label="Code" sortKey="unique_code" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
                     <SortableTh label="APF" sortKey="apf_number" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
                     <SortableTh label="TB Grade" sortKey="tobacco_grade" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
@@ -378,12 +543,14 @@ export default function BuyerDashboard({ user, onLogout }) {
                     <SortableTh label="Date" sortKey="date_of_purchase" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={220} />
                     <SortableTh label="FCV" sortKey="fcv" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
                     <SortableTh label="Updated" sortKey="updated_at" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={200} />
+                    <th style={S.th}>Dispatch Status</th>
                     {canManageBagActions && <th style={S.th}>Action</th>}
                   </tr></thead>
                   <tbody>
                     {sortedBags.map((b, i) => (
                       editingId === b.id ? (
                         <tr key={b.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
+                          <td style={S.td}>—</td>
                           <td style={{ ...S.td, fontWeight: 400 }}>{b.unique_code}</td>
                           <td style={S.td}>
                             <SearchableSelect
@@ -434,6 +601,7 @@ export default function BuyerDashboard({ user, onLogout }) {
                             </select>
                           </td>
                           <td style={{ ...S.td, fontWeight: 400 }}>{formatUpdatedAt(b.updated_at)}</td>
+                          <td style={S.td}>—</td>
                           {canManageBagActions && (
                             <td style={S.td}>
                               <div style={{ display: 'flex', gap: 6 }}>
@@ -444,7 +612,22 @@ export default function BuyerDashboard({ user, onLogout }) {
                           )}
                         </tr>
                       ) : (
-                        <tr key={b.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
+                        <tr
+                          key={b.id}
+                          style={{
+                            background: selectedDispatchBagIds.includes(b.id) ? '#fff2b8' : (i % 2 === 0 ? '#fffafa' : '#fff'),
+                            opacity: (Number(b.dispatch_list_added) === 1 || Number(b.vehicle_dispatch_id) > 0) ? 0.55 : 1,
+                          }}
+                        >
+                          <td style={S.td}>
+                            {getDispatchState(b).selectable ? (
+                              <input
+                                type="checkbox"
+                                checked={selectedDispatchBagIds.includes(b.id)}
+                                onChange={() => toggleDispatchSelection(b.id)}
+                              />
+                            ) : '—'}
+                          </td>
                           <td style={{ ...S.td, fontWeight: 800 }}>{b.unique_code}</td>
                           <td style={{ ...S.td, fontWeight: 800 }}>{b.apf_number}</td>
                           <td style={{ ...S.td, fontWeight: 800 }}>{b.tobacco_grade}</td>
@@ -458,11 +641,29 @@ export default function BuyerDashboard({ user, onLogout }) {
                           <td style={{ ...S.td, fontWeight: 800 }}>{formatDateTime(b.date_of_purchase)}</td>
                           <td style={{ ...S.td, fontWeight: 800 }}><span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span></td>
                           <td style={{ ...S.td, fontWeight: 800 }}>{formatUpdatedAt(b.updated_at)}</td>
+                          <td style={S.td}>
+                            {Number(b.dispatch_list_added) === 1
+                              ? <span style={S.badge('green')}>Moved to vehicle dispatch</span>
+                              : Number(b.vehicle_dispatch_id) > 0
+                                ? <span style={S.badge('red')}>Dispatched</span>
+                                : <span style={S.badge()}>Available</span>}
+                            {b.vehicle_dispatch_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Dispatch: {b.vehicle_dispatch_number}</div> : null}
+                          </td>
                           {canManageBagActions && (
                             <td style={S.td}>
-                              <button style={{ ...S.btnSecondary, color: buyerButtonTextColor, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => startEdit(b)}>
-                                Edit
-                              </button>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button style={{ ...S.btnSecondary, color: buyerButtonTextColor, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: (Number(b.dispatch_list_added) === 1 || Number(b.vehicle_dispatch_id) > 0) ? 0.6 : 1 }} onClick={() => startEdit(b)} disabled={Number(b.dispatch_list_added) === 1 || Number(b.vehicle_dispatch_id) > 0}>
+                                  Edit
+                                </button>
+                                {selectedDispatchBagIds.includes(b.id) && getDispatchState(b).selectable && (
+                                  <button
+                                    style={{ ...S.btnSecondary, color: '#b91c1c', borderColor: '#ef4444', flex: 'none', padding: '6px 10px', fontSize: 12 }}
+                                    onClick={() => removeSelectedDispatchBag(b.id)}
+                                  >
+                                    Delete
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           )}
                         </tr>
@@ -526,6 +727,10 @@ export default function BuyerDashboard({ user, onLogout }) {
               </div>
             )}
           </div>
+        )}
+
+        {view === 'vehicle-dispatch' && (
+          <BuyerVehicleDispatch buyer={user} />
         )}
 
         {view === 'qr' && (

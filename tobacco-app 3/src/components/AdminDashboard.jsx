@@ -6,6 +6,7 @@ import QRCode from './QRCode';
 import DatabaseViewer from './DatabaseViewer';
 import SearchableSelect from './SearchableSelect';
 import ApiStatusBadge from './ApiStatusBadge';
+import AdminVehicleDispatches from './AdminVehicleDispatches';
 import { printQRCodes } from '../utils/printQR';
 import { exportCSV } from '../utils/exportCSV';
 import { exportBagsPDF } from '../utils/exportBags';
@@ -16,6 +17,7 @@ export default function AdminDashboard({ user, onLogout }) {
   const [tab, setTab]         = useState('overview');
   const [stats, setStats]     = useState({});
   const [buyers, setBuyers]   = useState([]);
+  const [warehouseEmployees, setWarehouseEmployees] = useState([]);
   const [apfNumbers, setApfNumbers] = useState([]);
   const [tobaccoTypes, setTobaccoTypes] = useState([]);
   const [purchaseLocations, setPurchaseLocations] = useState([]);
@@ -32,6 +34,7 @@ export default function AdminDashboard({ user, onLogout }) {
   const [genMsg, setGenMsg]       = useState('');
 
   // Add buyer state
+  const [newLoginType, setNewLoginType] = useState('buyer');
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
   const [buyerMsg, setBuyerMsg] = useState('');
@@ -85,9 +88,10 @@ export default function AdminDashboard({ user, onLogout }) {
   const purchaseLocationCodeInputRef = useRef(null);
 
   const refresh = async () => {
-    const [s, b, apf, tobaccoTypeRows, purchaseLocationRows, tbGrades, byGrades, q, bg, buyerActionSetting] = await Promise.all([
+    const [s, b, w, apf, tobaccoTypeRows, purchaseLocationRows, tbGrades, byGrades, q, bg, buyerActionSetting] = await Promise.all([
       api.getStats(),
       api.getBuyers(),
+      api.getWarehouseEmployees(),
       api.getApfNumbers(),
       api.getTobaccoTypes(),
       api.getPurchaseLocations(),
@@ -99,6 +103,7 @@ export default function AdminDashboard({ user, onLogout }) {
     ]);
     setStats(s);
     setBuyers(b);
+    setWarehouseEmployees(w);
     setApfNumbers(apf);
     setTobaccoTypes(tobaccoTypeRows);
     setPurchaseLocations(purchaseLocationRows);
@@ -126,11 +131,27 @@ export default function AdminDashboard({ user, onLogout }) {
   const handleAddBuyer = async () => {
     if (!newCode || !newName) { setBuyerMsg('Fill all fields'); return; }
     try {
-      await api.addBuyer({ code: newCode, name: newName });
-      setBuyerMsg(`✅ Buyer ${newCode.toUpperCase()} added. Password = ${newCode.toUpperCase()}`);
+      if (newLoginType === 'warehouse') {
+        await api.addWarehouseEmployee({ code: newCode, name: newName });
+        setBuyerMsg(`✅ Warehouse login ${newCode.toUpperCase()} added. Password = ${newCode.toUpperCase()}`);
+      } else {
+        await api.addBuyer({ code: newCode, name: newName });
+        setBuyerMsg(`✅ Buyer ${newCode.toUpperCase()} added. Password = ${newCode.toUpperCase()}`);
+      }
       setNewCode(''); setNewName('');
       refresh();
     } catch (e) { setBuyerMsg(e.message); }
+  };
+
+  const handleDeleteWarehouseEmployee = async (employee) => {
+    if (!window.confirm(`Delete warehouse login ${employee.code} (${employee.name})?`)) return;
+    try {
+      await api.deleteWarehouseEmployee(employee.id);
+      setBuyerMsg(`✅ Warehouse login ${employee.code} deleted`);
+      await refresh();
+    } catch (e) {
+      setBuyerMsg(e.message);
+    }
   };
 
   const handleDeleteBuyer = async (buyer) => {
@@ -747,9 +768,9 @@ export default function AdminDashboard({ user, onLogout }) {
         </div>
       </div>
 
-      <div style={{ ...S.page, maxWidth: 1088 }}>
+      <div style={{ ...S.page, maxWidth: 1195 }}>
         <div style={S.tabs}>
-          {[['overview','📊 Overview'],['buyers','👥 Buyers'],['apf-maintenance','🔢 APF Maintenance'],['non-fcv-locations','📍 NON-FCV Locations'],['tobacco-types','🌿 Tobacco Types'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['qr-tracking','📡 QR Tracking'],['generate','⚡ Generate QR'],['bags','📦 Total Purchase'],['database','🗄️ Database']].map(([id, label]) => (
+          {[['overview','📊 Overview'],['buyers','🔐 Login Info'],['apf-maintenance','🔢 APF Maintenance'],['non-fcv-locations','📍 NON-FCV Locations'],['tobacco-types','🌿 Tobacco Types'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['qr-tracking','📡 QR Tracking'],['vehicle-dispatches','🚚 Vehicle Dispatches'],['generate','⚡ Generate QR'],['bags','📦 Total Purchase'],['database','🗄️ Database']].map(([id, label]) => (
             <button key={id} style={S.tab(tab === id)} onClick={() => { setTab(id); refresh(); }}>{label}</button>
           ))}
         </div>
@@ -789,20 +810,72 @@ export default function AdminDashboard({ user, onLogout }) {
           </div>
         )}
 
-        {/* ── BUYERS ── */}
+        {/* ── LOGIN INFO ── */}
         {tab === 'buyers' && (
           <div>
             <div style={S.card}>
-              <div style={S.subheading}>Add New Buyer</div>
+              <div style={S.subheading}>Admin Login Info</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={S.label}>Username</label>
+                  <input style={S.input} value="admin" readOnly />
+                </div>
+                <div>
+                  <label style={S.label}>Password</label>
+                  <input style={S.input} value="admin123" readOnly />
+                </div>
+              </div>
+            </div>
+
+            <div style={S.card}>
+              <div style={S.subheading}>All Login Accounts</div>
+              <table style={S.table}>
+                <thead><tr>{['Login Type','Code / Username','Name','Password'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  <tr>
+                    <td style={S.td}><span style={S.badge('red')}>Admin</span></td>
+                    <td style={{ ...S.td, fontWeight: 800 }}>admin</td>
+                    <td style={S.td}>Administrator</td>
+                    <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>admin123</td>
+                  </tr>
+                  {buyers.map(b => (
+                    <tr key={`buyer-${b.id}`}>
+                      <td style={S.td}><span style={S.badge('green')}>Buyer</span></td>
+                      <td style={{ ...S.td, fontWeight: 800 }}>{b.code}</td>
+                      <td style={S.td}>{b.name}</td>
+                      <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{b.password}</td>
+                    </tr>
+                  ))}
+                  {warehouseEmployees.map(w => (
+                    <tr key={`warehouse-${w.id}`}>
+                      <td style={S.td}><span style={S.badge()}>Warehouse</span></td>
+                      <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
+                      <td style={S.td}>{w.name}</td>
+                      <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{w.code}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={S.card}>
+              <div style={S.subheading}>Add Buyer / Warehouse Login</div>
               {buyerMsg && <div style={buyerMsg.startsWith('✅') ? S.success : S.error}>{buyerMsg}</div>}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 12, alignItems: 'end' }}>
-                <div><label style={S.label}>Buyer Code</label><input style={S.input} placeholder="e.g. B004" value={newCode} onChange={e => setNewCode(e.target.value)} /></div>
-                <div><label style={S.label}>Buyer Name</label><input style={S.input} placeholder="Full Name" value={newName} onChange={e => setNewName(e.target.value)} /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+                <div>
+                  <label style={S.label}>Login Type</label>
+                  <select style={S.input} value={newLoginType} onChange={e => setNewLoginType(e.target.value)}>
+                    <option value="buyer">Buyer Login</option>
+                    <option value="warehouse">Warehouse Login</option>
+                  </select>
+                </div>
+                <div><label style={S.label}>{newLoginType === 'warehouse' ? 'Warehouse Code' : 'Buyer Code'}</label><input style={S.input} placeholder={newLoginType === 'warehouse' ? 'e.g. W003' : 'e.g. B004'} value={newCode} onChange={e => setNewCode(e.target.value)} /></div>
+                <div><label style={S.label}>{newLoginType === 'warehouse' ? 'Warehouse Name' : 'Buyer Name'}</label><input style={S.input} placeholder="Full Name" value={newName} onChange={e => setNewName(e.target.value)} /></div>
                 <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 20px' }} onClick={handleAddBuyer}>Add</button>
               </div>
             </div>
             <div style={S.card}>
-              <div style={S.subheading}>All Buyers ({buyers.length})</div>
+              <div style={S.subheading}>Buyer Login Users ({buyers.length})</div>
               <table style={S.table}>
                 <thead><tr>{['Code','Name','Password','QR Assigned','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                 <tbody>
@@ -814,6 +887,27 @@ export default function AdminDashboard({ user, onLogout }) {
                       <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
                       <td style={S.td}>
                         <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteBuyer(b)}>
+                          🗑 Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={S.card}>
+              <div style={S.subheading}>Warehouse Login Users ({warehouseEmployees.length})</div>
+              <table style={S.table}>
+                <thead><tr>{['Code','Name','Password','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {warehouseEmployees.map(w => (
+                    <tr key={w.id}>
+                      <td style={S.td}><b>{w.code}</b></td>
+                      <td style={S.td}>{w.name}</td>
+                      <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{w.code}</td>
+                      <td style={S.td}>
+                        <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteWarehouseEmployee(w)}>
                           🗑 Delete
                         </button>
                       </td>
@@ -1221,6 +1315,10 @@ export default function AdminDashboard({ user, onLogout }) {
               </div>
             )}
           </div>
+        )}
+
+        {tab === 'vehicle-dispatches' && (
+          <AdminVehicleDispatches />
         )}
 
         {/* ── GENERATE QR ── */}

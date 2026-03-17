@@ -4,7 +4,6 @@ import { api } from '../api';
 import { S } from '../styles';
 
 export default function LoginPage({ onLogin }) {
-  const [mode, setMode]       = useState('buyer');
   const [code, setCode]       = useState('');
   const [password, setPass]   = useState('');
   const [error, setError]     = useState('');
@@ -13,7 +12,17 @@ export default function LoginPage({ onLogin }) {
   const handleLogin = async () => {
     setError(''); setLoading(true);
     try {
-      const data = await api.login({ code: code.trim(), password: password.trim(), role: mode });
+      const normalizedCode = code.trim();
+      const payload = {
+        code: normalizedCode,
+        password: password.trim(),
+      };
+
+      if (normalizedCode.toLowerCase() === 'admin') {
+        payload.role = 'admin';
+      }
+
+      const data = await api.login(payload);
       onLogin(data.user);
     } catch (e) {
       setError(e.message);
@@ -29,21 +38,16 @@ export default function LoginPage({ onLogin }) {
           <span style={{ fontSize: 11, color: '#aaa', letterSpacing: 2, textTransform: 'uppercase', marginTop: 4, display: 'block' }}>Buying Management System</span>
         </div>
 
-        <div style={S.toggleGroup}>
-          <button style={S.toggleBtn(mode === 'buyer', false)} onClick={() => setMode('buyer')}>🧑‍🌾 Buyer</button>
-          <button style={S.toggleBtn(mode === 'admin', false)} onClick={() => setMode('admin')}>🔐 Admin</button>
-        </div>
-
         {error && <div style={S.error}>{error}</div>}
 
         <div style={S.row}>
-          <label style={S.label}>{mode === 'admin' ? 'Username' : 'Buyer Code'}</label>
-          <input style={S.input} placeholder={mode === 'admin' ? 'admin' : 'e.g. B001'} value={code}
+          <label style={S.label}>Login Code</label>
+          <input style={S.input} placeholder="e.g. admin / B001 / W001" value={code}
             onChange={e => setCode(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
         </div>
         <div style={S.row}>
           <label style={S.label}>Password</label>
-          <input style={S.input} type="password" placeholder={mode === 'buyer' ? 'Same as buyer code' : ''} value={password}
+          <input style={S.input} type="password" placeholder="Enter password" value={password}
             onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
         </div>
 
