@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { S } from '../styles';
 import { formatDateTime } from '../utils/dateFormat';
-import QRCameraScanner from './QRCameraScanner';
 
 function statusBadge(status) {
   if (status === 'sent_to_admin') return S.badge('red');
@@ -238,15 +237,8 @@ export default function BuyerVehicleDispatch({ buyer }) {
             disabled={scanLoading}
             onClick={() => scanAndMatchQRCode()}
           >
-            {scanLoading ? 'Matching...' : 'Match QR'}
+            {scanLoading ? 'Scanning...' : 'Scan QR'}
           </button>
-          <QRCameraScanner
-            buttonLabel="Scan with Camera"
-            onDetected={(value) => {
-              setScanCode(value);
-              scanAndMatchQRCode(value);
-            }}
-          />
           <span style={{ ...S.badge('green'), fontSize: 13 }}>Matched: {matchedCodes.length}</span>
         </div>
 

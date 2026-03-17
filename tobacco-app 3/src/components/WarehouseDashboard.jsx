@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import { S } from '../styles';
 import { formatDateTime } from '../utils/dateFormat';
-import QRCameraScanner from './QRCameraScanner';
 
 function statusBadge(status) {
   if (status === 'sent_to_warehouse') return S.badge();
@@ -32,6 +31,7 @@ export default function WarehouseDashboard({ user, onLogout }) {
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const inputRef = useRef(null);
+  const scanDebounceRef = useRef(null);
 
   const loadDispatches = async () => {
     const data = await api.getVehicleDispatches(null, user.id);
@@ -61,6 +61,12 @@ export default function WarehouseDashboard({ user, onLogout }) {
     loadActive(activeDispatchId).catch((e) => setMsg(e.message));
   }, [activeDispatchId]);
 
+  useEffect(() => () => {
+    if (scanDebounceRef.current) {
+      clearTimeout(scanDebounceRef.current);
+    }
+  }, []);
+
   const activeSummary = useMemo(() => {
     if (!activeDispatch) return null;
     const total = Array.isArray(activeDispatch.items) ? activeDispatch.items.length : 0;
@@ -77,7 +83,9 @@ export default function WarehouseDashboard({ user, onLogout }) {
   );
 
   const submitScan = async (codeInput) => {
-    const code = String((codeInput ?? scanCode) || '').trim();
+    const isDomEvent = codeInput && typeof codeInput === 'object' && 'preventDefault' in codeInput;
+    const normalizedInput = isDomEvent ? '' : codeInput;
+    const code = String((normalizedInput ?? scanCode) || '').trim();
     if (!activeDispatchId) {
       setMsg('Select a vehicle dispatch first');
       return;
@@ -180,21 +188,26 @@ export default function WarehouseDashboard({ user, onLogout }) {
                   ref={inputRef}
                   style={S.input}
                   value={scanCode}
-                  placeholder="Scan using scanner device and press Enter"
-                  onChange={(e) => setScanCode(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') submitScan(); }}
+                  placeholder="Scan using scanner device"
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setScanCode(value);
+                    if (scanDebounceRef.current) {
+                      clearTimeout(scanDebounceRef.current);
+                    }
+                    const trimmed = value.trim();
+                    if (!trimmed || loading) {
+                      return;
+                    }
+                    scanDebounceRef.current = setTimeout(() => {
+                      submitScan(trimmed);
+                    }, 180);
+                  }}
                 />
               </div>
-              <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px', opacity: loading ? 0.65 : 1 }} disabled={loading} onClick={submitScan}>
-                {loading ? 'Updating...' : 'Submit Scan'}
+              <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px', opacity: loading ? 0.65 : 1 }} disabled={loading} onClick={() => submitScan()}>
+                {loading ? 'Updating...' : 'Scan QR'}
               </button>
-              <QRCameraScanner
-                buttonLabel="Scan with Camera"
-                onDetected={(value) => {
-                  setScanCode(value);
-                  submitScan(value);
-                }}
-              />
             </div>
 
             <div style={{ marginBottom: 14 }}>
