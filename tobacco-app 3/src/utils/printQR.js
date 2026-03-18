@@ -13,7 +13,7 @@ export function printQRCodes(qrList, buyerMap) {
   if (!win) { alert('Please allow pop-ups to print QR codes'); return; }
 
   win.document.write(`<!DOCTYPE html><html><head>
-    <title>QR Codes – Elite Tobacco</title>
+    <title>QR Codes - Elite Leaf Tobacco Company</title>
     <style>
       @page { size: A4; margin: 12mm; }
       body  { font-family: Arial, sans-serif; background:#fff; margin:0; }
@@ -30,7 +30,7 @@ export function printQRCodes(qrList, buyerMap) {
       @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
     </style>
   </head><body>
-    <h2>🌿 Elite Tobacco – QR Codes</h2>
+    <h2>Elite Leaf Tobacco Company - QR Codes</h2>
       <p class="sub">Printed: ${formatDateTime(new Date())} &nbsp;·&nbsp; Total: ${items.length}</p>
     <div class="grid">
       ${items.map(it => `

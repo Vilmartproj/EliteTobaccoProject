@@ -1,7 +1,62 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import { S } from '../styles';
+import { S as _S } from '../styles';
+import BrandLogo from './BrandLogo';
 import { formatDateTime } from '../utils/dateFormat';
+
+// ── Warehouse colour theme: teal → blue gradient (matching buyer dashboard) ──
+const warehouseGradient = 'linear-gradient(135deg, #20c997 0%, #2780e3 100%)';
+const S = {
+  ..._S,
+  app: {
+    minHeight: '100vh',
+    background: 'linear-gradient(135deg, #f6d365 0%, #fda085 100%)',
+    fontFamily: 'Roboto',
+    fontWeight: 700,
+    color: '#144b8b',
+  },
+  topBar: {
+    ..._S.topBar,
+    background: 'rgba(255,255,255,0.92)',
+    borderBottom: '3px solid #2780e3',
+    boxShadow: '0 4px 14px rgba(39,128,227,0.22)',
+  },
+  topBarTitle: { fontSize: 14, fontWeight: 800, color: '#2780e3', letterSpacing: 1 },
+  buyerBadge:  { background: warehouseGradient, border: '1px solid #1f67b9', borderRadius: 8, padding: '3px 10px', fontWeight: 800, color: '#ffffff', fontSize: 11 },
+  bagsBadge:   { background: warehouseGradient, color: '#ffffff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 800 },
+  card:        { background: '#ffffff', borderRadius: 12, border: '1px solid #b7d9f8', padding: '16px', marginBottom: 16, boxShadow: '0 4px 16px rgba(39,128,227,0.16)' },
+  heading:     { fontSize: 16, fontWeight: 800, color: '#2780e3', marginBottom: 14, letterSpacing: 0.5 },
+  subheading:  { fontSize: 13, fontWeight: 800, color: '#2780e3', marginBottom: 10 },
+  label:       { fontSize: 11, fontWeight: 800, color: '#2780e3', marginBottom: 4, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 },
+  input:       { width: '100%', padding: '7px 10px', border: '1.5px solid #1f67b9', borderRadius: 8, fontSize: 13, fontWeight: 700, color: '#1b3555', background: '#ffffff', boxSizing: 'border-box', outline: 'none' },
+  toggleGroup: { display: 'flex', gap: 0, borderRadius: 8, overflow: 'hidden', border: '1.5px solid #2780e3', marginBottom: 6 },
+  toggleBtn: (active, disabled) => ({
+    flex: 1, padding: '8px', border: 'none',
+    background: disabled ? '#8ab8ef' : active ? warehouseGradient : '#2780e3',
+    color: '#fff',
+    fontWeight: 800, fontSize: 12,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    letterSpacing: 1, transition: 'all 0.2s',
+    pointerEvents: disabled ? 'none' : 'auto',
+  }),
+  btnPrimary:  { background: warehouseGradient, color: '#fff', border: '1px solid #1f67b9', borderRadius: 8, padding: '8px 16px', fontSize: 12, fontWeight: 800, cursor: 'pointer', flex: 1, transition: 'background 0.2s' },
+  btnSecondary:{ background: warehouseGradient, color: '#fff', border: '1px solid #1f67b9', borderRadius: 8, padding: '8px 16px', fontSize: 12, fontWeight: 800, cursor: 'pointer', flex: 1 },
+  btnIcon:     { background: warehouseGradient, border: '1px solid #1f67b9', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: 11, color: '#fff', fontWeight: 800 },
+  th:          { background: '#2780e3', color: '#ffffff', fontWeight: 800, padding: '7px 9px', border: '1px solid #1f67b9', textAlign: 'left', textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.5, whiteSpace: 'nowrap' },
+  td:          { padding: '6px 9px', border: '1px solid #d9ebfb', color: '#1b3555', verticalAlign: 'middle', fontWeight: 700, whiteSpace: 'nowrap' },
+  tab: (active) => ({
+    padding: '6px 12px',
+    border: '2px solid #1f67b9',
+    borderRadius: 8,
+    background: active ? warehouseGradient : '#2780e3',
+    color: '#fff',
+    fontWeight: 700, fontSize: 12, cursor: 'pointer',
+    letterSpacing: 0.2, whiteSpace: 'nowrap',
+    transition: 'all 0.18s',
+  }),
+  qrCard: { background: '#fff', border: '1.5px solid #b7d9f8', borderRadius: 10, padding: 14, textAlign: 'center', boxShadow: '0 4px 10px rgba(39,128,227,0.16)' },
+};
+// ─────────────────────────────────────────────────────────────────────────────
 
 function statusBadge(status) {
   if (status === 'sent_to_warehouse') return S.badge();
@@ -31,7 +86,6 @@ export default function WarehouseDashboard({ user, onLogout }) {
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const inputRef = useRef(null);
-  const scanDebounceRef = useRef(null);
 
   const loadDispatches = async () => {
     const data = await api.getVehicleDispatches(null, user.id);
@@ -61,12 +115,6 @@ export default function WarehouseDashboard({ user, onLogout }) {
     loadActive(activeDispatchId).catch((e) => setMsg(e.message));
   }, [activeDispatchId]);
 
-  useEffect(() => () => {
-    if (scanDebounceRef.current) {
-      clearTimeout(scanDebounceRef.current);
-    }
-  }, []);
-
   const activeSummary = useMemo(() => {
     if (!activeDispatch) return null;
     const total = Array.isArray(activeDispatch.items) ? activeDispatch.items.length : 0;
@@ -83,9 +131,7 @@ export default function WarehouseDashboard({ user, onLogout }) {
   );
 
   const submitScan = async (codeInput) => {
-    const isDomEvent = codeInput && typeof codeInput === 'object' && 'preventDefault' in codeInput;
-    const normalizedInput = isDomEvent ? '' : codeInput;
-    const code = String((normalizedInput ?? scanCode) || '').trim();
+    const code = String((codeInput ?? scanCode) || '').replace(/[\r\n\t]/g, '').trim();
     if (!activeDispatchId) {
       setMsg('Select a vehicle dispatch first');
       return;
@@ -117,7 +163,11 @@ export default function WarehouseDashboard({ user, onLogout }) {
   return (
     <div style={S.app}>
       <div style={S.topBar}>
-        <div style={S.topBarTitle}>🏭 Warehouse Dashboard</div>
+        <BrandLogo
+          size={38}
+          title="Elite Leaf Tobacco Company - Warehouse"
+          titleStyle={S.topBarTitle}
+        />
         <div style={S.buyerInfo}>
           <span style={S.buyerBadge}>👷 {user.name} ({user.code})</span>
           <button style={S.btnIcon} onClick={onLogout}>Logout</button>
@@ -188,20 +238,24 @@ export default function WarehouseDashboard({ user, onLogout }) {
                   ref={inputRef}
                   style={S.input}
                   value={scanCode}
-                  placeholder="Scan using scanner device"
+                  placeholder="Scan QR or type code manually"
                   onChange={(e) => {
                     const value = e.target.value;
-                    setScanCode(value);
-                    if (scanDebounceRef.current) {
-                      clearTimeout(scanDebounceRef.current);
-                    }
-                    const trimmed = value.trim();
-                    if (!trimmed || loading) {
+                    // Scanner input may include trailing control chars
+                    if (/[\r\n\t]$/.test(value)) {
+                      const normalized = value.replace(/[\r\n\t]/g, '').trim();
+                      setScanCode(normalized);
+                      if (normalized && !loading) submitScan(normalized);
                       return;
                     }
-                    scanDebounceRef.current = setTimeout(() => {
-                      submitScan(trimmed);
-                    }, 180);
+                    setScanCode(value);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === 'Tab') {
+                      e.preventDefault();
+                      const normalized = String(e.currentTarget.value || '').replace(/[\r\n\t]/g, '').trim();
+                      if (normalized && !loading) submitScan(normalized);
+                    }
                   }}
                 />
               </div>

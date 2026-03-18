@@ -1,9 +1,54 @@
 // src/components/BuyingForm.jsx
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import { S } from '../styles';
+import { S as _S } from '../styles';
 import { fromInputDateTime, nowInputDateTime } from '../utils/dateFormat';
 import SearchableSelect from './SearchableSelect';
+
+const S = {
+  ..._S,
+  card: {
+    ..._S.card,
+    background: '#ffffff',
+    border: '1px solid #b7d9f8',
+    boxShadow: '0 4px 16px rgba(39,128,227,0.16)',
+  },
+  heading: {
+    ..._S.heading,
+    color: '#2780e3',
+  },
+  label: {
+    ..._S.label,
+    color: '#2780e3',
+  },
+  input: {
+    ..._S.input,
+    border: '1.5px solid #1f67b9',
+    background: '#ffffff',
+    color: '#1b3555',
+  },
+  toggleGroup: {
+    ..._S.toggleGroup,
+    border: '1.5px solid #2780e3',
+  },
+  toggleBtn: (active, disabled) => ({
+    ..._S.toggleBtn(active, disabled),
+    background: disabled ? '#8ab8ef' : '#2780e3',
+    color: '#ffffff',
+  }),
+  btnPrimary: {
+    ..._S.btnPrimary,
+    background: '#2780e3',
+    color: '#fff',
+    border: '1px solid #1f67b9',
+  },
+  btnSecondary: {
+    ..._S.btnSecondary,
+    color: '#fff',
+    background: '#2780e3',
+    border: '1px solid #1f67b9',
+  },
+};
 
 const calendarValueToDisplayDate = (value) => {
   const text = String(value || '').trim();
@@ -19,10 +64,14 @@ const dateTimeInputToDisplayDate = (value) => {
 };
 
 export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: [] }, apfNumbers = [], tobaccoTypes = [], purchaseLocations = [], assignedQRCodes = [], onSaveExit }) {
-  const buyerTitleColor = 'rgb(14,14,156)';
-  const buyerButtonTextColor = 'rgb(30,30,203)';
-  const fcvToggleColor = 'rgb(30,30,203)';
+  const buyerTitleColor = '#2780e3';
+  const buyerButtonTextColor = '#fff';
+  const fcvToggleColor = '#fff';
   const buyerLabelStyle = { ...S.label, fontWeight: 800 };
+  const missingFieldStyle = {
+    background: '#fffee0',
+    color: '#1b3555',
+  };
   const [fcv, setFcv]                   = useState('');
   const [uniqueCode, setUniqueCode]     = useState('');
   const [codeStatus, setCodeStatus]     = useState(null); // null|checking|ok|duplicate|error
@@ -41,6 +90,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
   const [error, setError]               = useState('');
   const [saved, setSaved]               = useState(false);
   const [loading, setLoading]           = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [fcvFieldsLocked, setFcvFieldsLocked] = useState(false);
   const [scannerActive, setScannerActive] = useState(false);
   const [scannerError, setScannerError] = useState('');
@@ -93,7 +143,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
   const requiredLabel = (text, isRequired = true) => (
     <>
       {text}
-      {isRequired ? <span style={{ color: '#d62839' }}> *</span> : ''}
+      {isRequired ? <span style={{ color: '#2780e3' }}> *</span> : ''}
     </>
   );
 
@@ -111,7 +161,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
   useEffect(() => () => stopScanner(), []);
 
-  const reset = ({ preserveFcvContext = false, preserveFcvLock = false } = {}) => {
+  const reset = ({ preserveFcvContext = false, preserveFcvLock = false, focusUniqueCode = false } = {}) => {
     const keepFcvContext = preserveFcvContext && fcv === 'FCV' && !!purchaseDate && !!apfNumber;
     setFcv(keepFcvContext ? 'FCV' : '');
     setUniqueCode('');
@@ -128,9 +178,14 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     setFcvFieldsLocked(keepFcvContext && preserveFcvLock);
     setError('');
     setSaved(false);
+    setSubmitAttempted(false);
     setCodeStatus(null);
     setCodeMsg('');
     setDate(nowInputDateTime());
+
+    if (focusUniqueCode) {
+      setTimeout(() => uniqueCodeInputRef.current?.focus(), 0);
+    }
   };
 
   const numericWeight = parseFloat(weight);
@@ -142,14 +197,14 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
   const isApfNumberLocked = isFCV && fcvFieldsLocked;
   const lockedFieldStyle = {
     ...S.input,
-    background: '#eef9ff',
-    borderColor: '#0284c7',
+    background: '#ffffff',
+    borderColor: '#1f67b9',
     borderWidth: 2,
-    color: '#0c4a6e',
+    color: '#2780e3',
     fontWeight: 700,
     opacity: 1,
     cursor: 'not-allowed',
-    boxShadow: '0 0 0 3px rgba(2,132,199,0.14)',
+    boxShadow: '0 0 0 3px rgba(39,128,227,0.16)',
   };
 
   const checkCode = async (code) => {
@@ -296,7 +351,27 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     return null;
   };
 
+  const isMissingField = (field) => {
+    if (!submitAttempted) return false;
+    if (field === 'fcv') return !fcv;
+    if (field === 'uniqueCode') return !uniqueCode.trim();
+    if (field === 'typeOfTobacco') return isNonFCV && !typeOfTobacco;
+    if (field === 'nonFcvPurchaseDate') return isNonFCV && !nonFcvPurchaseDate;
+    if (field === 'purchaseDate') return isFCV && !purchaseDate;
+    if (field === 'apfNumber') return isFCV && !apfNumber;
+    if (field === 'tobaccoGrade') return isFCV && !tobaccoGrade;
+    if (field === 'lotNumber') return isFCV && !lotNumber.trim();
+    if (field === 'weight') return !weight;
+    if (field === 'rate') return !rate;
+    if (field === 'buyerGrade') return !buyerGrade;
+    return false;
+  };
+
+  const labelWithMissing = (missing) => (missing ? { ...buyerLabelStyle, color: '#c79a00' } : buyerLabelStyle);
+  const inputWithMissing = (baseStyle, missing) => (missing ? { ...baseStyle, ...missingFieldStyle } : baseStyle);
+
   const doSave = async (exit) => {
+    setSubmitAttempted(true);
     setError('');
     if (uniqueCode.trim() && codeStatus === null) {
       await checkCode(uniqueCode.trim());
@@ -320,13 +395,14 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
         date_of_purchase: fromInputDateTime(dateOfPurchase),
       });
       setSaved(true);
+      setSubmitAttempted(false);
       if (exit) {
         setFcvFieldsLocked(false);
         setTimeout(onSaveExit, 600);
       }
       else {
         setFcvFieldsLocked(fcv === 'FCV' && !!purchaseDate && !!apfNumber);
-        setTimeout(() => reset({ preserveFcvContext: true, preserveFcvLock: true }), 800);
+        setTimeout(() => reset({ preserveFcvContext: true, preserveFcvLock: true, focusUniqueCode: true }), 800);
       }
     } catch (e) {
       setError(e.message);
@@ -339,23 +415,41 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     : undefined;
 
   return (
-    <div style={{ ...S.card, background: 'rgb(255,208,214)' }}>
+    <div style={S.card}>
       <div style={{ ...S.heading, color: buyerTitleColor }}>Buying</div>
 
       {saved && <div style={S.success}>✅ Bag saved successfully!</div>}
       {error && <div style={S.error}>⚠️ {error}</div>}
 
       {/* FCV Toggle */}
-      <label style={buyerLabelStyle}>{requiredLabel('FCV / NON-FCV')}</label>
-      <div style={S.toggleGroup}>
+      <label style={labelWithMissing(isMissingField('fcv'))}>{requiredLabel('FCV / NON-FCV')}</label>
+      <div
+        style={{
+          ...S.toggleGroup,
+          gap: 10,
+          border: 'none',
+          overflow: 'visible',
+          ...(isMissingField('fcv') ? { background: '#fffee0', borderRadius: 10, padding: 2 } : {}),
+        }}
+      >
         <button
-          style={{ ...S.toggleBtn(fcv === 'FCV', fcv === 'NON-FCV'), color: fcvToggleColor, borderRight: '2px solid #e63946' }}
+          style={{
+            ...S.toggleBtn(fcv === 'FCV', fcv === 'NON-FCV'),
+            color: fcvToggleColor,
+            border: '1.5px solid #1f67b9',
+            borderRadius: 8,
+          }}
           onClick={() => handleFcvSelect('FCV')}
         >
           FCV
         </button>
         <button
-          style={{ ...S.toggleBtn(fcv === 'NON-FCV', fcv === 'FCV'), color: fcvToggleColor }}
+          style={{
+            ...S.toggleBtn(fcv === 'NON-FCV', fcv === 'FCV'),
+            color: fcvToggleColor,
+            border: '1.5px solid #1f67b9',
+            borderRadius: 8,
+          }}
           onClick={() => handleFcvSelect('NON-FCV')}
         >
           NON-FCV
@@ -370,12 +464,12 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       {/* Unique Code */}
       <div style={S.row}>
-        <label style={buyerLabelStyle}>{requiredLabel('Unique Code')}</label>
+        <label style={labelWithMissing(isMissingField('uniqueCode'))}>{requiredLabel('Unique Code')}</label>
         <div style={{ position: 'relative' }}>
           {isMobileDevice ? (
             <select
               ref={uniqueCodeInputRef}
-              style={{ ...S.input, borderColor, paddingRight: 38, appearance: 'none' }}
+              style={inputWithMissing({ ...S.input, borderColor, paddingRight: 38, appearance: 'none' }, isMissingField('uniqueCode'))}
               value={uniqueCode}
               onChange={e => handleCodeChange(e.target.value)}
               onBlur={handleCodeBlur}
@@ -390,7 +484,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
             <>
               <input
                 ref={uniqueCodeInputRef}
-                style={{ ...S.input, borderColor, paddingRight: 38 }}
+                style={inputWithMissing({ ...S.input, borderColor, paddingRight: 38 }, isMissingField('uniqueCode'))}
                 placeholder="📷 Scan QR or enter code manually"
                 value={uniqueCode}
                 list={qrListId}
@@ -491,12 +585,12 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       {isNonFCV && (
         <div style={S.row}>
-          <label style={buyerLabelStyle}>{requiredLabel('Type of Tobacco / Variety')}</label>
+          <label style={labelWithMissing(isMissingField('typeOfTobacco'))}>{requiredLabel('Type of Tobacco / Variety')}</label>
           <SearchableSelect
             options={tobaccoTypeOptions}
             value={typeOfTobacco}
             onChange={setTypeOfTobacco}
-            inputStyle={S.input}
+            inputStyle={inputWithMissing(S.input, isMissingField('typeOfTobacco'))}
             placeholder=""
           />
         </div>
@@ -517,9 +611,9 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       {isNonFCV && (
         <div style={S.row}>
-          <label style={buyerLabelStyle}>{requiredLabel('Date of Purchase (dd/mm/yyyy)')}</label>
+          <label style={labelWithMissing(isMissingField('nonFcvPurchaseDate'))}>{requiredLabel('Date of Purchase (dd/mm/yyyy)')}</label>
           <input
-            style={S.input}
+            style={inputWithMissing(S.input, isMissingField('nonFcvPurchaseDate'))}
             type="date"
             lang="en-GB"
             value={nonFcvPurchaseDate}
@@ -535,9 +629,9 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       {isFCV && (
         <div style={S.row}>
-          <label style={buyerLabelStyle}>{requiredLabel('Date of Purchase (dd/mm/yyyy)')}</label>
+          <label style={labelWithMissing(isMissingField('purchaseDate'))}>{requiredLabel('Date of Purchase (dd/mm/yyyy)')}</label>
           <input
-            style={isPurchaseDateLocked ? lockedFieldStyle : S.input}
+            style={inputWithMissing(isPurchaseDateLocked ? lockedFieldStyle : S.input, isMissingField('purchaseDate'))}
             type="date"
             lang="en-GB"
             value={purchaseDate}
@@ -572,12 +666,12 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       {isFCV && (
         <div style={S.row}>
-          <label style={buyerLabelStyle}>{requiredLabel('APF Number')}</label>
+          <label style={labelWithMissing(isMissingField('apfNumber'))}>{requiredLabel('APF Number')}</label>
           <SearchableSelect
             options={apfNumberOptions}
             value={apfNumber}
             onChange={setApfNumber}
-            inputStyle={isApfNumberLocked ? lockedFieldStyle : S.input}
+            inputStyle={inputWithMissing(isApfNumberLocked ? lockedFieldStyle : S.input, isMissingField('apfNumber'))}
             placeholder=""
             disabled={isApfNumberLocked}
           />
@@ -591,32 +685,32 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       {isFCV && (
         <div style={S.row}>
-          <label style={buyerLabelStyle}>{requiredLabel('Tobacco Board Grade')}</label>
+          <label style={labelWithMissing(isMissingField('tobaccoGrade'))}>{requiredLabel('Tobacco Board Grade')}</label>
           <SearchableSelect
             options={tobaccoBoardGradeOptions}
             value={tobaccoGrade}
             onChange={setTobaccoGrade}
-            inputStyle={S.input}
+            inputStyle={inputWithMissing(S.input, isMissingField('tobaccoGrade'))}
             placeholder=""
           />
         </div>
       )}
 
       <div style={S.row}>
-        <label style={buyerLabelStyle}>{requiredLabel('Buyer Grade')}</label>
+        <label style={labelWithMissing(isMissingField('buyerGrade'))}>{requiredLabel('Buyer Grade')}</label>
         <SearchableSelect
           options={buyerGradeOptions}
           value={buyerGrade}
           onChange={setBuyerGrade}
-          inputStyle={S.input}
+          inputStyle={inputWithMissing(S.input, isMissingField('buyerGrade'))}
           placeholder=""
         />
       </div>
 
       <div style={S.row}>
-        <label style={buyerLabelStyle}>{requiredLabel('Lot Number', isFCV)}</label>
+        <label style={labelWithMissing(isMissingField('lotNumber'))}>{requiredLabel('Lot Number', isFCV)}</label>
         <input
-          style={S.input}
+          style={inputWithMissing(S.input, isMissingField('lotNumber'))}
           type="text"
           placeholder=""
           value={lotNumber}
@@ -626,12 +720,12 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 2 }}>
         <div style={S.row}>
-          <label style={buyerLabelStyle}>{requiredLabel('Weight (kg)')}</label>
-          <input style={S.input} type="number" placeholder="" value={weight} onChange={e => setWeight(e.target.value)} />
+          <label style={labelWithMissing(isMissingField('weight'))}>{requiredLabel('Weight (kg)')}</label>
+          <input style={inputWithMissing(S.input, isMissingField('weight'))} type="number" placeholder="" value={weight} onChange={e => setWeight(e.target.value)} />
         </div>
         <div style={S.row}>
-          <label style={buyerLabelStyle}>{requiredLabel('Rate')}</label>
-          <input style={S.input} type="number" step="0.01" placeholder="" value={rate} onChange={e => setRate(e.target.value)} />
+          <label style={labelWithMissing(isMissingField('rate'))}>{requiredLabel('Rate')}</label>
+          <input style={inputWithMissing(S.input, isMissingField('rate'))} type="number" step="0.01" placeholder="" value={rate} onChange={e => setRate(e.target.value)} />
         </div>
         <div style={S.row}>
           <label style={buyerLabelStyle}>Bale Value (Weight x Rate)</label>
@@ -648,7 +742,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
           Save & Exit
         </button>
         <button
-          style={{ ...S.btnPrimary, color: buyerButtonTextColor, opacity: (loading || codeStatus === 'duplicate') ? 0.5 : 1 }}
+          style={{ ...S.btnPrimary, color: '#fff', opacity: (loading || codeStatus === 'duplicate') ? 0.5 : 1 }}
           onClick={() => doSave(false)}
           disabled={loading || codeStatus === 'duplicate'}
         >

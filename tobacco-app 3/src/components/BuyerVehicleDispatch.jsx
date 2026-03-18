@@ -1,7 +1,54 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import { S } from '../styles';
+import { S as _S } from '../styles';
 import { formatDateTime } from '../utils/dateFormat';
+
+const S = {
+  ..._S,
+  card: {
+    ..._S.card,
+    background: '#ffffff',
+    border: '1px solid #b7d9f8',
+    boxShadow: '0 4px 16px rgba(39,128,227,0.16)',
+  },
+  subheading: {
+    ..._S.subheading,
+    color: '#2780e3',
+  },
+  label: {
+    ..._S.label,
+    color: '#2780e3',
+  },
+  input: {
+    ..._S.input,
+    background: '#ffffff',
+    border: '1.5px solid #1f67b9',
+    color: '#1b3555',
+  },
+  btnPrimary: {
+    ..._S.btnPrimary,
+    background: '#2780e3',
+    color: '#ffffff',
+    border: '1px solid #1f67b9',
+  },
+  btnSecondary: {
+    ..._S.btnSecondary,
+    background: '#2780e3',
+    color: '#ffffff',
+    border: '1px solid #1f67b9',
+  },
+  th: {
+    ..._S.th,
+    background: '#2780e3',
+    color: '#ffffff',
+    border: '1px solid #1f67b9',
+  },
+  td: {
+    ..._S.td,
+    border: '1px solid #d9ebfb',
+    color: '#1b3555',
+  },
+};
 
 function statusBadge(status) {
   if (status === 'sent_to_admin') return S.badge('red');
@@ -31,6 +78,7 @@ export default function BuyerVehicleDispatch({ buyer }) {
   const [scanCode, setScanCode] = useState('');
   const [scanLoading, setScanLoading] = useState(false);
   const [matchedCodes, setMatchedCodes] = useState([]);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   const loadData = async () => {
     const [eligible, allDispatches] = await Promise.all([
@@ -49,6 +97,8 @@ export default function BuyerVehicleDispatch({ buyer }) {
     const eligibleCodeSet = new Set(eligibleRows.map((row) => String(row.unique_code || '').trim().toUpperCase()));
     setMatchedCodes((prev) => prev.filter((code) => eligibleCodeSet.has(String(code).toUpperCase())));
   }, [eligibleRows]);
+
+
 
   const nextDispatchNumber = useMemo(() => {
     const maxId = dispatches.reduce((maxValue, row) => Math.max(maxValue, Number(row.id || 0)), 0);
@@ -87,7 +137,23 @@ export default function BuyerVehicleDispatch({ buyer }) {
     setMatchedCodes((prev) => prev.filter((item) => item !== code));
   };
 
+  const missingFieldStyle = {
+    background: '#fffee0',
+    color: '#1b3555',
+  };
+
+  const isMissingField = (field) => {
+    if (!submitAttempted) return false;
+    if (field === 'matchedCodes') return matchedCodes.length === 0;
+    return !String(field).trim();
+  };
+
+  const inputWithMissing = (baseStyle, missing) => {
+    return missing ? { ...baseStyle, ...missingFieldStyle } : baseStyle;
+  };
+
   const createDispatch = async () => {
+    setSubmitAttempted(true);
     if (!vehicleNumber.trim()) {
       setMsg('Vehicle number is required');
       return;
@@ -144,6 +210,7 @@ export default function BuyerVehicleDispatch({ buyer }) {
       setInvoiceNumber('');
       setBuyerNote('');
       setMatchedCodes([]);
+      setSubmitAttempted(false);
       setMsg('✅ Matched QR rows sent to admin successfully');
       await loadData();
     } catch (e) {
@@ -159,74 +226,9 @@ export default function BuyerVehicleDispatch({ buyer }) {
         <div style={S.subheading}>Vehicle Dispatch Details</div>
         {msg && <div style={msg.startsWith('✅') ? S.success : S.error}>{msg}</div>}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-          <div>
-            <label style={S.label}>Dispatch Number</label>
-            <input style={S.input} value={nextDispatchNumber} readOnly />
-          </div>
-          <div>
-            <label style={S.label}>Dispatch Date</label>
-            <input style={S.input} value={dispatchDate} readOnly />
-          </div>
-          <div>
-            <label style={S.label}>Vehicle Number</label>
-            <input
-              style={S.input}
-              placeholder="e.g. AP39AB1234"
-              value={vehicleNumber}
-              onChange={(e) => setVehicleNumber(e.target.value)}
-            />
-          </div>
-          <div>
-            <label style={S.label}>Vehicle Type</label>
-            <input
-              style={S.input}
-              placeholder="e.g. Lorry / Truck"
-              value={vehicleType}
-              onChange={(e) => setVehicleType(e.target.value)}
-            />
-          </div>
-          <div>
-            <label style={S.label}>Destination Location</label>
-            <input
-              style={S.input}
-              placeholder="Destination location"
-              value={destinationLocation}
-              onChange={(e) => setDestinationLocation(e.target.value)}
-            />
-          </div>
-          <div>
-            <label style={S.label}>Way Bill Number</label>
-            <input
-              style={S.input}
-              placeholder="Way bill number"
-              value={wayBillNumber}
-              onChange={(e) => setWayBillNumber(e.target.value)}
-            />
-          </div>
-          <div>
-            <label style={S.label}>Invoice Number</label>
-            <input
-              style={S.input}
-              placeholder="Invoice number"
-              value={invoiceNumber}
-              onChange={(e) => setInvoiceNumber(e.target.value)}
-            />
-          </div>
-          <div>
-            <label style={S.label}>Buyer Note (Optional)</label>
-            <input
-              style={S.input}
-              placeholder="Any instruction for admin"
-              value={buyerNote}
-              onChange={(e) => setBuyerNote(e.target.value)}
-            />
-          </div>
-        </div>
-
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
           <input
-            style={{ ...S.input, minWidth: 260, marginBottom: 0 }}
+            style={{ ...inputWithMissing(S.input, isMissingField('matchedCodes')), minWidth: 260, marginBottom: 0 }}
             placeholder="Scan QR code to match with list"
             value={scanCode}
             onChange={(e) => setScanCode(e.target.value)}
@@ -242,9 +244,10 @@ export default function BuyerVehicleDispatch({ buyer }) {
           <span style={{ ...S.badge('green'), fontSize: 13 }}>Matched: {matchedCodes.length}</span>
         </div>
 
-        {matchedCodes.length > 0 && (
-          <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, border: '1px solid #c7ead6', background: '#f0fdf4' }}>
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>Matched QR codes</div>
+        <div style={{ marginBottom: 12, padding: 10, borderRadius: inputWithMissing({}, isMissingField('matchedCodes')).background ? 8 : 8, border: isMissingField('matchedCodes') ? '1.5px solid #d4af37' : matchedCodes.length > 0 ? '1px solid #c7ead6' : '1px solid #e0e0e0', background: isMissingField('matchedCodes') ? '#fffee0' : matchedCodes.length > 0 ? '#f0fdf4' : '#fafafa' }}>
+          <div style={{ fontWeight: 700, marginBottom: 8, color: isMissingField('matchedCodes') ? '#d97706' : '#16a34a' }}>Matched QR codes {matchedCodes.length === 0 && isMissingField('matchedCodes') && '(Required)'}</div>
+          {matchedCodes.length > 0 && (
+
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {matchedCodes.map((code) => (
                 <span key={code} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 999, background: '#ecfeff', border: '1px solid #a5f3fc', fontSize: 12, fontWeight: 700 }}>
@@ -258,8 +261,76 @@ export default function BuyerVehicleDispatch({ buyer }) {
                 </span>
               ))}
             </div>
+          )}
+          {matchedCodes.length === 0 && (!isMissingField('matchedCodes') || submitAttempted) && !isMissingField('matchedCodes') && (
+            <div style={{ color: '#999', fontSize: 12 }}>Scan QR codes using the scanner above</div>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div>
+            <label style={S.label}>Dispatch Number</label>
+            <input style={S.input} value={nextDispatchNumber} readOnly />
           </div>
-        )}
+          <div>
+            <label style={S.label}>Dispatch Date</label>
+            <input style={S.input} value={dispatchDate} readOnly />
+          </div>
+          <div>
+            <label style={S.label}>Vehicle Number</label>
+            <input
+              style={inputWithMissing(S.input, isMissingField(vehicleNumber))}
+              placeholder="e.g. AP39AB1234"
+              value={vehicleNumber}
+              onChange={(e) => setVehicleNumber(e.target.value)}
+            />
+          </div>
+          <div>
+            <label style={S.label}>Vehicle Type</label>
+            <input
+              style={inputWithMissing(S.input, isMissingField(vehicleType))}
+              placeholder="e.g. Lorry / Truck"
+              value={vehicleType}
+              onChange={(e) => setVehicleType(e.target.value)}
+            />
+          </div>
+          <div>
+            <label style={S.label}>Destination Location</label>
+            <input
+              style={inputWithMissing(S.input, isMissingField(destinationLocation))}
+              placeholder="Destination location"
+              value={destinationLocation}
+              onChange={(e) => setDestinationLocation(e.target.value)}
+            />
+          </div>
+          <div>
+            <label style={S.label}>Way Bill Number</label>
+            <input
+              style={inputWithMissing(S.input, isMissingField(wayBillNumber))}
+              placeholder="Way bill number"
+              value={wayBillNumber}
+              onChange={(e) => setWayBillNumber(e.target.value)}
+            />
+          </div>
+          <div>
+            <label style={S.label}>Invoice Number</label>
+            <input
+              style={inputWithMissing(S.input, isMissingField(invoiceNumber))}
+              placeholder="Invoice number"
+              value={invoiceNumber}
+              onChange={(e) => setInvoiceNumber(e.target.value)}
+            />
+          </div>
+          <div>
+            <label style={S.label}>Buyer Note (Optional)</label>
+            <input
+              style={S.input}
+              placeholder="Any instruction for admin"
+              value={buyerNote}
+              onChange={(e) => setBuyerNote(e.target.value)}
+            />
+          </div>
+        </div>
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <button
@@ -327,8 +398,16 @@ export default function BuyerVehicleDispatch({ buyer }) {
                 </tr>
               </thead>
               <tbody>
-                {dispatches.map((row) => (
-                  <tr key={row.id}>
+                {dispatches.map((row) => {
+                  const isSentToWarehouse = row.status === 'sent_to_warehouse';
+                  return (
+                  <tr
+                    key={row.id}
+                    style={{
+                      background: isSentToWarehouse ? '#e0f2fe' : undefined,
+                      borderLeft: isSentToWarehouse ? '4px solid #0284c7' : undefined,
+                    }}
+                  >
                     <td style={S.td}>{row.id}</td>
                     <td style={{ ...S.td, fontWeight: 700 }}>{row.dispatch_number || `DSP-${String(row.id).padStart(5, '0')}`}</td>
                     <td style={S.td}>{formatDateTime(row.dispatch_date || row.created_at)}</td>
@@ -344,7 +423,7 @@ export default function BuyerVehicleDispatch({ buyer }) {
                     <td style={S.td}>{row.warehouse_note || '—'}</td>
                     <td style={S.td}>{formatDateTime(row.updated_at)}</td>
                   </tr>
-                ))}
+                );})}
               </tbody>
             </table>
           </div>

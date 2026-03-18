@@ -1,12 +1,67 @@
 // src/components/AdminDashboard.jsx
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
-import { S } from '../styles';
+import { S as _S } from '../styles';
 import QRCode from './QRCode';
+
+// ── Admin colour theme: teal → blue gradient (matching buyer dashboard) ──────
+const adminGradient = 'linear-gradient(135deg, #20c997 0%, #2780e3 100%)';
+const S = {
+  ..._S,
+  app: {
+    minHeight: '100vh',
+    background: 'linear-gradient(135deg, #f6d365 0%, #fda085 100%)',
+    fontFamily: 'Roboto',
+    fontWeight: 700,
+    color: '#144b8b',
+  },
+  topBar: {
+    ..._S.topBar,
+    background: 'rgba(255,255,255,0.92)',
+    borderBottom: '3px solid #2780e3',
+    boxShadow: '0 4px 14px rgba(39,128,227,0.22)',
+  },
+  topBarTitle: { fontSize: 14, fontWeight: 800, color: '#2780e3', letterSpacing: 1 },
+  buyerBadge:  { background: adminGradient, border: '1px solid #1f67b9', borderRadius: 8, padding: '3px 10px', fontWeight: 800, color: '#ffffff', fontSize: 11 },
+  bagsBadge:   { background: adminGradient, color: '#ffffff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 800 },
+  card:        { background: '#ffffff', borderRadius: 12, border: '1px solid #b7d9f8', padding: '16px', marginBottom: 16, boxShadow: '0 4px 16px rgba(39,128,227,0.16)' },
+  heading:     { fontSize: 16, fontWeight: 800, color: '#2780e3', marginBottom: 14, letterSpacing: 0.5 },
+  subheading:  { fontSize: 13, fontWeight: 800, color: '#2780e3', marginBottom: 10 },
+  label:       { fontSize: 11, fontWeight: 800, color: '#2780e3', marginBottom: 4, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 },
+  input:       { width: '100%', padding: '7px 10px', border: '1.5px solid #1f67b9', borderRadius: 8, fontSize: 13, fontWeight: 700, color: '#1b3555', background: '#ffffff', boxSizing: 'border-box', outline: 'none' },
+  toggleGroup: { display: 'flex', gap: 0, borderRadius: 8, overflow: 'hidden', border: '1.5px solid #2780e3', marginBottom: 6 },
+  toggleBtn: (active, disabled) => ({
+    flex: 1, padding: '8px', border: 'none',
+    background: disabled ? '#8ab8ef' : active ? adminGradient : '#2780e3',
+    color: '#fff',
+    fontWeight: 800, fontSize: 12,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    letterSpacing: 1, transition: 'all 0.2s',
+    pointerEvents: disabled ? 'none' : 'auto',
+  }),
+  btnPrimary:  { background: adminGradient, color: '#fff', border: '1px solid #1f67b9', borderRadius: 8, padding: '8px 16px', fontSize: 12, fontWeight: 800, cursor: 'pointer', flex: 1, transition: 'background 0.2s' },
+  btnSecondary:{ background: adminGradient, color: '#fff', border: '1px solid #1f67b9', borderRadius: 8, padding: '8px 16px', fontSize: 12, fontWeight: 800, cursor: 'pointer', flex: 1 },
+  btnIcon:     { background: adminGradient, border: '1px solid #1f67b9', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: 11, color: '#fff', fontWeight: 800 },
+  th:          { background: '#2780e3', color: '#ffffff', fontWeight: 800, padding: '7px 9px', border: '1px solid #1f67b9', textAlign: 'left', textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.5, whiteSpace: 'nowrap' },
+  td:          { padding: '6px 9px', border: '1px solid #d9ebfb', color: '#1b3555', verticalAlign: 'middle', fontWeight: 700, whiteSpace: 'nowrap' },
+  tab: (active) => ({
+    padding: '6px 12px',
+    border: '2px solid #1f67b9',
+    borderRadius: 8,
+    background: active ? adminGradient : '#2780e3',
+    color: '#fff',
+    fontWeight: 700, fontSize: 12, cursor: 'pointer',
+    letterSpacing: 0.2, whiteSpace: 'nowrap',
+    transition: 'all 0.18s',
+  }),
+  qrCard: { background: '#fff', border: '1.5px solid #b7d9f8', borderRadius: 10, padding: 14, textAlign: 'center', boxShadow: '0 4px 10px rgba(39,128,227,0.16)' },
+};
+// ────────────────────────────────────────────────────────────────────────────
 import DatabaseViewer from './DatabaseViewer';
 import SearchableSelect from './SearchableSelect';
 import ApiStatusBadge from './ApiStatusBadge';
 import AdminVehicleDispatches from './AdminVehicleDispatches';
+import BrandLogo from './BrandLogo';
 import { printQRCodes } from '../utils/printQR';
 import { exportCSV } from '../utils/exportCSV';
 import { exportBagsPDF } from '../utils/exportBags';
@@ -81,6 +136,19 @@ export default function AdminDashboard({ user, onLogout }) {
   const [purchaseLocationEditingId, setPurchaseLocationEditingId] = useState(null);
   const [purchaseLocationMsg, setPurchaseLocationMsg] = useState('');
 
+  // Admin logins state
+  const [adminLogins, setAdminLogins] = useState([]);
+  const [newAdminCode, setNewAdminCode] = useState('');
+  const [newAdminName, setNewAdminName] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [adminLoginMsg, setAdminLoginMsg] = useState('');
+  const [editingAdminLoginId, setEditingAdminLoginId] = useState(null);
+  const [editAdminLoginForm, setEditAdminLoginForm] = useState(null);
+  const [editingBuyerId, setEditingBuyerId] = useState(null);
+  const [editBuyerForm, setEditBuyerForm] = useState(null);
+  const [editingWarehouseId, setEditingWarehouseId] = useState(null);
+  const [editWarehouseForm, setEditWarehouseForm] = useState(null);
+
   const tbGradeCodeInputRef = useRef(null);
   const buyerGradeCodeInputRef = useRef(null);
   const apfCodeInputRef = useRef(null);
@@ -88,7 +156,7 @@ export default function AdminDashboard({ user, onLogout }) {
   const purchaseLocationCodeInputRef = useRef(null);
 
   const refresh = async () => {
-    const [s, b, w, apf, tobaccoTypeRows, purchaseLocationRows, tbGrades, byGrades, q, bg, buyerActionSetting] = await Promise.all([
+    const [s, b, w, apf, tobaccoTypeRows, purchaseLocationRows, tbGrades, byGrades, q, bg, buyerActionSetting, al] = await Promise.all([
       api.getStats(),
       api.getBuyers(),
       api.getWarehouseEmployees(),
@@ -100,6 +168,7 @@ export default function AdminDashboard({ user, onLogout }) {
       api.getQRCodes(),
       api.getBags(),
       api.getBuyerBagActionSetting(),
+      api.getAdminLogins(),
     ]);
     setStats(s);
     setBuyers(b);
@@ -114,6 +183,7 @@ export default function AdminDashboard({ user, onLogout }) {
     setEnabledBuyerActionIds(Array.isArray(buyerActionSetting?.enabled_buyer_ids)
       ? buyerActionSetting.enabled_buyer_ids.map(Number)
       : []);
+    setAdminLogins(al);
   };
 
   useEffect(() => { refresh(); }, []);
@@ -689,7 +759,8 @@ export default function AdminDashboard({ user, onLogout }) {
       return String(bag[key] || '').trim() === selectedValue;
     };
     return (
-      matches('buyer_name')
+      isWithinSelectedRange(getBagDateLabel(bag))
+      && matches('buyer_name')
       && matches('unique_code')
       && matches('apf_number')
       && matches('tobacco_grade')
@@ -759,7 +830,11 @@ export default function AdminDashboard({ user, onLogout }) {
   return (
     <div style={S.app}>
       <div style={S.topBar}>
-        <div style={S.topBarTitle}>🌿 Elite Tobacco — Admin</div>
+        <BrandLogo
+          size={38}
+          title="Elite Leaf Tobacco Company - Admin"
+          titleStyle={S.topBarTitle}
+        />
         <div style={S.buyerInfo}>
           <span style={S.buyerBadge}>🔐 Administrator</span>
           <ApiStatusBadge />
@@ -813,49 +888,74 @@ export default function AdminDashboard({ user, onLogout }) {
         {/* ── LOGIN INFO ── */}
         {tab === 'buyers' && (
           <div>
+            {/* ── Admin Logins Section ── */}
             <div style={S.card}>
-              <div style={S.subheading}>Admin Login Info</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={S.label}>Username</label>
-                  <input style={S.input} value="admin" readOnly />
-                </div>
-                <div>
-                  <label style={S.label}>Password</label>
-                  <input style={S.input} value="admin123" readOnly />
-                </div>
-              </div>
-            </div>
-
-            <div style={S.card}>
-              <div style={S.subheading}>All Login Accounts</div>
+              <div style={S.subheading}>Admin Login Accounts ({adminLogins.length})</div>
+              {adminLoginMsg && <div style={adminLoginMsg.startsWith('✅') ? S.success : S.error}>{adminLoginMsg}</div>}
               <table style={S.table}>
-                <thead><tr>{['Login Type','Code / Username','Name','Password'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <thead><tr>{['Code / Username','Name','Password','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                 <tbody>
-                  <tr>
-                    <td style={S.td}><span style={S.badge('red')}>Admin</span></td>
-                    <td style={{ ...S.td, fontWeight: 800 }}>admin</td>
-                    <td style={S.td}>Administrator</td>
-                    <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>admin123</td>
-                  </tr>
-                  {buyers.map(b => (
-                    <tr key={`buyer-${b.id}`}>
-                      <td style={S.td}><span style={S.badge('green')}>Buyer</span></td>
-                      <td style={{ ...S.td, fontWeight: 800 }}>{b.code}</td>
-                      <td style={S.td}>{b.name}</td>
-                      <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{b.password}</td>
-                    </tr>
-                  ))}
-                  {warehouseEmployees.map(w => (
-                    <tr key={`warehouse-${w.id}`}>
-                      <td style={S.td}><span style={S.badge()}>Warehouse</span></td>
-                      <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
-                      <td style={S.td}>{w.name}</td>
-                      <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{w.code}</td>
-                    </tr>
+                  {adminLogins.map(al => (
+                    editingAdminLoginId === al.id ? (
+                      <tr key={al.id} style={{ background: '#fffbea' }}>
+                        <td style={{ ...S.td, fontWeight: 800 }}>{al.code}</td>
+                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editAdminLoginForm?.name ?? ''} onChange={e => setEditAdminLoginForm(f => ({ ...f, name: e.target.value }))} /></td>
+                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editAdminLoginForm?.password ?? ''} onChange={e => setEditAdminLoginForm(f => ({ ...f, password: e.target.value }))} /></td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={async () => {
+                              try {
+                                await api.updateAdminLogin(al.id, { name: editAdminLoginForm.name, password: editAdminLoginForm.password });
+                                setAdminLoginMsg('✅ Admin login updated');
+                                setEditingAdminLoginId(null);
+                                setEditAdminLoginForm(null);
+                                setAdminLogins(await api.getAdminLogins());
+                              } catch (e) { setAdminLoginMsg(e.message); }
+                            }}>Save</button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingAdminLoginId(null); setEditAdminLoginForm(null); }}>Cancel</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={al.id}>
+                        <td style={{ ...S.td, fontWeight: 800 }}>{al.code}</td>
+                        <td style={S.td}>{al.name}</td>
+                        <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{al.password}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingAdminLoginId(al.id); setEditAdminLoginForm({ name: al.name, password: '' }); setAdminLoginMsg(''); }}>✏️ Edit</button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={async () => {
+                              if (!window.confirm(`Delete admin "${al.code}"? This cannot be undone.`)) return;
+                              try {
+                                await api.deleteAdminLogin(al.id);
+                                setAdminLoginMsg(`✅ Admin "${al.code}" deleted`);
+                                setAdminLogins(await api.getAdminLogins());
+                              } catch (e) { setAdminLoginMsg(e.message); }
+                            }}>🗑 Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            <div style={S.card}>
+              <div style={S.subheading}>Add New Admin Login</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+                <div><label style={S.label}>Username / Code</label><input style={S.input} placeholder="e.g. admin2" value={newAdminCode} onChange={e => setNewAdminCode(e.target.value)} /></div>
+                <div><label style={S.label}>Display Name</label><input style={S.input} placeholder="e.g. Site Admin" value={newAdminName} onChange={e => setNewAdminName(e.target.value)} /></div>
+                <div><label style={S.label}>Password</label><input style={S.input} type="password" placeholder="Enter password" value={newAdminPassword} onChange={e => setNewAdminPassword(e.target.value)} /></div>
+                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 20px' }} onClick={async () => {
+                  try {
+                    await api.createAdminLogin({ code: newAdminCode, name: newAdminName, password: newAdminPassword });
+                    setAdminLoginMsg(`✅ Admin "${newAdminCode}" created`);
+                    setNewAdminCode(''); setNewAdminName(''); setNewAdminPassword('');
+                    setAdminLogins(await api.getAdminLogins());
+                  } catch (e) { setAdminLoginMsg(e.message); }
+                }}>Add Admin</button>
+              </div>
             </div>
 
             <div style={S.card}>
@@ -876,21 +976,46 @@ export default function AdminDashboard({ user, onLogout }) {
             </div>
             <div style={S.card}>
               <div style={S.subheading}>Buyer Login Users ({buyers.length})</div>
+              {buyerMsg && <div style={buyerMsg.startsWith('✅') ? S.success : S.error}>{buyerMsg}</div>}
               <table style={S.table}>
                 <thead><tr>{['Code','Name','Password','QR Assigned','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                 <tbody>
                   {buyers.map(b => (
-                    <tr key={b.id}>
-                      <td style={S.td}><b>{b.code}</b></td>
-                      <td style={S.td}>{b.name}</td>
-                      <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{b.password}</td>
-                      <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
-                      <td style={S.td}>
-                        <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteBuyer(b)}>
-                          🗑 Delete
-                        </button>
-                      </td>
-                    </tr>
+                    editingBuyerId === b.id ? (
+                      <tr key={b.id} style={{ background: '#fffbea' }}>
+                        <td style={{ ...S.td, fontWeight: 800 }}>{b.code}</td>
+                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editBuyerForm?.name ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, name: e.target.value }))} /></td>
+                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editBuyerForm?.password ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, password: e.target.value }))} /></td>
+                        <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={async () => {
+                              try {
+                                await api.updateBuyer(b.id, { name: editBuyerForm.name, password: editBuyerForm.password });
+                                setBuyerMsg('✅ Buyer updated');
+                                setEditingBuyerId(null);
+                                setEditBuyerForm(null);
+                                setBuyers(await api.getBuyers());
+                              } catch (e) { setBuyerMsg(e.message); }
+                            }}>Save</button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingBuyerId(null); setEditBuyerForm(null); }}>Cancel</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={b.id}>
+                        <td style={S.td}><b>{b.code}</b></td>
+                        <td style={S.td}>{b.name}</td>
+                        <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{b.password}</td>
+                        <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingBuyerId(b.id); setEditBuyerForm({ name: b.name, password: '' }); setBuyerMsg(''); }}>✏️ Edit</button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteBuyer(b)}>🗑 Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
                   ))}
                 </tbody>
               </table>
@@ -902,16 +1027,39 @@ export default function AdminDashboard({ user, onLogout }) {
                 <thead><tr>{['Code','Name','Password','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                 <tbody>
                   {warehouseEmployees.map(w => (
-                    <tr key={w.id}>
-                      <td style={S.td}><b>{w.code}</b></td>
-                      <td style={S.td}>{w.name}</td>
-                      <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{w.code}</td>
-                      <td style={S.td}>
-                        <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteWarehouseEmployee(w)}>
-                          🗑 Delete
-                        </button>
-                      </td>
-                    </tr>
+                    editingWarehouseId === w.id ? (
+                      <tr key={w.id} style={{ background: '#fffbea' }}>
+                        <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
+                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editWarehouseForm?.name ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, name: e.target.value }))} /></td>
+                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editWarehouseForm?.password ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, password: e.target.value }))} /></td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={async () => {
+                              try {
+                                await api.updateWarehouseEmployee(w.id, { name: editWarehouseForm.name, password: editWarehouseForm.password });
+                                setBuyerMsg('✅ Warehouse employee updated');
+                                setEditingWarehouseId(null);
+                                setEditWarehouseForm(null);
+                                setWarehouseEmployees(await api.getWarehouseEmployees());
+                              } catch (e) { setBuyerMsg(e.message); }
+                            }}>Save</button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingWarehouseId(null); setEditWarehouseForm(null); }}>Cancel</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={w.id}>
+                        <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
+                        <td style={S.td}>{w.name}</td>
+                        <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{w.password}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingWarehouseId(w.id); setEditWarehouseForm({ name: w.name, password: '' }); setBuyerMsg(''); }}>✏️ Edit</button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteWarehouseEmployee(w)}>🗑 Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
                   ))}
                 </tbody>
               </table>
@@ -1405,21 +1553,6 @@ export default function AdminDashboard({ user, onLogout }) {
                   >
                     ⬇ CSV
                   </button>
-                  <button
-                    style={{ ...exportBtnCsv, padding: '6px 10px', fontSize: 11, fontWeight: 700, color: '#d62839', borderColor: '#d62839' }}
-                    onClick={() => {
-                      const invoiceBags = filteredDisplayedBags.filter((bag) => isWithinSelectedRange(getBagDateLabel(bag)));
-                      generateInvoice(invoiceBags, {
-                        buyerName: displayedBuyer?.name || '',
-                        buyerCode: displayedBuyer?.code || '',
-                        dateFrom: selectedBaleStartDate,
-                        dateTo: selectedBaleEndDate,
-                        getBagDate: getBagDateLabel,
-                      });
-                    }}
-                  >
-                    🧾 Invoice
-                  </button>
                 </div>
                 )}
               </div>
@@ -1510,28 +1643,28 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={{ overflowX: 'auto' }}>
               <table style={S.table}>
                 <thead><tr>
-                      <SortableTh label="Buyer" sortKey="buyer_code" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Name" sortKey="buyer_name" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Code" sortKey="unique_code" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="APF" sortKey="apf_number" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="TB Grade" sortKey="tobacco_grade" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Type" sortKey="type_of_tobacco" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Location" sortKey="purchase_location" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Purchase Date" sortKey="purchase_date" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={170} />
-                      <SortableTh label="Buyer Grade" sortKey="buyer_grade" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Weight" sortKey="weight" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Rate" sortKey="rate" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Bale Value" sortKey="bale_value" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Date & Time" sortKey="date_of_purchase" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={220} />
-                      <SortableTh label="FCV" sortKey="fcv" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Updated" sortKey="updated_at" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={200} />
+                      <SortableTh label="Buyer" sortKey="buyer_code" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={60} />
+                      <SortableTh label="Name" sortKey="buyer_name" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={90} />
+                      <SortableTh label="Code" sortKey="unique_code" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={65} />
+                      <SortableTh label="APF" sortKey="apf_number" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={70} />
+                      <SortableTh label="TB Grade" sortKey="tobacco_grade" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={80} />
+                      <SortableTh label="Type" sortKey="type_of_tobacco" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={75} />
+                      <SortableTh label="Location" sortKey="purchase_location" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={85} />
+                      <SortableTh label="Purchase Date" sortKey="purchase_date" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={100} />
+                      <SortableTh label="Buyer Grade" sortKey="buyer_grade" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={80} />
+                      <SortableTh label="Weight" sortKey="weight" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={70} />
+                      <SortableTh label="Rate" sortKey="rate" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={65} />
+                      <SortableTh label="Bale Value" sortKey="bale_value" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={90} />
+                      <SortableTh label="Date & Time" sortKey="date_of_purchase" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={130} />
+                      <SortableTh label="FCV" sortKey="fcv" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={60} />
+                      <SortableTh label="Updated" sortKey="updated_at" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={130} />
                       <th style={S.th}>Action</th>
                     </tr>
                     <tr>
                       <th style={S.th}></th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 120, marginBottom: 0, fontWeight: 700 }}
+                          style={{ ...S.input, minWidth: 85, marginBottom: 0, fontWeight: 700, fontSize: 11 }}
                           value={bagsColumnFilters.buyer_name}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, buyer_name: e.target.value }))}
                         >
@@ -1543,7 +1676,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       </th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 110, marginBottom: 0, fontWeight: 700 }}
+                          style={{ ...S.input, minWidth: 60, marginBottom: 0, fontWeight: 700, fontSize: 11 }}
                           value={bagsColumnFilters.unique_code}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, unique_code: e.target.value }))}
                         >
@@ -1555,7 +1688,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       </th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 100, marginBottom: 0, fontWeight: 700 }}
+                          style={{ ...S.input, minWidth: 65, marginBottom: 0, fontWeight: 700, fontSize: 11 }}
                           value={bagsColumnFilters.apf_number}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, apf_number: e.target.value }))}
                         >
@@ -1567,7 +1700,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       </th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 110, marginBottom: 0, fontWeight: 700 }}
+                          style={{ ...S.input, minWidth: 75, marginBottom: 0, fontWeight: 700, fontSize: 11 }}
                           value={bagsColumnFilters.tobacco_grade}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, tobacco_grade: e.target.value }))}
                         >
@@ -1579,7 +1712,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       </th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 110, marginBottom: 0, fontWeight: 700 }}
+                          style={{ ...S.input, minWidth: 70, marginBottom: 0, fontWeight: 700, fontSize: 11 }}
                           value={bagsColumnFilters.type_of_tobacco}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, type_of_tobacco: e.target.value }))}
                         >
@@ -1591,7 +1724,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       </th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 110, marginBottom: 0, fontWeight: 700 }}
+                          style={{ ...S.input, minWidth: 80, marginBottom: 0, fontWeight: 700, fontSize: 11 }}
                           value={bagsColumnFilters.purchase_location}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, purchase_location: e.target.value }))}
                         >

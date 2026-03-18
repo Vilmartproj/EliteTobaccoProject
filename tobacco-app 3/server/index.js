@@ -462,21 +462,44 @@ async function initDatabase() {
     'INSERT IGNORE INTO settings (id, buyer_actions_after_6pm_enabled, buyer_actions_after_6pm_buyer_ids, updated_at) VALUES (1, 0, JSON_ARRAY(), NOW())'
   );
 
+  await q(`
+    CREATE TABLE IF NOT EXISTS admin_logins (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(100) NOT NULL UNIQUE,
+      name VARCHAR(255) NOT NULL DEFAULT 'Admin',
+      password VARCHAR(255) NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB;
+  `);
+
+  // Seed a default admin record if table is empty
+  const adminCount = await q('SELECT COUNT(*) AS total FROM admin_logins');
+  if (Number(adminCount[0]?.total || 0) === 0) {
+    await q(
+      'INSERT INTO admin_logins (code, name, password) VALUES (?, ?, ?)',
+      ['admin', 'Administrator', 'admin123']
+    );
+  }
+
   console.log(`✅ MySQL connected: ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}`);
 }
 
 app.post('/api/login', withAsync(async (req, res) => {
-  const { code, password, role } = req.body || {};
+  const { code, password } = req.body || {};
 
   const rawCode = String(code || '').trim();
   const rawPassword = String(password || '').trim();
   const loginCode = rawCode.toUpperCase();
   const loginPassword = rawPassword.toUpperCase();
-  const isAdminCredentials = rawCode.toLowerCase() === 'admin' && rawPassword === 'admin123';
 
-  if (role === 'admin' || isAdminCredentials) {
-    if (isAdminCredentials) {
-      return res.json({ success: true, user: { role: 'admin', name: 'Administrator' } });
+  // Check admin_logins table first (supports multiple admins)
+  const adminRows = await q(
+    'SELECT id, code, name, password FROM admin_logins WHERE LOWER(code) = LOWER(?) LIMIT 1',
+    [rawCode]
+  );
+  if (adminRows.length > 0) {
+    if (adminRows[0].password === rawPassword) {
+      return res.json({ success: true, user: { role: 'admin', name: adminRows[0].name, code: adminRows[0].code, id: adminRows[0].id } });
     }
     return res.status(401).json({ error: 'Invalid admin credentials' });
   }
@@ -499,6 +522,52 @@ app.post('/api/login', withAsync(async (req, res) => {
   }
 
   return res.status(401).json({ error: 'Invalid login code or password' });
+}));
+
+// ── Admin Logins CRUD ──
+app.get('/api/admin-logins', withAsync(async (_req, res) => {
+  const rows = await q('SELECT id, code, name, password, created_at FROM admin_logins ORDER BY id ASC');
+  res.json(rows);
+}));
+
+app.post('/api/admin-logins', withAsync(async (req, res) => {
+  const { code, name, password } = req.body || {};
+  const normCode = String(code || '').trim();
+  const normName = String(name || '').trim() || 'Admin';
+  const normPassword = String(password || '').trim();
+  if (!normCode || !normPassword) return res.status(400).json({ error: 'code and password are required' });
+  try {
+    const result = await q(
+      'INSERT INTO admin_logins (code, name, password) VALUES (?, ?, ?)',
+      [normCode, normName, normPassword]
+    );
+    const rows = await q('SELECT id, code, name, password, created_at FROM admin_logins WHERE id = ?', [result.insertId]);
+    return res.json(rows[0]);
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Admin code already exists' });
+    throw err;
+  }
+}));
+
+app.put('/api/admin-logins/:id', withAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  const { name, password } = req.body || {};
+  const normName = String(name || '').trim();
+  const normPassword = String(password || '').trim();
+  if (!normName && !normPassword) return res.status(400).json({ error: 'Nothing to update' });
+  if (normName) await q('UPDATE admin_logins SET name = ? WHERE id = ?', [normName, id]);
+  if (normPassword) await q('UPDATE admin_logins SET password = ? WHERE id = ?', [normPassword, id]);
+  const rows = await q('SELECT id, code, name, password, created_at FROM admin_logins WHERE id = ?', [id]);
+  if (!rows.length) return res.status(404).json({ error: 'Not found' });
+  res.json(rows[0]);
+}));
+
+app.delete('/api/admin-logins/:id', withAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  const total = await q('SELECT COUNT(*) AS total FROM admin_logins');
+  if (Number(total[0]?.total || 0) <= 1) return res.status(400).json({ error: 'Cannot delete the last admin account' });
+  await q('DELETE FROM admin_logins WHERE id = ?', [id]);
+  res.json({ success: true });
 }));
 
 app.get('/api/buyers', withAsync(async (_req, res) => {
@@ -528,6 +597,20 @@ app.post('/api/buyers', withAsync(async (req, res) => {
   }
 }));
 
+app.put('/api/buyers/:id', withAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  const { name, password } = req.body || {};
+  const updates = {};
+  if (name && String(name).trim()) updates.name = String(name).trim();
+  if (password && String(password).trim()) updates.password = String(password).trim();
+  if (!Object.keys(updates).length) return res.status(400).json({ error: 'Nothing to update' });
+  const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
+  await q(`UPDATE buyers SET ${setClauses} WHERE id = ?`, [...Object.values(updates), id]);
+  const rows = await q('SELECT * FROM buyers WHERE id = ?', [id]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Buyer not found' });
+  res.json(rows[0]);
+}));
+
 app.delete('/api/buyers/:id', withAsync(async (req, res) => {
   const buyerId = Number(req.params.id);
   const rows = await q('SELECT * FROM buyers WHERE id = ? LIMIT 1', [buyerId]);
@@ -544,7 +627,7 @@ app.delete('/api/buyers/:id', withAsync(async (req, res) => {
 }));
 
 app.get('/api/warehouse-employees', withAsync(async (_req, res) => {
-  const rows = await q('SELECT id, code, name, created_at FROM warehouse_employees ORDER BY id ASC');
+  const rows = await q('SELECT id, code, name, password, created_at FROM warehouse_employees ORDER BY id ASC');
   res.json(rows);
 }));
 
@@ -568,6 +651,20 @@ app.post('/api/warehouse-employees', withAsync(async (req, res) => {
     if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Warehouse employee code already exists' });
     throw error;
   }
+}));
+
+app.put('/api/warehouse-employees/:id', withAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  const { name, password } = req.body || {};
+  const updates = {};
+  if (name && String(name).trim()) updates.name = String(name).trim();
+  if (password && String(password).trim()) updates.password = String(password).trim();
+  if (!Object.keys(updates).length) return res.status(400).json({ error: 'Nothing to update' });
+  const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
+  await q(`UPDATE warehouse_employees SET ${setClauses} WHERE id = ?`, [...Object.values(updates), id]);
+  const rows = await q('SELECT id, code, name, password, created_at FROM warehouse_employees WHERE id = ?', [id]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Warehouse employee not found' });
+  res.json(rows[0]);
 }));
 
 app.delete('/api/warehouse-employees/:id', withAsync(async (req, res) => {
@@ -933,6 +1030,17 @@ app.put('/api/qrcodes/:id/assign', withAsync(async (req, res) => {
 
   await q('UPDATE qr_codes SET buyer_id = ? WHERE id = ?', [parsedBuyerId, qrId]);
   const updated = await q('SELECT * FROM qr_codes WHERE id = ? LIMIT 1', [qrId]);
+  res.json(updated[0]);
+}));
+
+app.put('/api/qrcodes/mark-used', withAsync(async (req, res) => {
+  const uniqueCode = String(req.body?.uniqueCode || '').trim();
+  const buyerId = req.body?.buyerId ? Number(req.body.buyerId) : null;
+  if (!uniqueCode) return res.status(400).json({ error: 'uniqueCode is required' });
+  const rows = await q('SELECT id FROM qr_codes WHERE unique_code = ? LIMIT 1', [uniqueCode]);
+  if (rows.length === 0) return res.status(404).json({ error: 'QR code not found' });
+  await q('UPDATE qr_codes SET used = 1, buyer_id = ? WHERE unique_code = ?', [buyerId, uniqueCode]);
+  const updated = await q('SELECT * FROM qr_codes WHERE unique_code = ? LIMIT 1', [uniqueCode]);
   res.json(updated[0]);
 }));
 

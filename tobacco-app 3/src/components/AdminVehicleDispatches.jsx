@@ -1,8 +1,57 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import { S } from '../styles';
+import { S as _S } from '../styles';
 import { formatDateTime } from '../utils/dateFormat';
 import { generateInvoice } from '../utils/generateInvoice';
+
+// ── Admin Vehicle Dispatches: teal → blue gradient (matching admin dashboard) ──
+const adminGradient = 'linear-gradient(135deg, #20c997 0%, #2780e3 100%)';
+const S = {
+  ..._S,
+  card: {
+    ..._S.card,
+    background: '#ffffff',
+    border: '1px solid #b7d9f8',
+    boxShadow: '0 4px 16px rgba(39,128,227,0.16)',
+  },
+  subheading: {
+    ..._S.subheading,
+    color: '#2780e3',
+  },
+  label: {
+    ..._S.label,
+    color: '#2780e3',
+  },
+  input: {
+    ..._S.input,
+    background: '#ffffff',
+    border: '1.5px solid #1f67b9',
+    color: '#1b3555',
+  },
+  btnPrimary: {
+    ..._S.btnPrimary,
+    background: adminGradient,
+    color: '#ffffff',
+    border: '1px solid #1f67b9',
+  },
+  btnSecondary: {
+    ..._S.btnSecondary,
+    background: adminGradient,
+    color: '#ffffff',
+    border: '1px solid #1f67b9',
+  },
+  th: {
+    ..._S.th,
+    background: '#2780e3',
+    color: '#ffffff',
+    border: '1px solid #1f67b9',
+  },
+  td: {
+    ..._S.td,
+    border: '1px solid #d9ebfb',
+    color: '#1b3555',
+  },
+};
 
 function formatInr(value) {
   const num = Number(value);
@@ -16,6 +65,22 @@ function statusBadge(status) {
   if (status === 'confirmed_match') return S.badge('green');
   if (status === 'confirmed_mismatch') return S.badge('red');
   return S.badge();
+}
+
+function buyerColorTheme(buyerId) {
+  const palettes = [
+    { rowBg: '#fff8e6', cellBg: '#fff1cc', border: '#f59e0b', text: '#7c2d12' },
+    { rowBg: '#eefbf2', cellBg: '#dbf5e4', border: '#16a34a', text: '#14532d' },
+    { rowBg: '#eef6ff', cellBg: '#dbeafe', border: '#2563eb', text: '#1e3a8a' },
+    { rowBg: '#fff0f6', cellBg: '#ffe1ef', border: '#db2777', text: '#831843' },
+    { rowBg: '#f6f5ff', cellBg: '#ecebff', border: '#7c3aed', text: '#4c1d95' },
+    { rowBg: '#ecfeff', cellBg: '#cffafe', border: '#0891b2', text: '#164e63' },
+  ];
+  const normalized = Number(buyerId);
+  if (!Number.isFinite(normalized) || normalized <= 0) {
+    return { rowBg: '#fff', cellBg: '#fff', border: '#d1d5db', text: '#1f2937' };
+  }
+  return palettes[(normalized - 1) % palettes.length];
 }
 
 export default function AdminVehicleDispatches() {
@@ -181,12 +246,17 @@ export default function AdminVehicleDispatches() {
               </tr>
             </thead>
             <tbody>
-              {dispatches.map((row) => (
-                <tr key={row.id}>
+              {dispatches.map((row) => {
+                const theme = buyerColorTheme(row.buyer_id);
+                const isSelectedBuyer = buyerFilter && Number(buyerFilter) === Number(row.buyer_id);
+                return (
+                <tr key={row.id} style={{ background: isSelectedBuyer ? theme.rowBg : undefined }}>
                   <td style={S.td}>{row.id}</td>
                   <td style={{ ...S.td, fontWeight: 700 }}>{row.dispatch_number || `DSP-${String(row.id).padStart(5, '0')}`}</td>
                   <td style={S.td}>{formatDateTime(row.dispatch_date || row.created_at)}</td>
-                  <td style={S.td}>{row.buyer_code} - {row.buyer_name}</td>
+                  <td style={{ ...S.td, background: isSelectedBuyer ? theme.cellBg : undefined, color: isSelectedBuyer ? theme.text : undefined, borderLeft: isSelectedBuyer ? `4px solid ${theme.border}` : undefined, fontWeight: 700 }}>
+                    {row.buyer_code} - {row.buyer_name}
+                  </td>
                   <td style={{ ...S.td, fontWeight: 700 }}>{row.vehicle_number}</td>
                   <td style={S.td}>{row.vehicle_type || '—'}</td>
                   <td style={S.td}>{row.destination_location || '—'}</td>
@@ -200,7 +270,7 @@ export default function AdminVehicleDispatches() {
                   <td style={S.td}>
                     {row.status === 'sent_to_admin' ? (
                       <select
-                        style={{ ...S.input, marginBottom: 0, minWidth: 190 }}
+                        style={{ ...S.input, marginBottom: 0, minWidth: 190, background: isSelectedBuyer ? theme.cellBg : undefined, borderColor: isSelectedBuyer ? theme.border : undefined, color: isSelectedBuyer ? theme.text : undefined }}
                         value={assignedEmployeeByDispatch[row.id] || ''}
                         onChange={(e) => setAssignedEmployeeByDispatch((prev) => ({ ...prev, [row.id]: e.target.value }))}
                       >
@@ -216,7 +286,7 @@ export default function AdminVehicleDispatches() {
                   <td style={S.td}>
                     {row.status === 'sent_to_admin' && (
                       <input
-                        style={{ ...S.input, marginBottom: 0, minWidth: 180 }}
+                        style={{ ...S.input, marginBottom: 0, minWidth: 180, background: isSelectedBuyer ? theme.cellBg : undefined, borderColor: isSelectedBuyer ? theme.border : undefined, color: isSelectedBuyer ? theme.text : undefined }}
                         placeholder="Admin note before sending"
                         value={warehouseNotes[`admin-${row.id}`] || ''}
                         onChange={(e) => setNote(`admin-${row.id}`, e.target.value)}
@@ -236,11 +306,19 @@ export default function AdminVehicleDispatches() {
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {row.status === 'sent_to_admin' && (
                         <button
-                          style={{ ...S.btnPrimary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: loading ? 0.6 : 1 }}
+                          style={{ ...S.btnPrimary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: loading ? 0.6 : 1, background: isSelectedBuyer ? theme.border : undefined }}
                           onClick={() => sendToWarehouse(row.id)}
                           disabled={loading}
                         >
                           Send To Warehouse
+                        </button>
+                      )}
+                      {row.status === 'sent_to_warehouse' && (
+                        <button
+                          style={{ flex: 'none', padding: '6px 10px', fontSize: 12, background: '#1e3a8a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'default', fontWeight: 600 }}
+                          disabled
+                        >
+                          Sent To Warehouse
                         </button>
                       )}
                       <button
@@ -255,7 +333,7 @@ export default function AdminVehicleDispatches() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>

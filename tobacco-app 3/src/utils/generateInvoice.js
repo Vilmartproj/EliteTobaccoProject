@@ -148,7 +148,7 @@ export function generateInvoice(bags, { buyerName, buyerCode, dateFrom, dateTo, 
 
   <div class="inv-header">
     <div>
-      <div class="company-name">🌿 Elite Tobacco</div>
+      <div class="company-name">Elite Leaf Tobacco Company</div>
       <div class="company-sub">Tobacco Purchase Management System</div>
     </div>
     <div class="inv-meta">

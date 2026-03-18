@@ -36,11 +36,17 @@ async function req(method, path, body) {
 
 export const api = {
   login:            (body)         => req('POST', '/login', body),
+  getAdminLogins:   ()             => req('GET',  '/admin-logins'),
+  createAdminLogin: (body)         => req('POST', '/admin-logins', body),
+  updateAdminLogin: (id, body)     => req('PUT',  `/admin-logins/${id}`, body),
+  deleteAdminLogin: (id)           => req('DELETE', `/admin-logins/${id}`),
   getBuyers:        ()             => req('GET',  '/buyers'),
   addBuyer:         (body)         => req('POST', '/buyers', body),
+  updateBuyer:      (id, body)     => req('PUT',  `/buyers/${id}`, body),
   deleteBuyer:      (id)           => req('DELETE', `/buyers/${id}`),
   getWarehouseEmployees: ()        => req('GET', '/warehouse-employees'),
   addWarehouseEmployee: (body)     => req('POST', '/warehouse-employees', body),
+  updateWarehouseEmployee: (id, body) => req('PUT', `/warehouse-employees/${id}`, body),
   deleteWarehouseEmployee: (id)    => req('DELETE', `/warehouse-employees/${id}`),
   getApfNumbers:    ()             => req('GET',  '/apf-numbers'),
   addApfNumber:     (body)         => req('POST', '/apf-numbers', body),
@@ -62,6 +68,7 @@ export const api = {
   generateQR:       (body)         => req('POST', '/qrcodes/generate', body),
   assignQR:         (id, buyerId)  => req('PUT',  `/qrcodes/${id}/assign`, { buyerId }),
   deleteQRCode:     (id)           => req('DELETE', `/qrcodes/${id}`),
+  markQRCodeUsed:   (uniqueCode, buyerId) => req('PUT', '/qrcodes/mark-used', { uniqueCode, buyerId }),
   validateCode:     (code)         => req('GET',  `/qrcodes/validate/${encodeURIComponent(code)}`),
   trackQRCode:      (code)         => req('GET',  `/qrcodes/track/${encodeURIComponent(code)}`),
   getVehicleDispatches: (buyerId, warehouseEmployeeId) => {
