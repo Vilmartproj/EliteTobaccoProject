@@ -178,6 +178,7 @@ async function initDatabase() {
       code VARCHAR(50) NOT NULL UNIQUE,
       name VARCHAR(255) NOT NULL,
       password VARCHAR(100) NOT NULL,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB;
   `);
@@ -188,6 +189,7 @@ async function initDatabase() {
       code VARCHAR(50) NOT NULL UNIQUE,
       name VARCHAR(255) NOT NULL,
       password VARCHAR(100) NOT NULL,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB;
   `);
@@ -449,6 +451,8 @@ async function initDatabase() {
   await ensureColumnExists('vehicle_dispatches', 'destination_location', 'destination_location VARCHAR(255) NULL');
   await ensureColumnExists('vehicle_dispatches', 'way_bill_number', 'way_bill_number VARCHAR(120) NULL');
   await ensureColumnExists('vehicle_dispatches', 'invoice_number', 'invoice_number VARCHAR(120) NULL');
+  await ensureColumnExists('buyers', 'is_active', 'is_active TINYINT(1) NOT NULL DEFAULT 1');
+  await ensureColumnExists('warehouse_employees', 'is_active', 'is_active TINYINT(1) NOT NULL DEFAULT 1');
   await ensureColumnExists('bags', 'dispatch_list_added', 'dispatch_list_added TINYINT(1) NOT NULL DEFAULT 0');
   await ensureColumnExists('bags', 'dispatch_invoice_number', 'dispatch_invoice_number VARCHAR(120) NULL');
   await ensureColumnExists('bags', 'dispatch_list_buyer_id', 'dispatch_list_buyer_id INT NULL');
@@ -505,19 +509,25 @@ app.post('/api/login', withAsync(async (req, res) => {
   }
 
   const buyerRows = await q(
-    'SELECT id, code, name, password, created_at FROM buyers WHERE code = ? AND password = ? LIMIT 1',
+    'SELECT id, code, name, password, is_active, created_at FROM buyers WHERE code = ? AND password = ? LIMIT 1',
     [loginCode, loginPassword]
   );
 
   if (buyerRows.length > 0) {
+    if (Number(buyerRows[0].is_active ?? 1) !== 1) {
+      return res.status(403).json({ error: 'Buyer account is inactive. Contact admin.' });
+    }
     return res.json({ success: true, user: { role: 'buyer', ...buyerRows[0] } });
   }
 
   const warehouseRows = await q(
-    'SELECT id, code, name, created_at FROM warehouse_employees WHERE code = ? AND password = ? LIMIT 1',
+    'SELECT id, code, name, is_active, created_at FROM warehouse_employees WHERE code = ? AND password = ? LIMIT 1',
     [loginCode, loginPassword]
   );
   if (warehouseRows.length > 0) {
+    if (Number(warehouseRows[0].is_active ?? 1) !== 1) {
+      return res.status(403).json({ error: 'Warehouse account is inactive. Contact admin.' });
+    }
     return res.json({ success: true, user: { role: 'warehouse', ...warehouseRows[0] } });
   }
 
@@ -599,10 +609,13 @@ app.post('/api/buyers', withAsync(async (req, res) => {
 
 app.put('/api/buyers/:id', withAsync(async (req, res) => {
   const id = Number(req.params.id);
-  const { name, password } = req.body || {};
+  const { name, password, is_active } = req.body || {};
   const updates = {};
   if (name && String(name).trim()) updates.name = String(name).trim();
   if (password && String(password).trim()) updates.password = String(password).trim();
+  if ([true, false, 1, 0, '1', '0'].includes(is_active)) {
+    updates.is_active = (is_active === true || is_active === 1 || is_active === '1') ? 1 : 0;
+  }
   if (!Object.keys(updates).length) return res.status(400).json({ error: 'Nothing to update' });
   const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
   await q(`UPDATE buyers SET ${setClauses} WHERE id = ?`, [...Object.values(updates), id]);
@@ -627,7 +640,7 @@ app.delete('/api/buyers/:id', withAsync(async (req, res) => {
 }));
 
 app.get('/api/warehouse-employees', withAsync(async (_req, res) => {
-  const rows = await q('SELECT id, code, name, password, created_at FROM warehouse_employees ORDER BY id ASC');
+  const rows = await q('SELECT id, code, name, password, is_active, created_at FROM warehouse_employees ORDER BY id ASC');
   res.json(rows);
 }));
 
@@ -645,7 +658,7 @@ app.post('/api/warehouse-employees', withAsync(async (req, res) => {
       'INSERT INTO warehouse_employees (code, name, password, created_at) VALUES (?, ?, ?, NOW())',
       [normalizedCode, normalizedName, normalizedCode]
     );
-    const rows = await q('SELECT id, code, name, created_at FROM warehouse_employees WHERE id = ?', [result.insertId]);
+    const rows = await q('SELECT id, code, name, password, is_active, created_at FROM warehouse_employees WHERE id = ?', [result.insertId]);
     return res.json(rows[0]);
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Warehouse employee code already exists' });
@@ -655,14 +668,17 @@ app.post('/api/warehouse-employees', withAsync(async (req, res) => {
 
 app.put('/api/warehouse-employees/:id', withAsync(async (req, res) => {
   const id = Number(req.params.id);
-  const { name, password } = req.body || {};
+  const { name, password, is_active } = req.body || {};
   const updates = {};
   if (name && String(name).trim()) updates.name = String(name).trim();
   if (password && String(password).trim()) updates.password = String(password).trim();
+  if ([true, false, 1, 0, '1', '0'].includes(is_active)) {
+    updates.is_active = (is_active === true || is_active === 1 || is_active === '1') ? 1 : 0;
+  }
   if (!Object.keys(updates).length) return res.status(400).json({ error: 'Nothing to update' });
   const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
   await q(`UPDATE warehouse_employees SET ${setClauses} WHERE id = ?`, [...Object.values(updates), id]);
-  const rows = await q('SELECT id, code, name, password, created_at FROM warehouse_employees WHERE id = ?', [id]);
+  const rows = await q('SELECT id, code, name, password, is_active, created_at FROM warehouse_employees WHERE id = ?', [id]);
   if (rows.length === 0) return res.status(404).json({ error: 'Warehouse employee not found' });
   res.json(rows[0]);
 }));
@@ -1072,7 +1088,7 @@ app.get('/api/qrcodes/track/:code', withAsync(async (req, res) => {
   const bagRows = await q(
     `SELECT id, unique_code, buyer_id, buyer_code, buyer_name, fcv, apf_number, tobacco_grade, type_of_tobacco,
             purchase_location, purchase_date, weight, rate, bale_value, buyer_grade, lot_number,
-            date_of_purchase, saved_at, updated_at
+            date_of_purchase, saved_at, updated_at, dispatch_invoice_number
      FROM bags
      WHERE unique_code = ?
      ORDER BY id DESC
@@ -1081,6 +1097,26 @@ app.get('/api/qrcodes/track/:code', withAsync(async (req, res) => {
   );
 
   const bag = bagRows.length > 0 ? bagRows[0] : null;
+
+  // Fetch the latest vehicle dispatch linked to this QR code
+  const dispatchRows = await q(
+    `SELECT vdi.id AS item_id, vdi.dispatch_invoice_number AS invoice_number,
+            vdi.warehouse_scan_status AS item_scan_status, vdi.scanned_at,
+            vdi.weight AS item_weight, vdi.rate AS item_rate, vdi.bale_value AS item_bale_value,
+            vd.id AS dispatch_id, vd.dispatch_number, vd.status AS dispatch_status,
+            vd.vehicle_number, vd.buyer_note, vd.admin_note, vd.warehouse_note,
+            vd.sent_to_admin_at, vd.sent_to_warehouse_at, vd.warehouse_confirmed_at,
+            we.name AS warehouse_employee_name
+     FROM vehicle_dispatch_items vdi
+     JOIN vehicle_dispatches vd ON vd.id = vdi.dispatch_id
+     LEFT JOIN warehouse_employees we ON we.id = vd.warehouse_employee_id
+     WHERE vdi.unique_code = ?
+     ORDER BY vdi.id DESC
+     LIMIT 1`,
+    [code]
+  );
+  const dispatch = dispatchRows.length > 0 ? dispatchRows[0] : null;
+
   const status = qr.used ? 'USED' : (qr.buyer_id ? 'ASSIGNED' : 'UNASSIGNED');
 
   res.json({
@@ -1088,6 +1124,7 @@ app.get('/api/qrcodes/track/:code', withAsync(async (req, res) => {
     status,
     qr,
     bag,
+    dispatch,
     tracked_at: new Date().toISOString(),
   });
 }));
@@ -1566,7 +1603,8 @@ app.get('/api/vehicle-dispatches/eligible-qrcodes/:buyerId', withAsync(async (re
   const rows = await q(
     `SELECT q.id AS qr_code_id, q.unique_code,
             bag.id AS bag_id, bag.weight, bag.rate, bag.bale_value, bag.buyer_grade,
-            bag.tobacco_grade, bag.apf_number, bag.purchase_location, bag.fcv, bag.date_of_purchase
+            bag.tobacco_grade, bag.apf_number, bag.purchase_location, bag.fcv, bag.date_of_purchase,
+            bag.dispatch_invoice_number
      FROM qr_codes q
      INNER JOIN bags bag ON bag.unique_code = q.unique_code
      WHERE q.buyer_id = ?
@@ -1613,6 +1651,7 @@ app.post('/api/vehicle-dispatches', withAsync(async (req, res) => {
   const qrRows = await q(
     `SELECT q.id AS qr_code_id, q.unique_code, q.buyer_id, q.used,
             bag.id AS bag_id, bag.weight, bag.rate,
+            bag.dispatch_invoice_number,
           bag.dispatch_list_added, bag.dispatch_list_buyer_id,
             COALESCE(bag.bale_value, bag.weight * bag.rate) AS bale_value
      FROM qr_codes q
@@ -1684,7 +1723,16 @@ app.post('/api/vehicle-dispatches', withAsync(async (req, res) => {
         `INSERT INTO vehicle_dispatch_items
          (dispatch_id, qr_code_id, unique_code, bag_id, weight, rate, bale_value, dispatch_invoice_number, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [dispatchId, row.qr_code_id, row.unique_code, row.bag_id, row.weight ?? null, row.rate ?? null, row.bale_value ?? null, invoiceNumber]
+        [
+          dispatchId,
+          row.qr_code_id,
+          row.unique_code,
+          row.bag_id,
+          row.weight ?? null,
+          row.rate ?? null,
+          row.bale_value ?? null,
+          String(row.dispatch_invoice_number || '').trim() || invoiceNumber,
+        ]
       );
     }
 
@@ -1772,11 +1820,12 @@ app.put('/api/vehicle-dispatches/:id/warehouse-confirmation', withAsync(async (r
     return res.status(400).json({ error: 'Only warehouse-pending dispatches can be confirmed' });
   }
 
-  const nextStatus = matchStatus === 'matched' ? 'confirmed_match' : 'confirmed_mismatch';
+  const nextStatus = matchStatus === 'matched' ? 'warehouse_received' : 'unmatched_bags';
   await q(
     `UPDATE vehicle_dispatches
      SET status = ?, warehouse_note = ?, warehouse_confirmed_at = NOW(), updated_at = NOW()
      WHERE id = ?`,
+
     [nextStatus, warehouseNote, dispatchId]
   );
 
@@ -1800,7 +1849,7 @@ app.post('/api/vehicle-dispatches/:id/scan', withAsync(async (req, res) => {
   if (dispatchRows.length === 0) return res.status(404).json({ error: 'Vehicle dispatch not found' });
 
   const dispatch = dispatchRows[0];
-  if (!['sent_to_warehouse', 'confirmed_match', 'confirmed_mismatch'].includes(dispatch.status)) {
+  if (!['sent_to_warehouse', 'warehouse_received', 'unmatched_bags'].includes(dispatch.status)) {
     return res.status(400).json({ error: 'Dispatch is not in warehouse processing stage' });
   }
 
@@ -1873,7 +1922,7 @@ app.post('/api/vehicle-dispatches/:id/scan', withAsync(async (req, res) => {
     let nextStatus = 'sent_to_warehouse';
     let confirmedAt = null;
     if (Number(summary.total_items) > 0 && Number(summary.matched_count) >= Number(summary.total_items)) {
-      nextStatus = Number(summary.unmatched_count) > 0 ? 'confirmed_mismatch' : 'confirmed_match';
+      nextStatus = Number(summary.unmatched_count) > 0 ? 'unmatched_bags' : 'warehouse_received';
       confirmedAt = new Date();
     }
 

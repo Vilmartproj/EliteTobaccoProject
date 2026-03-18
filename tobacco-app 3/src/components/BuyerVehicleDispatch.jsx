@@ -53,9 +53,17 @@ const S = {
 function statusBadge(status) {
   if (status === 'sent_to_admin') return S.badge('red');
   if (status === 'sent_to_warehouse') return S.badge();
-  if (status === 'confirmed_match') return S.badge('green');
-  if (status === 'confirmed_mismatch') return S.badge('red');
+  if (status === 'warehouse_received') return S.badge('green');
+  if (status === 'unmatched_bags') return S.badge('red');
   return S.badge();
+}
+
+function statusLabel(status) {
+  if (status === 'sent_to_admin') return 'Sent to Admin';
+  if (status === 'sent_to_warehouse') return 'Sent to Warehouse';
+  if (status === 'warehouse_received') return 'Warehouse Received';
+  if (status === 'unmatched_bags') return 'Unmatched Bags';
+  return status;
 }
 
 function formatInr(value) {
@@ -106,6 +114,22 @@ export default function BuyerVehicleDispatch({ buyer }) {
   }, [dispatches]);
 
   const dispatchDate = useMemo(() => formatDateTime(new Date()), []);
+  const relatedInvoiceNumbers = useMemo(() => {
+    const matchedCodeSet = new Set(matchedCodes.map((code) => String(code || '').trim().toUpperCase()));
+    const unique = Array.from(
+      new Set(
+        eligibleRows
+          .filter((row) => matchedCodeSet.has(String(row.unique_code || '').trim().toUpperCase()))
+          .map((row) => String(row.dispatch_invoice_number || '').trim())
+          .filter(Boolean)
+      )
+    );
+    return unique;
+  }, [eligibleRows, matchedCodes]);
+
+  useEffect(() => {
+    setInvoiceNumber(relatedInvoiceNumbers.join(', '));
+  }, [relatedInvoiceNumbers]);
 
   const scanAndMatchQRCode = async (inputCode) => {
     const scanned = String((inputCode ?? scanCode) || '').trim();
@@ -320,6 +344,11 @@ export default function BuyerVehicleDispatch({ buyer }) {
               value={invoiceNumber}
               onChange={(e) => setInvoiceNumber(e.target.value)}
             />
+            {relatedInvoiceNumbers.length > 0 && (
+              <div style={{ marginTop: 6, fontSize: 11, color: '#1f67b9', fontWeight: 700 }}>
+                Matched QR invoices: {relatedInvoiceNumbers.join(', ')}
+              </div>
+            )}
           </div>
           <div>
             <label style={S.label}>Buyer Note (Optional)</label>
@@ -354,6 +383,7 @@ export default function BuyerVehicleDispatch({ buyer }) {
                   <th style={S.th}>Rate</th>
                   <th style={S.th}>Bale Value</th>
                   <th style={S.th}>Buyer Grade</th>
+                  <th style={S.th}>Invoice Number</th>
                 </tr>
               </thead>
               <tbody>
@@ -364,6 +394,7 @@ export default function BuyerVehicleDispatch({ buyer }) {
                     <td style={S.td}>{row.rate ?? '—'}</td>
                     <td style={S.td}>{formatInr(row.bale_value)}</td>
                     <td style={S.td}>{row.buyer_grade || '—'}</td>
+                    <td style={S.td}>{row.dispatch_invoice_number || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -416,7 +447,7 @@ export default function BuyerVehicleDispatch({ buyer }) {
                     <td style={S.td}>{row.destination_location || '—'}</td>
                     <td style={S.td}>{row.way_bill_number || '—'}</td>
                     <td style={S.td}>{row.invoice_number || '—'}</td>
-                    <td style={S.td}><span style={statusBadge(row.status)}>{row.status}</span></td>
+                    <td style={S.td}><span style={statusBadge(row.status)}>{statusLabel(row.status)}</span></td>
                     <td style={S.td}>{row.item_count}</td>
                     <td style={S.td}>{Number(row.total_weight || 0).toFixed(2)} kg</td>
                     <td style={S.td}>₹{formatInr(row.total_bale_value)}</td>

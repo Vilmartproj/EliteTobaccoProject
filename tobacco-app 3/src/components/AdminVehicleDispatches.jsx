@@ -62,9 +62,25 @@ function formatInr(value) {
 function statusBadge(status) {
   if (status === 'sent_to_admin') return S.badge('red');
   if (status === 'sent_to_warehouse') return S.badge();
-  if (status === 'confirmed_match') return S.badge('green');
-  if (status === 'confirmed_mismatch') return S.badge('red');
+  if (status === 'warehouse_received') return S.badge('green');
+  if (status === 'unmatched_bags') return S.badge('red');
   return S.badge();
+function statusLabel(status) {
+  if (status === 'sent_to_admin') return 'Sent to Admin';
+  if (status === 'sent_to_warehouse') return 'Sent to Warehouse';
+  if (status === 'warehouse_received') return 'Warehouse Received';
+  if (status === 'unmatched_bags') return 'Unmatched Bags';
+  return status;
+}
+
+}
+
+function statusLabel(status) {
+  if (status === 'sent_to_admin') return 'Sent to Admin';
+  if (status === 'sent_to_warehouse') return 'Sent to Warehouse';
+  if (status === 'warehouse_received') return 'Warehouse Received';
+  if (status === 'unmatched_bags') return 'Unmatched Bags';
+  return status;
 }
 
 function buyerColorTheme(buyerId) {
@@ -121,7 +137,7 @@ export default function AdminVehicleDispatches() {
   }, [buyerFilter]);
 
   const groupedCounts = useMemo(() => {
-    const map = { sent_to_admin: 0, sent_to_warehouse: 0, confirmed_match: 0, confirmed_mismatch: 0 };
+    const map = { sent_to_admin: 0, sent_to_warehouse: 0, warehouse_received: 0, unmatched_bags: 0 };
     dispatches.forEach((row) => {
       if (Object.prototype.hasOwnProperty.call(map, row.status)) map[row.status] += 1;
     });
@@ -200,8 +216,8 @@ export default function AdminVehicleDispatches() {
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
         <span style={S.badge('red')}>To Admin: {groupedCounts.sent_to_admin}</span>
         <span style={S.badge()}>To Warehouse: {groupedCounts.sent_to_warehouse}</span>
-        <span style={S.badge('green')}>Matched: {groupedCounts.confirmed_match}</span>
-        <span style={S.badge('red')}>Not Matched: {groupedCounts.confirmed_mismatch}</span>
+        <span style={S.badge('green')}>Warehouse Received: {groupedCounts.warehouse_received}</span>
+        <span style={S.badge('red')}>Unmatched Bags: {groupedCounts.unmatched_bags}</span>
       </div>
 
       <div style={{ marginBottom: 12, maxWidth: 320 }}>
@@ -262,7 +278,7 @@ export default function AdminVehicleDispatches() {
                   <td style={S.td}>{row.destination_location || '—'}</td>
                   <td style={S.td}>{row.way_bill_number || '—'}</td>
                   <td style={S.td}>{row.invoice_number || '—'}</td>
-                  <td style={S.td}><span style={statusBadge(row.status)}>{row.status}</span></td>
+                  <td style={S.td}><span style={statusBadge(row.status)}>{statusLabel(row.status)}</span></td>
                   <td style={S.td}>{row.item_count}</td>
                   <td style={S.td}>{Number(row.total_weight || 0).toFixed(2)} kg</td>
                   <td style={S.td}>₹{formatInr(row.total_bale_value)}</td>

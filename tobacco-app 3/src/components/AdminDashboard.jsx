@@ -138,6 +138,7 @@ export default function AdminDashboard({ user, onLogout }) {
 
   // Admin logins state
   const [adminLogins, setAdminLogins] = useState([]);
+  const qrTrackMsgRef = useRef(null);
   const [newAdminCode, setNewAdminCode] = useState('');
   const [newAdminName, setNewAdminName] = useState('');
   const [newAdminPassword, setNewAdminPassword] = useState('');
@@ -235,6 +236,26 @@ export default function AdminDashboard({ user, onLogout }) {
     }
   };
 
+  const handleSetBuyerActive = async (buyer, isActive) => {
+    try {
+      await api.setBuyerActive(buyer.id, isActive);
+      setBuyerMsg(`✅ Buyer ${buyer.code} marked as ${isActive ? 'active' : 'inactive'}`);
+      await refresh();
+    } catch (e) {
+      setBuyerMsg(e.message);
+    }
+  };
+
+  const handleSetWarehouseActive = async (employee, isActive) => {
+    try {
+      await api.setWarehouseEmployeeActive(employee.id, isActive);
+      setBuyerMsg(`✅ Warehouse login ${employee.code} marked as ${isActive ? 'active' : 'inactive'}`);
+      await refresh();
+    } catch (e) {
+      setBuyerMsg(e.message);
+    }
+  };
+
   const handleDeleteQRCode = async (qr) => {
     if (!window.confirm(`Delete QR code ${qr.unique_code}?`)) return;
     try {
@@ -266,6 +287,13 @@ export default function AdminDashboard({ user, onLogout }) {
       setQrTrackLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (tab !== 'qr-tracking') return;
+    if (!qrTrackMsg || qrTrackMsg.startsWith('✅')) return;
+    if (!qrTrackMsgRef.current) return;
+    qrTrackMsgRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [tab, qrTrackMsg]);
 
   const canDeleteQRCode = (qr) => {
     const usedValue = qr?.used;
@@ -978,7 +1006,7 @@ export default function AdminDashboard({ user, onLogout }) {
               <div style={S.subheading}>Buyer Login Users ({buyers.length})</div>
               {buyerMsg && <div style={buyerMsg.startsWith('✅') ? S.success : S.error}>{buyerMsg}</div>}
               <table style={S.table}>
-                <thead><tr>{['Code','Name','Password','QR Assigned','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <thead><tr>{['Code','Name','Password','Status','QR Assigned','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                 <tbody>
                   {buyers.map(b => (
                     editingBuyerId === b.id ? (
@@ -986,6 +1014,7 @@ export default function AdminDashboard({ user, onLogout }) {
                         <td style={{ ...S.td, fontWeight: 800 }}>{b.code}</td>
                         <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editBuyerForm?.name ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, name: e.target.value }))} /></td>
                         <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editBuyerForm?.password ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, password: e.target.value }))} /></td>
+                        <td style={S.td}><span style={{ fontWeight: 800, color: Number(b.is_active ?? 1) === 1 ? '#15803d' : '#b91c1c' }}>{Number(b.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span></td>
                         <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
                         <td style={S.td}>
                           <div style={{ display: 'flex', gap: 6 }}>
@@ -1007,9 +1036,33 @@ export default function AdminDashboard({ user, onLogout }) {
                         <td style={S.td}><b>{b.code}</b></td>
                         <td style={S.td}>{b.name}</td>
                         <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{b.password}</td>
+                        <td style={S.td}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '3px 8px',
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: 800,
+                            color: Number(b.is_active ?? 1) === 1 ? '#166534' : '#b91c1c',
+                            background: Number(b.is_active ?? 1) === 1 ? '#dcfce7' : '#fee2e2',
+                            border: Number(b.is_active ?? 1) === 1 ? '1px solid #86efac' : '1px solid #fca5a5'
+                          }}>{Number(b.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span>
+                        </td>
                         <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
                         <td style={S.td}>
                           <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(b.is_active ?? 1) === 1 ? 1 : 0.55 }}
+                              onClick={() => handleSetBuyerActive(b, true)}
+                            >
+                              Active
+                            </button>
+                            <button
+                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(b.is_active ?? 1) === 0 ? 1 : 0.55 }}
+                              onClick={() => handleSetBuyerActive(b, false)}
+                            >
+                              Inactive
+                            </button>
                             <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingBuyerId(b.id); setEditBuyerForm({ name: b.name, password: '' }); setBuyerMsg(''); }}>✏️ Edit</button>
                             <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteBuyer(b)}>🗑 Delete</button>
                           </div>
@@ -1024,7 +1077,7 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={S.card}>
               <div style={S.subheading}>Warehouse Login Users ({warehouseEmployees.length})</div>
               <table style={S.table}>
-                <thead><tr>{['Code','Name','Password','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <thead><tr>{['Code','Name','Password','Status','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                 <tbody>
                   {warehouseEmployees.map(w => (
                     editingWarehouseId === w.id ? (
@@ -1032,6 +1085,7 @@ export default function AdminDashboard({ user, onLogout }) {
                         <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
                         <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editWarehouseForm?.name ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, name: e.target.value }))} /></td>
                         <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editWarehouseForm?.password ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, password: e.target.value }))} /></td>
+                        <td style={S.td}><span style={{ fontWeight: 800, color: Number(w.is_active ?? 1) === 1 ? '#15803d' : '#b91c1c' }}>{Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span></td>
                         <td style={S.td}>
                           <div style={{ display: 'flex', gap: 6 }}>
                             <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={async () => {
@@ -1053,7 +1107,31 @@ export default function AdminDashboard({ user, onLogout }) {
                         <td style={S.td}>{w.name}</td>
                         <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{w.password}</td>
                         <td style={S.td}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '3px 8px',
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: 800,
+                            color: Number(w.is_active ?? 1) === 1 ? '#166534' : '#b91c1c',
+                            background: Number(w.is_active ?? 1) === 1 ? '#dcfce7' : '#fee2e2',
+                            border: Number(w.is_active ?? 1) === 1 ? '1px solid #86efac' : '1px solid #fca5a5'
+                          }}>{Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span>
+                        </td>
+                        <td style={S.td}>
                           <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(w.is_active ?? 1) === 1 ? 1 : 0.55 }}
+                              onClick={() => handleSetWarehouseActive(w, true)}
+                            >
+                              Active
+                            </button>
+                            <button
+                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(w.is_active ?? 1) === 0 ? 1 : 0.55 }}
+                              onClick={() => handleSetWarehouseActive(w, false)}
+                            >
+                              Inactive
+                            </button>
                             <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingWarehouseId(w.id); setEditWarehouseForm({ name: w.name, password: '' }); setBuyerMsg(''); }}>✏️ Edit</button>
                             <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteWarehouseEmployee(w)}>🗑 Delete</button>
                           </div>
@@ -1400,7 +1478,7 @@ export default function AdminDashboard({ user, onLogout }) {
           <div>
             <div style={S.card}>
               <div style={S.subheading}>Track QR Code</div>
-              {qrTrackMsg && <div style={qrTrackMsg.startsWith('✅') ? S.success : S.error}>{qrTrackMsg}</div>}
+              {qrTrackMsg && <div ref={qrTrackMsgRef} style={qrTrackMsg.startsWith('✅') ? S.success : S.error}>{qrTrackMsg}</div>}
               <div style={{ display: 'grid', gridTemplateColumns: '2fr auto auto', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>QR Code</label>
@@ -1423,39 +1501,124 @@ export default function AdminDashboard({ user, onLogout }) {
 
             {qrTrackResult && (
               <div style={S.card}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
                   <div style={S.subheading}>Tracking Result: {qrTrackResult.code}</div>
-                  <span style={S.badge(qrTrackResult.status === 'USED' ? 'red' : 'green')}>{qrTrackResult.status}</span>
+                  <span style={S.badge(qrTrackResult.status === 'USED' ? 'red' : qrTrackResult.status === 'ASSIGNED' ? 'blue' : 'gray')}>{qrTrackResult.status}</span>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(220px,1fr))', gap: 14, marginTop: 12 }}>
-                  <div>
-                    <div style={{ ...S.label, marginBottom: 6 }}>QR Details</div>
-                    <div style={{ fontSize: 13, color: '#444', lineHeight: 1.7 }}>
+                {/* Row 1: QR Details + Buyer Details */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 14 }}>
+                  {/* QR Details */}
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 14 }}>
+                    <div style={{ ...S.label, marginBottom: 8 }}>🔲 QR Details</div>
+                    <div style={{ fontSize: 13, color: '#444', lineHeight: 1.8 }}>
                       <div><b>Code:</b> {qrTrackResult.qr?.unique_code || '—'}</div>
-                      <div><b>Assigned Buyer:</b> {qrTrackResult.qr?.buyer_code ? `${qrTrackResult.qr.buyer_code} - ${qrTrackResult.qr.buyer_name || '—'}` : 'Unassigned'}</div>
-                      <div><b>Used:</b> {qrTrackResult.qr?.used ? 'Yes' : 'No'}</div>
+                      <div><b>QR Status:</b> {qrTrackResult.status || '—'}</div>
+                      <div><b>Dispatch Number:</b> {qrTrackResult.dispatch?.dispatch_number || '—'}</div>
+                      <div><b>Vehicle Number:</b> {qrTrackResult.dispatch?.vehicle_number || '—'}</div>
+                      <div><b>Invoice Number:</b> {qrTrackResult.dispatch?.invoice_number || qrTrackResult.bag?.dispatch_invoice_number || '—'}</div>
+                      <div><b>Dispatch Status:</b> {qrTrackResult.dispatch?.dispatch_status === 'sent_to_admin'
+                        ? 'Sent to Admin'
+                        : qrTrackResult.dispatch?.dispatch_status === 'sent_to_warehouse'
+                          ? 'Sent to Warehouse'
+                          : qrTrackResult.dispatch?.dispatch_status === 'warehouse_received'
+                            ? 'Warehouse Received'
+                            : qrTrackResult.dispatch?.dispatch_status === 'unmatched_bags'
+                              ? 'Unmatched Bags'
+                              : (qrTrackResult.dispatch?.dispatch_status || 'Not Dispatched')}</div>
                       <div><b>QR Created:</b> {formatDateTime(qrTrackResult.qr?.created_at)}</div>
+                      <div><b>Used:</b> {qrTrackResult.qr?.used ? <span style={{ color: '#dc2626' }}>Yes</span> : <span style={{ color: '#16a34a' }}>No</span>}</div>
                       <div><b>Tracked At:</b> {formatDateTime(qrTrackResult.tracked_at)}</div>
                     </div>
                   </div>
 
-                  <div>
-                    <div style={{ ...S.label, marginBottom: 6 }}>Latest Purchase Link</div>
-                    {!qrTrackResult.bag ? (
-                      <div style={{ fontSize: 13, color: '#777' }}>No bag linked to this QR code yet.</div>
+                  {/* Buyer Details */}
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 14 }}>
+                    <div style={{ ...S.label, marginBottom: 8 }}>👤 Buyer Details</div>
+                    {!qrTrackResult.qr?.buyer_id ? (
+                      <div style={{ fontSize: 13, color: '#777' }}>No buyer assigned to this QR code.</div>
                     ) : (
-                      <div style={{ fontSize: 13, color: '#444', lineHeight: 1.7 }}>
-                        <div><b>Bag ID:</b> {qrTrackResult.bag.id}</div>
-                        <div><b>Buyer:</b> {qrTrackResult.bag.buyer_code || '—'} {qrTrackResult.bag.buyer_name ? `- ${qrTrackResult.bag.buyer_name}` : ''}</div>
+                      <div style={{ fontSize: 13, color: '#444', lineHeight: 1.8 }}>
+                        <div><b>Buyer Code:</b> {qrTrackResult.qr?.buyer_code || '—'}</div>
+                        <div><b>Buyer Name:</b> {qrTrackResult.qr?.buyer_name || '—'}</div>
+                        {qrTrackResult.bag?.buyer_grade && <div><b>Buyer Grade:</b> {qrTrackResult.bag.buyer_grade}</div>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Row 2: Purchase/Bag Details + Dispatch Status */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+                  {/* Purchase Details */}
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 14 }}>
+                    <div style={{ ...S.label, marginBottom: 8 }}>📦 Purchase Details</div>
+                    {!qrTrackResult.bag ? (
+                      <div style={{ fontSize: 13, color: '#777' }}>No purchase recorded for this QR code yet.</div>
+                    ) : (
+                      <div style={{ fontSize: 13, color: '#444', lineHeight: 1.8 }}>
+                        <div><b>Bale Value:</b> {qrTrackResult.bag.bale_value != null ? `₹${Number(qrTrackResult.bag.bale_value).toLocaleString()}` : '—'}</div>
+                        <div><b>Weight:</b> {qrTrackResult.bag.weight ?? '—'} kg</div>
+                        <div><b>Rate:</b> {qrTrackResult.bag.rate ?? '—'}</div>
+                        <div><b>Invoice Number:</b> {qrTrackResult.bag.dispatch_invoice_number || qrTrackResult.dispatch?.invoice_number || '—'}</div>
                         <div><b>FCV Type:</b> {qrTrackResult.bag.fcv || '—'}</div>
                         <div><b>APF:</b> {qrTrackResult.bag.apf_number || '—'}</div>
-                        <div><b>Type/Variety:</b> {qrTrackResult.bag.type_of_tobacco || '—'}</div>
+                        <div><b>Type / Variety:</b> {qrTrackResult.bag.type_of_tobacco || '—'}</div>
+                        <div><b>TB Grade:</b> {qrTrackResult.bag.tobacco_grade || '—'}</div>
                         <div><b>Location:</b> {qrTrackResult.bag.purchase_location || '—'}</div>
-                        <div><b>Weight:</b> {qrTrackResult.bag.weight ?? '—'}</div>
-                        <div><b>Bale Value:</b> {qrTrackResult.bag.bale_value ?? '—'}</div>
                         <div><b>Purchase Time:</b> {formatDateTime(qrTrackResult.bag.date_of_purchase)}</div>
                         <div><b>Last Updated:</b> {formatDateTime(qrTrackResult.bag.updated_at)}</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dispatch Status */}
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 14 }}>
+                    <div style={{ ...S.label, marginBottom: 8 }}>🚚 Dispatch Status</div>
+                    {!qrTrackResult.dispatch ? (
+                      <div style={{ fontSize: 13, color: '#777' }}>Not dispatched yet.</div>
+                    ) : (
+                      <div style={{ fontSize: 13, color: '#444', lineHeight: 1.8 }}>
+                        <div style={{ marginBottom: 6 }}>
+                          <b>Status:</b>{' '}
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '2px 10px',
+                            borderRadius: 12,
+                            fontSize: 12,
+                            fontWeight: 700,
+                            background: qrTrackResult.dispatch.dispatch_status === 'warehouse_received' ? '#dcfce7'
+                              : qrTrackResult.dispatch.dispatch_status === 'unmatched_bags' ? '#fee2e2'
+                              : qrTrackResult.dispatch.dispatch_status === 'sent_to_warehouse' ? '#dbeafe'
+                              : '#fef9c3',
+                            color: qrTrackResult.dispatch.dispatch_status === 'warehouse_received' ? '#15803d'
+                              : qrTrackResult.dispatch.dispatch_status === 'unmatched_bags' ? '#b91c1c'
+                              : qrTrackResult.dispatch.dispatch_status === 'sent_to_warehouse' ? '#1d4ed8'
+                              : '#92400e',
+                          }}>
+                            {qrTrackResult.dispatch.dispatch_status === 'sent_to_admin' ? 'Sent to Admin'
+                              : qrTrackResult.dispatch.dispatch_status === 'sent_to_warehouse' ? 'Sent to Warehouse'
+                              : qrTrackResult.dispatch.dispatch_status === 'warehouse_received' ? 'Warehouse Received'
+                              : qrTrackResult.dispatch.dispatch_status === 'unmatched_bags' ? 'Unmatched Bags'
+                              : qrTrackResult.dispatch.dispatch_status}
+                          </span>
+                        </div>
+                        <div><b>Dispatch Number:</b> {qrTrackResult.dispatch.dispatch_number || '—'}</div>
+                        <div><b>Invoice Number:</b> {qrTrackResult.dispatch.invoice_number || '—'}</div>
+                        <div><b>Vehicle Number:</b> {qrTrackResult.dispatch.vehicle_number || '—'}</div>
+                        {qrTrackResult.dispatch.warehouse_employee_name && <div><b>Warehouse Employee:</b> {qrTrackResult.dispatch.warehouse_employee_name}</div>}
+                        <div><b>Sent to Admin:</b> {formatDateTime(qrTrackResult.dispatch.sent_to_admin_at)}</div>
+                        {qrTrackResult.dispatch.sent_to_warehouse_at && <div><b>Sent to Warehouse:</b> {formatDateTime(qrTrackResult.dispatch.sent_to_warehouse_at)}</div>}
+                        {qrTrackResult.dispatch.warehouse_confirmed_at && <div><b>Warehouse Confirmed:</b> {formatDateTime(qrTrackResult.dispatch.warehouse_confirmed_at)}</div>}
+                        <div style={{ marginTop: 6 }}><b>Item Scan:</b>{' '}
+                          <span style={{
+                            display: 'inline-block', padding: '1px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600,
+                            background: qrTrackResult.dispatch.item_scan_status === 'scanned' ? '#dcfce7' : '#f1f5f9',
+                            color: qrTrackResult.dispatch.item_scan_status === 'scanned' ? '#15803d' : '#64748b',
+                          }}>
+                            {qrTrackResult.dispatch.item_scan_status === 'scanned' ? 'Scanned at Warehouse' : 'Pending Scan'}
+                          </span>
+                          {qrTrackResult.dispatch.scanned_at && <span style={{ marginLeft: 8, color: '#555' }}>{formatDateTime(qrTrackResult.dispatch.scanned_at)}</span>}
+                        </div>
                       </div>
                     )}
                   </div>

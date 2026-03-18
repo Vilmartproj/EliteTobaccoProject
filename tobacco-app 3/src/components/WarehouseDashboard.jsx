@@ -60,9 +60,17 @@ const S = {
 
 function statusBadge(status) {
   if (status === 'sent_to_warehouse') return S.badge();
-  if (status === 'confirmed_match') return S.badge('green');
-  if (status === 'confirmed_mismatch') return S.badge('red');
+  if (status === 'warehouse_received') return S.badge('green');
+  if (status === 'unmatched_bags') return S.badge('red');
   return S.badge();
+}
+
+function statusLabel(status) {
+  if (status === 'sent_to_admin') return 'Sent to Admin';
+  if (status === 'sent_to_warehouse') return 'Sent to Warehouse';
+  if (status === 'warehouse_received') return 'Warehouse Received';
+  if (status === 'unmatched_bags') return 'Unmatched Bags';
+  return status;
 }
 
 function formatInr(value) {
@@ -208,7 +216,7 @@ export default function WarehouseDashboard({ user, onLogout }) {
                       <td style={S.td}>#{row.id}</td>
                       <td style={{ ...S.td, fontWeight: 700 }}>{row.vehicle_number}</td>
                       <td style={S.td}>{row.buyer_code} - {row.buyer_name}</td>
-                      <td style={S.td}><span style={statusBadge(row.status)}>{row.status}</span></td>
+                      <td style={S.td}><span style={statusBadge(row.status)}>{statusLabel(row.status)}</span></td>
                       <td style={S.td}>{row.item_count}</td>
                       <td style={S.td}>{Number(row.total_weight || 0).toFixed(2)} kg</td>
                       <td style={S.td}>₹{formatInr(row.total_bale_value)}</td>
