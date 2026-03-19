@@ -9,7 +9,7 @@ const adminGradient = 'linear-gradient(135deg, #20c997 0%, #2780e3 100%)';
 const S = {
   ..._S,
   app: {
-    minHeight: '100vh',
+    minHeight: '100dvh',
     background: '#ffffff',
     fontFamily: 'Roboto',
     fontWeight: 700,

@@ -2,7 +2,7 @@
 
 export const S = {
   app: {
-    minHeight: '100vh',
+    minHeight: '100dvh',
     background: 'linear-gradient(135deg, #fff1f3 0%, #ffe5d9 100%)',
     fontFamily: 'Roboto',
     fontWeight: 700,
@@ -11,7 +11,7 @@ export const S = {
   topBar: {
     background: '#fff',
     borderBottom: '3px solid #e63946',
-    padding: '10px 20px',
+    padding: 'calc(10px + max(env(safe-area-inset-top, 0px), var(--native-safe-top, 0px))) 20px 10px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',

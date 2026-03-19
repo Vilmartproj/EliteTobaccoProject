@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { S } from '../styles';
+import { isNativeQrScannerAvailable, scanNativeQrCode } from '../utils/nativeQrScanner';
 
 export default function QRCameraScanner({ onDetected, buttonLabel = 'Scan with Camera' }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
+  const [status, setStatus] = useState('');
   const [starting, setStarting] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const rafRef = useRef(null);
 
   const supported = useMemo(() => {
+    if (isNativeQrScannerAvailable()) return true;
     return typeof window !== 'undefined' && 'BarcodeDetector' in window && !!navigator.mediaDevices?.getUserMedia;
   }, []);
 
@@ -40,9 +43,18 @@ export default function QRCameraScanner({ onDetected, buttonLabel = 'Scan with C
     }
 
     setError('');
+    setStatus('');
     setStarting(true);
 
     try {
+      if (isNativeQrScannerAvailable()) {
+        const scannedValue = await scanNativeQrCode({ onStatusChange: setStatus });
+        if (scannedValue) {
+          onDetected(scannedValue);
+        }
+        return;
+      }
+
       const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -86,12 +98,15 @@ export default function QRCameraScanner({ onDetected, buttonLabel = 'Scan with C
       setError(err?.message || 'Unable to access camera for scanning.');
       stopScanner();
     } finally {
+      setStatus('');
       setStarting(false);
     }
   };
 
   const openScanner = async () => {
-    setOpen(true);
+    if (!isNativeQrScannerAvailable()) {
+      setOpen(true);
+    }
     await startScanner();
   };
 
@@ -108,8 +123,14 @@ export default function QRCameraScanner({ onDetected, buttonLabel = 'Scan with C
         type="button"
         onClick={openScanner}
       >
-        {buttonLabel}
+        {starting ? 'Opening Scanner...' : buttonLabel}
       </button>
+
+      {(status || error) && !open && (
+        <div style={{ marginTop: 8, fontSize: 12, color: error ? '#c0392b' : '#666' }}>
+          {error || status}
+        </div>
+      )}
 
       {open && (
         <div
@@ -127,6 +148,7 @@ export default function QRCameraScanner({ onDetected, buttonLabel = 'Scan with C
           <div style={{ background: '#fff', borderRadius: 12, width: 'min(96vw, 520px)', padding: 14 }}>
             <div style={{ ...S.subheading, marginBottom: 10 }}>Scan QR Code</div>
             {error && <div style={S.error}>{error}</div>}
+            {!error && status && <div style={{ ...S.label, marginBottom: 10, textTransform: 'none' }}>{status}</div>}
             <video
               ref={videoRef}
               playsInline

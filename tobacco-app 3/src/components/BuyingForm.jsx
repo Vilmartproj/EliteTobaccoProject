@@ -5,6 +5,7 @@ import jsQR from 'jsqr';
 import { api } from '../api';
 import { S as _S } from '../styles';
 import { fromInputDateTime, nowInputDateTime } from '../utils/dateFormat';
+import { scanNativeQrCode } from '../utils/nativeQrScanner';
 import SearchableSelect from './SearchableSelect';
 
 const S = {
@@ -35,8 +36,10 @@ const S = {
   },
   toggleBtn: (active, disabled) => ({
     ..._S.toggleBtn(active, disabled),
-    background: disabled ? '#8ab8ef' : '#2780e3',
-    color: '#ffffff',
+    background: active ? '#2780e3' : '#f3f8ff',
+    color: active ? '#ffffff' : '#9ab0ca',
+    border: active ? '1.5px solid #1f67b9' : '1.5px solid #d7e6f5',
+    opacity: active ? 1 : 0.52,
   }),
   btnPrimary: {
     ..._S.btnPrimary,
@@ -65,16 +68,17 @@ const dateTimeInputToDisplayDate = (value) => {
   return calendarValueToDisplayDate(datePart);
 };
 
+const DEFAULT_FCV = 'NON-FCV';
+
 export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: [] }, apfNumbers = [], tobaccoTypes = [], purchaseLocations = [], assignedQRCodes = [], onSaveExit }) {
   const buyerTitleColor = '#2780e3';
   const buyerButtonTextColor = '#fff';
-  const fcvToggleColor = '#fff';
   const buyerLabelStyle = { ...S.label, fontWeight: 800 };
   const missingFieldStyle = {
     background: '#fffee0',
     color: '#1b3555',
   };
-  const [fcv, setFcv]                   = useState('');
+  const [fcv, setFcv]                   = useState(DEFAULT_FCV);
   const [uniqueCode, setUniqueCode]     = useState('');
   const [codeStatus, setCodeStatus]     = useState(null); // null|checking|ok|duplicate|error
   const [codeMsg, setCodeMsg]           = useState('');
@@ -179,7 +183,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
   const reset = ({ preserveFcvContext = false, preserveFcvLock = false, focusUniqueCode = false } = {}) => {
     const keepFcvContext = preserveFcvContext && fcv === 'FCV' && !!purchaseDate && !!apfNumber;
-    setFcv(keepFcvContext ? 'FCV' : '');
+    setFcv(keepFcvContext ? 'FCV' : DEFAULT_FCV);
     setUniqueCode('');
     setApfNumber(keepFcvContext ? apfNumber : '');
     setTobaccoGrade('');
@@ -289,30 +293,13 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     if (isNativeAndroid) {
       setScannerActive(true);
       try {
-        const { BarcodeScanner } = await import('@capacitor-mlkit/barcode-scanning');
-        const support = await BarcodeScanner.isSupported();
-        if (!support?.supported) {
-          setScannerError('Native scanner is not supported on this device.');
-          return;
-        }
-
-        const permission = await BarcodeScanner.requestPermissions();
-        if (permission?.camera !== 'granted') {
-          setScannerError('Camera permission denied. Please allow camera permission in app settings.');
-          return;
-        }
-
-        const result = await BarcodeScanner.scan();
-        const first = Array.isArray(result?.barcodes) ? result.barcodes[0] : null;
-        const scannedValue = String(first?.rawValue || first?.displayValue || '').trim();
+        const scannedValue = await scanNativeQrCode({ onStatusChange: setScannerError });
 
         if (scannedValue) {
           handleCodeChange(scannedValue);
-        } else {
-          setScannerError('No QR code detected. Please try again.');
         }
-      } catch {
-        setScannerError('Unable to open native scanner. Please try again.');
+      } catch (error) {
+        setScannerError(error?.message || 'Unable to open native scanner. Please try again.');
       } finally {
         setScannerActive(false);
       }
@@ -566,8 +553,6 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
         <button
           style={{
             ...S.toggleBtn(fcv === 'FCV', fcv === 'NON-FCV'),
-            color: fcvToggleColor,
-            border: '1.5px solid #1f67b9',
             borderRadius: 8,
           }}
           onClick={() => handleFcvSelect('FCV')}
@@ -577,8 +562,6 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
         <button
           style={{
             ...S.toggleBtn(fcv === 'NON-FCV', fcv === 'FCV'),
-            color: fcvToggleColor,
-            border: '1.5px solid #1f67b9',
             borderRadius: 8,
           }}
           onClick={() => handleFcvSelect('NON-FCV')}

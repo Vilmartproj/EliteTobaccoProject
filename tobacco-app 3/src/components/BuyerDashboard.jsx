@@ -5,6 +5,7 @@ import { S as _S } from '../styles';
 import BrandLogo from './BrandLogo';
 import BuyingForm from './BuyingForm';
 import QRCode from './QRCode';
+import QRCameraScanner from './QRCameraScanner';
 import SearchableSelect from './SearchableSelect';
 import BuyerVehicleDispatch from './BuyerVehicleDispatch';
 import { printQRCodes } from '../utils/printQR';
@@ -15,7 +16,7 @@ const buyerGradient = 'linear-gradient(135deg, #20c997 0%, #2780e3 100%)';
 const S = {
   ..._S,
   app: {
-    minHeight: '100vh',
+    minHeight: '100dvh',
     background: 'linear-gradient(135deg, #f6d365 0%, #fda085 100%)',
     fontFamily: 'Roboto',
     fontWeight: 700,
@@ -26,6 +27,11 @@ const S = {
     background: 'rgba(255,255,255,0.92)',
     borderBottom: '3px solid #2780e3',
     boxShadow: '0 4px 14px rgba(39,128,227,0.22)',
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 200,
   },
   topBarTitle: { fontSize: 18, fontWeight: 800, color: '#2780e3', letterSpacing: 1 },
   buyerBadge:  { background: buyerGradient, border: '1px solid #1f67b9', borderRadius: 8, padding: '4px 12px', fontWeight: 800, color: '#ffffff', fontSize: 14 },
@@ -817,7 +823,14 @@ export default function BuyerDashboard({ user, onLogout }) {
         )}
       </div>
 
-      <div style={S.page}>
+      <div
+        style={{
+          ...S.page,
+          paddingTop: isMobileView
+            ? 'calc(112px + max(env(safe-area-inset-top, 0px), var(--native-safe-top, 0px)))'
+            : 'calc(72px + max(env(safe-area-inset-top, 0px), var(--native-safe-top, 0px)))',
+        }}
+      >
         <div style={{ ...S.tabs, justifyContent: 'center' }}>
           <button style={{ ...S.tab(view === 'form'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('form')}>📝 New Purchase Entry</button>
           <button style={{ ...S.tab(view === 'bags'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('bags')}>📦 My Purchases <span style={{ fontWeight: 900, marginLeft: 4 }}>{bags.length}</span></button>
@@ -867,6 +880,13 @@ export default function BuyerDashboard({ user, onLogout }) {
                     // Pass live DOM value directly to avoid stale React state
                     scanBagToDispatch(e.target.value.trim());
                   }
+                }}
+              />
+              <QRCameraScanner
+                buttonLabel="Open Scanner"
+                onDetected={(code) => {
+                  setDispatchScanCode(code);
+                  scanBagToDispatch(code);
                 }}
               />
               <button
