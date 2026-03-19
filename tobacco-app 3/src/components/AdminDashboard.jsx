@@ -1,5 +1,5 @@
 // src/components/AdminDashboard.jsx
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from '../api';
 import { S as _S } from '../styles';
 import QRCode from './QRCode';
@@ -10,7 +10,7 @@ const S = {
   ..._S,
   app: {
     minHeight: '100vh',
-    background: 'linear-gradient(135deg, #f6d365 0%, #fda085 100%)',
+    background: '#ffffff',
     fontFamily: 'Roboto',
     fontWeight: 700,
     color: '#144b8b',
@@ -80,6 +80,9 @@ export default function AdminDashboard({ user, onLogout }) {
   const [buyerGrades, setBuyerGrades] = useState([]);
   const [qrCodes, setQR]      = useState([]);
   const [bags, setBags]       = useState([]);
+  const [dispatches, setDispatches] = useState([]);
+  const [analyticsBuyerFilter, setAnalyticsBuyerFilter] = useState('');
+  const [analyticsDispatchSort, setAnalyticsDispatchSort] = useState({ key: 'updated_at', direction: 'desc' });
 
   // Generate QR state
   const [genStart, setGenStart]   = useState('200');
@@ -157,7 +160,7 @@ export default function AdminDashboard({ user, onLogout }) {
   const purchaseLocationCodeInputRef = useRef(null);
 
   const refresh = async () => {
-    const [s, b, w, apf, tobaccoTypeRows, purchaseLocationRows, tbGrades, byGrades, q, bg, buyerActionSetting, al] = await Promise.all([
+    const [s, b, w, apf, tobaccoTypeRows, purchaseLocationRows, tbGrades, byGrades, q, bg, buyerActionSetting, al, vehicleDispatchRows] = await Promise.all([
       api.getStats(),
       api.getBuyers(),
       api.getWarehouseEmployees(),
@@ -170,6 +173,7 @@ export default function AdminDashboard({ user, onLogout }) {
       api.getBags(),
       api.getBuyerBagActionSetting(),
       api.getAdminLogins(),
+      api.getVehicleDispatches(),
     ]);
     setStats(s);
     setBuyers(b);
@@ -181,6 +185,7 @@ export default function AdminDashboard({ user, onLogout }) {
     setBuyerGrades(byGrades);
     setQR(q);
     setBags(bg);
+    setDispatches(vehicleDispatchRows);
     setEnabledBuyerActionIds(Array.isArray(buyerActionSetting?.enabled_buyer_ids)
       ? buyerActionSetting.enabled_buyer_ids.map(Number)
       : []);
@@ -326,6 +331,15 @@ export default function AdminDashboard({ user, onLogout }) {
     const num = Number(value);
     if (!Number.isFinite(num)) return '—';
     return `₹${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const formatCompactCurrencyINR = (value) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
+    if (Math.abs(num) >= 10000000) return `₹${(num / 10000000).toFixed(2)}Cr`;
+    if (Math.abs(num) >= 100000) return `₹${(num / 100000).toFixed(2)}L`;
+    if (Math.abs(num) >= 1000) return `₹${(num / 1000).toFixed(2)}K`;
+    return `₹${num.toFixed(2)}`;
   };
 
   const handleDeleteBag = async (bag) => {
@@ -815,9 +829,215 @@ export default function AdminDashboard({ user, onLogout }) {
     updated_at: formatDateTime(bag.updated_at),
   }));
 
-  const SortableTh = ({ label, sortKey, sortState, onSort, minWidth }) => (
+  const analyticsBuyerId = Number(analyticsBuyerFilter);
+  const analyticsScopedBags = useMemo(() => (
+    Number.isFinite(analyticsBuyerId) && analyticsBuyerId > 0
+      ? bags.filter((bag) => Number(bag.buyer_id) === analyticsBuyerId)
+      : bags
+  ), [bags, analyticsBuyerId]);
+  const analyticsScopedDispatches = useMemo(() => (
+    Number.isFinite(analyticsBuyerId) && analyticsBuyerId > 0
+      ? dispatches.filter((row) => Number(row.buyer_id) === analyticsBuyerId)
+      : dispatches
+  ), [dispatches, analyticsBuyerId]);
+
+  const analyticsTotalPurchaseValue = analyticsScopedBags.reduce((sum, bag) => {
+    const baleValue = Number.isFinite(Number(bag.bale_value))
+      ? Number(bag.bale_value)
+      : (Number(bag.weight || 0) * Number(bag.rate || 0));
+    return sum + (Number.isFinite(baleValue) ? baleValue : 0);
+  }, 0);
+  const analyticsTotalWeight = analyticsScopedBags.reduce((sum, bag) => {
+    const weight = Number(bag.weight);
+    return sum + (Number.isFinite(weight) ? weight : 0);
+  }, 0);
+  const analyticsStatusCounts = analyticsScopedDispatches.reduce((acc, row) => {
+    if (row.status === 'sent_to_admin') acc.sentToAdmin += 1;
+    if (row.status === 'sent_to_warehouse') acc.sentToWarehouse += 1;
+    if (row.status === 'warehouse_received') acc.warehouseReceived += 1;
+    if (row.status === 'unmatched_bags') acc.unmatchedBags += 1;
+    return acc;
+  }, { sentToAdmin: 0, sentToWarehouse: 0, warehouseReceived: 0, unmatchedBags: 0 });
+
+  const analyticsStatusCountsAll = dispatches.reduce((acc, row) => {
+    if (row.status === 'sent_to_admin') acc.sentToAdmin += 1;
+    if (row.status === 'sent_to_warehouse') acc.sentToWarehouse += 1;
+    if (row.status === 'warehouse_received') acc.warehouseReceived += 1;
+    acc.unmatchedBags += Number(row.unmatched_count || 0);
+    return acc;
+  }, { sentToAdmin: 0, sentToWarehouse: 0, warehouseReceived: 0, unmatchedBags: 0 });
+
+  const analyticsBuyerPurchaseValues = useMemo(() => {
+    const map = {};
+    analyticsScopedBags.forEach((bag) => {
+      const key = String(bag.buyer_code || bag.buyer_name || bag.buyer_id || 'Unknown');
+      if (!map[key]) map[key] = { label: key, value: 0 };
+      const baleValue = Number.isFinite(Number(bag.bale_value))
+        ? Number(bag.bale_value)
+        : (Number(bag.weight || 0) * Number(bag.rate || 0));
+      map[key].value += Number.isFinite(baleValue) ? baleValue : 0;
+    });
+    return Object.values(map).sort((a, b) => b.value - a.value);
+  }, [analyticsScopedBags]);
+
+  const analyticsPurchasesByDate = useMemo(() => {
+    const map = {};
+    analyticsScopedBags.forEach((bag) => {
+      const dateLabel = getBagDateLabel(bag);
+      if (!map[dateLabel]) map[dateLabel] = { label: dateLabel, value: 0 };
+      const baleValue = Number.isFinite(Number(bag.bale_value))
+        ? Number(bag.bale_value)
+        : (Number(bag.weight || 0) * Number(bag.rate || 0));
+      map[dateLabel].value += Number.isFinite(baleValue) ? baleValue : 0;
+    });
+    return Object.values(map)
+      .filter((row) => row.label && row.label !== '—')
+      .sort((a, b) => compareBy(parseDisplayDateToInputDate(a.label), parseDisplayDateToInputDate(b.label), 'asc'))
+      .slice(-8);
+  }, [analyticsScopedBags]);
+
+  const analyticsPurchasesByLocation = useMemo(() => {
+    const map = {};
+    analyticsScopedBags.forEach((bag) => {
+      const label = String(bag.purchase_location || 'Unknown');
+      if (!map[label]) map[label] = { label, value: 0 };
+      const baleValue = Number.isFinite(Number(bag.bale_value))
+        ? Number(bag.bale_value)
+        : (Number(bag.weight || 0) * Number(bag.rate || 0));
+      map[label].value += Number.isFinite(baleValue) ? baleValue : 0;
+    });
+    return Object.values(map).sort((a, b) => b.value - a.value).slice(0, 8);
+  }, [analyticsScopedBags]);
+
+  const analyticsDispatchRows = useMemo(
+    () => [...dispatches].sort((a, b) => compareBy(a?.[analyticsDispatchSort.key], b?.[analyticsDispatchSort.key], analyticsDispatchSort.direction)),
+    [dispatches, analyticsDispatchSort]
+  );
+
+  const dispatchStageLabel = (status) => {
+    if (status === 'sent_to_admin') return 'Sent to Admin';
+    if (status === 'sent_to_warehouse') return 'Sent to Warehouse';
+    if (status === 'warehouse_received') return 'Warehouse Received';
+    if (status === 'unmatched_bags') return 'Unmatched Bags';
+    return status || '—';
+  };
+
+  const navigateToTab = (targetTab) => {
+    setTab(targetTab);
+    refresh();
+  };
+
+  const AnalyticsStatCard = ({ title, value, subtitle, onClick }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        background: '#ffffff', border: '1px solid #d7e6ff', borderRadius: 12, padding: 14, textAlign: 'left',
+        boxShadow: '0 3px 10px rgba(11,46,107,0.10)', cursor: 'pointer', width: '100%',
+      }}
+      title="Click to open related tab"
+    >
+      <div style={{ fontSize: 10, letterSpacing: 0.4, textTransform: 'uppercase', color: '#4f6b99' }}>{title}</div>
+      <div style={{ fontSize: 24, color: '#0b2e6b', fontWeight: 900, lineHeight: 1.1, marginTop: 4 }}>{value}</div>
+      {subtitle ? <div style={{ fontSize: 12, color: '#5f7297', marginTop: 5 }}>{subtitle}</div> : null}
+    </button>
+  );
+
+  const DonutChartCard = ({ title, values, colors, totalLabel, onClick, valueFormatter, centerValueFormatter }) => {
+    const sum = values.reduce((acc, item) => acc + item.value, 0);
+    let currentAngle = 0;
+    const segments = values.map((item, idx) => {
+      const percent = sum > 0 ? (item.value / sum) * 100 : 0;
+      const start = currentAngle;
+      const end = currentAngle + percent;
+      currentAngle = end;
+      return `${colors[idx % colors.length]} ${start}% ${end}%`;
+    });
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          ...S.card,
+          marginBottom: 0,
+          cursor: 'pointer',
+          textAlign: 'left',
+          border: '1px solid #d7e6ff',
+        }}
+        title="Click to open related tab"
+      >
+        <div style={{ fontSize: 13, fontWeight: 800, color: '#0b2e6b', marginBottom: 10 }}>{title}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 14, alignItems: 'center' }}>
+          <div style={{ position: 'relative', width: 150, height: 150, margin: '0 auto' }}>
+            <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: `conic-gradient(${segments.join(', ') || '#93c5fd 0% 100%'})` }} />
+            <div style={{
+              position: 'absolute',
+              top: 25,
+              left: 25,
+              width: 100,
+              height: 100,
+              borderRadius: '50%',
+              background: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'column',
+              border: '1px solid #dbeafe',
+            }}>
+              <div style={{ fontSize: 15, color: '#0b2e6b', fontWeight: 900, textAlign: 'center', lineHeight: 1.15, maxWidth: 84, wordBreak: 'break-word' }}>
+                {centerValueFormatter ? centerValueFormatter(sum) : (valueFormatter ? valueFormatter(sum) : sum)}
+              </div>
+              <div style={{ fontSize: 10, color: '#5f7297', textTransform: 'uppercase' }}>{totalLabel}</div>
+            </div>
+          </div>
+          <div>
+            {values.map((item, idx) => (
+              <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 999, background: colors[idx % colors.length], display: 'inline-block' }} />
+                <span style={{ fontSize: 12, color: '#1e3a5f' }}>{item.label}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 800, color: '#0b2e6b' }}>{valueFormatter ? valueFormatter(item.value) : item.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </button>
+    );
+  };
+
+  const BarChartCard = ({ title, rows, color, onClick }) => {
+    const max = Math.max(...rows.map((row) => row.value), 1);
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          ...S.card,
+          marginBottom: 0,
+          cursor: 'pointer',
+          textAlign: 'left',
+          border: '1px solid #d7e6ff',
+        }}
+        title="Click to open related tab"
+      >
+        <div style={{ fontSize: 13, fontWeight: 800, color: '#0b2e6b', marginBottom: 10 }}>{title}</div>
+        {rows.length === 0 ? <div style={{ color: '#6b7280', fontSize: 12 }}>No data</div> : rows.map((row) => (
+          <div key={row.label} style={{ marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12, color: '#1e3a5f', marginBottom: 4 }}>
+              <span>{row.label}</span>
+              <b style={{ color: '#0b2e6b' }}>{row.value}</b>
+            </div>
+            <div style={{ height: 10, background: '#e6f0ff', borderRadius: 999 }}>
+              <div style={{ height: 10, width: `${(row.value / max) * 100}%`, background: color, borderRadius: 999 }} />
+            </div>
+          </div>
+        ))}
+      </button>
+    );
+  };
+
+  const SortableTh = ({ label, sortKey, sortState, onSort, minWidth, thStyle }) => (
     <th
-      style={{ ...S.th, cursor: 'pointer', userSelect: 'none', fontWeight: 700, ...(minWidth ? { minWidth } : {}) }}
+      style={{ ...S.th, ...(thStyle || {}), cursor: 'pointer', userSelect: 'none', fontWeight: 700, ...(minWidth ? { minWidth } : {}) }}
       onClick={() => onSort(sortKey)}
       title="Click to sort"
     >
@@ -873,10 +1093,126 @@ export default function AdminDashboard({ user, onLogout }) {
 
       <div style={{ ...S.page, maxWidth: 1195 }}>
         <div style={S.tabs}>
-          {[['overview','📊 Overview'],['buyers','🔐 Login Info'],['apf-maintenance','🔢 APF Maintenance'],['non-fcv-locations','📍 NON-FCV Locations'],['tobacco-types','🌿 Tobacco Types'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['qr-tracking','📡 QR Tracking'],['vehicle-dispatches','🚚 Vehicle Dispatches'],['generate','⚡ Generate QR'],['bags','📦 Total Purchase'],['database','🗄️ Database']].map(([id, label]) => (
+          {[['overview','📊 Overview'],['analytics','📈 Dashboard Analytics'],['buyers','🔐 Login Info'],['apf-maintenance','🔢 APF Maintenance'],['non-fcv-locations','📍 NON-FCV Locations'],['tobacco-types','🌿 Tobacco Types'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['qr-tracking','📡 QR Tracking'],['vehicle-dispatches','🚚 Vehicle Dispatches'],['generate','⚡ Generate QR'],['bags','📦 Total Purchase'],['database','🗄️ Database']].map(([id, label]) => (
             <button key={id} style={S.tab(tab === id)} onClick={() => { setTab(id); refresh(); }}>{label}</button>
           ))}
         </div>
+
+        {/* ── DASHBOARD ANALYTICS ── */}
+        {tab === 'analytics' && (
+          <div>
+            <div style={{
+              background: '#0b2e6b',
+              color: '#ffffff',
+              borderRadius: 12,
+              padding: '14px 16px',
+              marginBottom: 14,
+              boxShadow: '0 6px 16px rgba(11,46,107,0.22)',
+            }}>
+              <div style={{ fontSize: 17, fontWeight: 900, letterSpacing: 0.3 }}>Dashboard Analytics</div>
+              <div style={{ fontSize: 12, opacity: 0.94, marginTop: 2 }}>Interactive analytics with buyer-level filtering and dispatch tracking insights.</div>
+            </div>
+
+            <div style={{ ...S.card, background: '#ffffff', border: '1px solid #d7e6ff' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, alignItems: 'stretch' }}>
+                <AnalyticsStatCard title="Purchases" value={analyticsScopedBags.length} onClick={() => navigateToTab('bags')} />
+                <AnalyticsStatCard title="Total Purchase Value" value={formatCurrencyINR(analyticsTotalPurchaseValue)} onClick={() => navigateToTab('bags')} />
+                <AnalyticsStatCard title="Total Weight" value={`${analyticsTotalWeight.toFixed(2)} kg`} onClick={() => navigateToTab('bags')} />
+                <AnalyticsStatCard title="Dispatches" value={analyticsScopedDispatches.length} subtitle="Click to open Vehicle Dispatches" onClick={() => navigateToTab('vehicle-dispatches')} />
+                <div style={{ background: '#ffffff', border: '1px solid #d7e6ff', borderRadius: 12, padding: 14, boxShadow: '0 3px 10px rgba(11,46,107,0.10)' }}>
+                  <label style={{ ...S.label, marginBottom: 6 }}>Select Buyer</label>
+                  <select
+                    style={{ ...S.input, marginBottom: 0 }}
+                    value={analyticsBuyerFilter}
+                    onChange={(e) => setAnalyticsBuyerFilter(e.target.value)}
+                  >
+                    <option value="">All Buyers</option>
+                    {buyers.map((buyer) => (
+                      <option key={buyer.id} value={String(buyer.id)}>{buyer.code} - {buyer.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14, marginBottom: 14 }}>
+              <DonutChartCard
+                title="Buyer Purchase Values"
+                totalLabel="Purchase Value"
+                values={analyticsBuyerPurchaseValues}
+                colors={['#166534', '#65a30d', '#ca8a04', '#0f766e', '#0369a1', '#7c3aed']}
+                onClick={() => navigateToTab('bags')}
+                valueFormatter={formatCurrencyINR}
+                centerValueFormatter={formatCompactCurrencyINR}
+              />
+              <DonutChartCard
+                title="Warehouse / Dispatch Status"
+                totalLabel="Dispatches"
+                values={[
+                  { label: 'To Admin', value: analyticsStatusCountsAll.sentToAdmin },
+                  { label: 'To Warehouse', value: analyticsStatusCountsAll.sentToWarehouse },
+                  { label: 'Warehouse Received', value: analyticsStatusCountsAll.warehouseReceived },
+                  { label: 'Unmatched Bags', value: analyticsStatusCountsAll.unmatchedBags },
+                ]}
+                colors={['#0b2e6b', '#2563eb', '#14b8a6', '#f59e0b']}
+                onClick={() => navigateToTab('vehicle-dispatches')}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14, marginBottom: 14 }}>
+              <BarChartCard
+                title="Purchases by Date"
+                rows={analyticsPurchasesByDate}
+                color="#1d4ed8"
+                onClick={() => navigateToTab('bags')}
+              />
+              <BarChartCard
+                title="Purchases by Location"
+                rows={analyticsPurchasesByLocation}
+                color="#0891b2"
+                onClick={() => navigateToTab('bags')}
+              />
+            </div>
+
+            <div style={{ ...S.card, background: '#ffffff', border: '1px solid #d7e6ff' }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#0b2e6b', marginBottom: 10 }}>Dispatch Tracking - All Buyers</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={S.table}>
+                  <thead>
+                    <tr>
+                      <SortableTh label="Dispatch" sortKey="dispatch_number" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Buyer" sortKey="buyer_code" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Vehicle" sortKey="vehicle_number" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Current Stage" sortKey="status" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Warehouse Employee" sortKey="warehouse_employee_name" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Bags" sortKey="item_count" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Weight" sortKey="total_weight" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Total Value" sortKey="total_bale_value" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Updated" sortKey="updated_at" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analyticsDispatchRows.length === 0 ? (
+                      <tr><td style={S.td} colSpan={9}>No dispatches available.</td></tr>
+                    ) : analyticsDispatchRows.map((row) => (
+                      <tr key={row.id}>
+                        <td style={S.td}>{row.dispatch_number || `DSP-${String(row.id).padStart(5, '0')}`}</td>
+                        <td style={S.td}>{row.buyer_code} - {row.buyer_name}</td>
+                        <td style={S.td}>{row.vehicle_number || '—'}</td>
+                        <td style={S.td}>{dispatchStageLabel(row.status)}</td>
+                        <td style={S.td}>{row.warehouse_employee_code ? `${row.warehouse_employee_code} - ${row.warehouse_employee_name}` : (row.warehouse_employee_name || '—')}</td>
+                        <td style={S.td}>{Number(row.item_count || 0)}</td>
+                        <td style={S.td}>{Number(row.total_weight || 0).toFixed(2)} kg</td>
+                        <td style={S.td}>{formatCurrencyINR(row.total_bale_value)}</td>
+                        <td style={S.td}>{formatDateTime(row.updated_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── OVERVIEW ── */}
         {tab === 'overview' && (
