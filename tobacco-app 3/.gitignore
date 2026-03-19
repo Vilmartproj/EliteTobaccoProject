@@ -2,11 +2,16 @@
 .env
 .env.*
 !.env.example
+!.env.qa
+!.env.mobile
 
 # Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Dependencies
+node_modules/
 
 # Build output
 dist/
