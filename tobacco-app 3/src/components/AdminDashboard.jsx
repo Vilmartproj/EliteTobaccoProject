@@ -1514,18 +1514,6 @@ export default function AdminDashboard({ user, onLogout }) {
                     <div style={{ fontSize: 13, color: '#444', lineHeight: 1.8 }}>
                       <div><b>Code:</b> {qrTrackResult.qr?.unique_code || '—'}</div>
                       <div><b>QR Status:</b> {qrTrackResult.status || '—'}</div>
-                      <div><b>Dispatch Number:</b> {qrTrackResult.dispatch?.dispatch_number || '—'}</div>
-                      <div><b>Vehicle Number:</b> {qrTrackResult.dispatch?.vehicle_number || '—'}</div>
-                      <div><b>Invoice Number:</b> {qrTrackResult.dispatch?.invoice_number || qrTrackResult.bag?.dispatch_invoice_number || '—'}</div>
-                      <div><b>Dispatch Status:</b> {qrTrackResult.dispatch?.dispatch_status === 'sent_to_admin'
-                        ? 'Sent to Admin'
-                        : qrTrackResult.dispatch?.dispatch_status === 'sent_to_warehouse'
-                          ? 'Sent to Warehouse'
-                          : qrTrackResult.dispatch?.dispatch_status === 'warehouse_received'
-                            ? 'Warehouse Received'
-                            : qrTrackResult.dispatch?.dispatch_status === 'unmatched_bags'
-                              ? 'Unmatched Bags'
-                              : (qrTrackResult.dispatch?.dispatch_status || 'Not Dispatched')}</div>
                       <div><b>QR Created:</b> {formatDateTime(qrTrackResult.qr?.created_at)}</div>
                       <div><b>Used:</b> {qrTrackResult.qr?.used ? <span style={{ color: '#dc2626' }}>Yes</span> : <span style={{ color: '#16a34a' }}>No</span>}</div>
                       <div><b>Tracked At:</b> {formatDateTime(qrTrackResult.tracked_at)}</div>
@@ -1612,12 +1600,20 @@ export default function AdminDashboard({ user, onLogout }) {
                         <div style={{ marginTop: 6 }}><b>Item Scan:</b>{' '}
                           <span style={{
                             display: 'inline-block', padding: '1px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600,
-                            background: qrTrackResult.dispatch.item_scan_status === 'scanned' ? '#dcfce7' : '#f1f5f9',
-                            color: qrTrackResult.dispatch.item_scan_status === 'scanned' ? '#15803d' : '#64748b',
+                            background: qrTrackResult.dispatch.item_scan_status === 'matched' ? '#dcfce7'
+                              : qrTrackResult.dispatch.item_scan_status === 'unmatched' ? '#fee2e2'
+                              : '#f1f5f9',
+                            color: qrTrackResult.dispatch.item_scan_status === 'matched' ? '#15803d'
+                              : qrTrackResult.dispatch.item_scan_status === 'unmatched' ? '#b91c1c'
+                              : '#64748b',
                           }}>
-                            {qrTrackResult.dispatch.item_scan_status === 'scanned' ? 'Scanned at Warehouse' : 'Pending Scan'}
+                            {qrTrackResult.dispatch.item_scan_status === 'matched' ? 'Scanned at Warehouse'
+                              : qrTrackResult.dispatch.item_scan_status === 'unmatched' ? 'Unmatched Scan'
+                              : 'Pending Scan'}
                           </span>
-                          {qrTrackResult.dispatch.scanned_at && <span style={{ marginLeft: 8, color: '#555' }}>{formatDateTime(qrTrackResult.dispatch.scanned_at)}</span>}
+                          {qrTrackResult.dispatch.item_scan_status === 'matched' && qrTrackResult.dispatch.scanned_at && (
+                            <span style={{ marginLeft: 8, color: '#555' }}>on {formatDateTime(qrTrackResult.dispatch.scanned_at)}</span>
+                          )}
                         </div>
                       </div>
                     )}
