@@ -116,7 +116,7 @@ export function shareBagsWhatsApp(rows) {
   const sample = normalized.slice(0, 20);
 
   const lines = [
-    'Elite Tobacco - All Bags Summary',
+    'Elite Leaf Tobacco Company - All Bags Summary',
     `Generated: ${formatDateTime(new Date())}`,
     `Total Bags: ${normalized.length}`,
     `Total Weight: ${totalWeight.toFixed(2)} kg`,
