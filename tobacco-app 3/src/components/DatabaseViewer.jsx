@@ -132,8 +132,12 @@ export default function DatabaseViewer() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
           {[
             { table: 'buyers', cols: ['id','code','name','password','created_at'] },
+            { table: 'warehouse_employees', cols: ['id','code','name','password','created_at'] },
             { table: 'qr_codes', cols: ['id','unique_code','buyer_id','used','created_at'] },
             { table: 'bags', cols: ['id','unique_code','buyer_id','buyer_code','buyer_name','fcv','apf_number','tobacco_grade','weight','buyer_grade','date_of_purchase','purchase_location','saved_at','updated_at'] },
+            { table: 'vehicle_dispatches', cols: ['id','buyer_id','warehouse_employee_id','vehicle_number','status','buyer_note','admin_note','warehouse_note','sent_to_admin_at','sent_to_warehouse_at','warehouse_confirmed_at','created_at','updated_at'] },
+            { table: 'vehicle_dispatch_items', cols: ['id','dispatch_id','qr_code_id','unique_code','bag_id','weight','rate','bale_value','warehouse_scan_status','scanned_at','scanned_by_employee_id','created_at'] },
+            { table: 'vehicle_dispatch_scan_events', cols: ['id','dispatch_id','item_id','warehouse_employee_id','scanned_code','result','created_at'] },
           ].map(({ table, cols }) => (
             <div key={table} style={{ background: '#fdf8f8', border: '1px solid #f0dada', borderRadius: 8, padding: 14 }}>
               <div style={{ fontWeight: 'bold', color: '#c0392b', marginBottom: 8, fontFamily: 'monospace' }}>{table}</div>

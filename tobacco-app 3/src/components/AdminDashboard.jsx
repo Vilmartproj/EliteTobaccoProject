@@ -1,11 +1,67 @@
 // src/components/AdminDashboard.jsx
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from '../api';
-import { S } from '../styles';
+import { S as _S } from '../styles';
 import QRCode from './QRCode';
+
+// ── Admin colour theme: teal → blue gradient (matching buyer dashboard) ──────
+const adminGradient = 'linear-gradient(135deg, #20c997 0%, #2780e3 100%)';
+const S = {
+  ..._S,
+  app: {
+    minHeight: '100vh',
+    background: '#ffffff',
+    fontFamily: 'Roboto',
+    fontWeight: 700,
+    color: '#144b8b',
+  },
+  topBar: {
+    ..._S.topBar,
+    background: 'rgba(255,255,255,0.92)',
+    borderBottom: '3px solid #2780e3',
+    boxShadow: '0 4px 14px rgba(39,128,227,0.22)',
+  },
+  topBarTitle: { fontSize: 14, fontWeight: 800, color: '#2780e3', letterSpacing: 1 },
+  buyerBadge:  { background: adminGradient, border: '1px solid #1f67b9', borderRadius: 8, padding: '3px 10px', fontWeight: 800, color: '#ffffff', fontSize: 11 },
+  bagsBadge:   { background: adminGradient, color: '#ffffff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 800 },
+  card:        { background: '#ffffff', borderRadius: 12, border: '1px solid #b7d9f8', padding: '16px', marginBottom: 16, boxShadow: '0 4px 16px rgba(39,128,227,0.16)' },
+  heading:     { fontSize: 16, fontWeight: 800, color: '#2780e3', marginBottom: 14, letterSpacing: 0.5 },
+  subheading:  { fontSize: 13, fontWeight: 800, color: '#2780e3', marginBottom: 10 },
+  label:       { fontSize: 11, fontWeight: 800, color: '#2780e3', marginBottom: 4, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 },
+  input:       { width: '100%', padding: '7px 10px', border: '1.5px solid #1f67b9', borderRadius: 8, fontSize: 13, fontWeight: 700, color: '#1b3555', background: '#ffffff', boxSizing: 'border-box', outline: 'none' },
+  toggleGroup: { display: 'flex', gap: 0, borderRadius: 8, overflow: 'hidden', border: '1.5px solid #2780e3', marginBottom: 6 },
+  toggleBtn: (active, disabled) => ({
+    flex: 1, padding: '8px', border: 'none',
+    background: disabled ? '#8ab8ef' : active ? adminGradient : '#2780e3',
+    color: '#fff',
+    fontWeight: 800, fontSize: 12,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    letterSpacing: 1, transition: 'all 0.2s',
+    pointerEvents: disabled ? 'none' : 'auto',
+  }),
+  btnPrimary:  { background: adminGradient, color: '#fff', border: '1px solid #1f67b9', borderRadius: 8, padding: '8px 16px', fontSize: 12, fontWeight: 800, cursor: 'pointer', flex: 1, transition: 'background 0.2s' },
+  btnSecondary:{ background: adminGradient, color: '#fff', border: '1px solid #1f67b9', borderRadius: 8, padding: '8px 16px', fontSize: 12, fontWeight: 800, cursor: 'pointer', flex: 1 },
+  btnIcon:     { background: adminGradient, border: '1px solid #1f67b9', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: 11, color: '#fff', fontWeight: 800 },
+  th:          { background: '#2780e3', color: '#ffffff', fontWeight: 800, padding: '7px 9px', border: '1px solid #1f67b9', textAlign: 'left', textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.5, whiteSpace: 'nowrap' },
+  td:          { padding: '6px 9px', border: '1px solid #d9ebfb', color: '#1b3555', verticalAlign: 'middle', fontWeight: 700, whiteSpace: 'nowrap' },
+  tab: (active) => ({
+    padding: '6px 12px',
+    border: '2px solid #1f67b9',
+    borderRadius: 8,
+    background: active ? adminGradient : '#2780e3',
+    color: '#fff',
+    fontWeight: 700, fontSize: 12, cursor: 'pointer',
+    letterSpacing: 0.2, whiteSpace: 'nowrap',
+    transition: 'all 0.18s',
+  }),
+  qrCard: { background: '#fff', border: '1.5px solid #b7d9f8', borderRadius: 10, padding: 14, textAlign: 'center', boxShadow: '0 4px 10px rgba(39,128,227,0.16)' },
+};
+// ────────────────────────────────────────────────────────────────────────────
 import DatabaseViewer from './DatabaseViewer';
 import SearchableSelect from './SearchableSelect';
 import ApiStatusBadge from './ApiStatusBadge';
+import AdminVehicleDispatches from './AdminVehicleDispatches';
+import BrandLogo from './BrandLogo';
 import { printQRCodes } from '../utils/printQR';
 import { exportCSV } from '../utils/exportCSV';
 import { exportBagsPDF } from '../utils/exportBags';
@@ -16,6 +72,7 @@ export default function AdminDashboard({ user, onLogout }) {
   const [tab, setTab]         = useState('overview');
   const [stats, setStats]     = useState({});
   const [buyers, setBuyers]   = useState([]);
+  const [warehouseEmployees, setWarehouseEmployees] = useState([]);
   const [apfNumbers, setApfNumbers] = useState([]);
   const [tobaccoTypes, setTobaccoTypes] = useState([]);
   const [purchaseLocations, setPurchaseLocations] = useState([]);
@@ -23,6 +80,9 @@ export default function AdminDashboard({ user, onLogout }) {
   const [buyerGrades, setBuyerGrades] = useState([]);
   const [qrCodes, setQR]      = useState([]);
   const [bags, setBags]       = useState([]);
+  const [dispatches, setDispatches] = useState([]);
+  const [analyticsBuyerFilter, setAnalyticsBuyerFilter] = useState('');
+  const [analyticsDispatchSort, setAnalyticsDispatchSort] = useState({ key: 'updated_at', direction: 'desc' });
 
   // Generate QR state
   const [genStart, setGenStart]   = useState('200');
@@ -32,6 +92,7 @@ export default function AdminDashboard({ user, onLogout }) {
   const [genMsg, setGenMsg]       = useState('');
 
   // Add buyer state
+  const [newLoginType, setNewLoginType] = useState('buyer');
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
   const [buyerMsg, setBuyerMsg] = useState('');
@@ -78,6 +139,20 @@ export default function AdminDashboard({ user, onLogout }) {
   const [purchaseLocationEditingId, setPurchaseLocationEditingId] = useState(null);
   const [purchaseLocationMsg, setPurchaseLocationMsg] = useState('');
 
+  // Admin logins state
+  const [adminLogins, setAdminLogins] = useState([]);
+  const qrTrackMsgRef = useRef(null);
+  const [newAdminCode, setNewAdminCode] = useState('');
+  const [newAdminName, setNewAdminName] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [adminLoginMsg, setAdminLoginMsg] = useState('');
+  const [editingAdminLoginId, setEditingAdminLoginId] = useState(null);
+  const [editAdminLoginForm, setEditAdminLoginForm] = useState(null);
+  const [editingBuyerId, setEditingBuyerId] = useState(null);
+  const [editBuyerForm, setEditBuyerForm] = useState(null);
+  const [editingWarehouseId, setEditingWarehouseId] = useState(null);
+  const [editWarehouseForm, setEditWarehouseForm] = useState(null);
+
   const tbGradeCodeInputRef = useRef(null);
   const buyerGradeCodeInputRef = useRef(null);
   const apfCodeInputRef = useRef(null);
@@ -85,9 +160,10 @@ export default function AdminDashboard({ user, onLogout }) {
   const purchaseLocationCodeInputRef = useRef(null);
 
   const refresh = async () => {
-    const [s, b, apf, tobaccoTypeRows, purchaseLocationRows, tbGrades, byGrades, q, bg, buyerActionSetting] = await Promise.all([
+    const [s, b, w, apf, tobaccoTypeRows, purchaseLocationRows, tbGrades, byGrades, q, bg, buyerActionSetting, al, vehicleDispatchRows] = await Promise.all([
       api.getStats(),
       api.getBuyers(),
+      api.getWarehouseEmployees(),
       api.getApfNumbers(),
       api.getTobaccoTypes(),
       api.getPurchaseLocations(),
@@ -96,9 +172,12 @@ export default function AdminDashboard({ user, onLogout }) {
       api.getQRCodes(),
       api.getBags(),
       api.getBuyerBagActionSetting(),
+      api.getAdminLogins(),
+      api.getVehicleDispatches(),
     ]);
     setStats(s);
     setBuyers(b);
+    setWarehouseEmployees(w);
     setApfNumbers(apf);
     setTobaccoTypes(tobaccoTypeRows);
     setPurchaseLocations(purchaseLocationRows);
@@ -106,9 +185,11 @@ export default function AdminDashboard({ user, onLogout }) {
     setBuyerGrades(byGrades);
     setQR(q);
     setBags(bg);
+    setDispatches(vehicleDispatchRows);
     setEnabledBuyerActionIds(Array.isArray(buyerActionSetting?.enabled_buyer_ids)
       ? buyerActionSetting.enabled_buyer_ids.map(Number)
       : []);
+    setAdminLogins(al);
   };
 
   useEffect(() => { refresh(); }, []);
@@ -126,11 +207,27 @@ export default function AdminDashboard({ user, onLogout }) {
   const handleAddBuyer = async () => {
     if (!newCode || !newName) { setBuyerMsg('Fill all fields'); return; }
     try {
-      await api.addBuyer({ code: newCode, name: newName });
-      setBuyerMsg(`✅ Buyer ${newCode.toUpperCase()} added. Password = ${newCode.toUpperCase()}`);
+      if (newLoginType === 'warehouse') {
+        await api.addWarehouseEmployee({ code: newCode, name: newName });
+        setBuyerMsg(`✅ Warehouse login ${newCode.toUpperCase()} added. Password = ${newCode.toUpperCase()}`);
+      } else {
+        await api.addBuyer({ code: newCode, name: newName });
+        setBuyerMsg(`✅ Buyer ${newCode.toUpperCase()} added. Password = ${newCode.toUpperCase()}`);
+      }
       setNewCode(''); setNewName('');
       refresh();
     } catch (e) { setBuyerMsg(e.message); }
+  };
+
+  const handleDeleteWarehouseEmployee = async (employee) => {
+    if (!window.confirm(`Delete warehouse login ${employee.code} (${employee.name})?`)) return;
+    try {
+      await api.deleteWarehouseEmployee(employee.id);
+      setBuyerMsg(`✅ Warehouse login ${employee.code} deleted`);
+      await refresh();
+    } catch (e) {
+      setBuyerMsg(e.message);
+    }
   };
 
   const handleDeleteBuyer = async (buyer) => {
@@ -138,6 +235,26 @@ export default function AdminDashboard({ user, onLogout }) {
     try {
       await api.deleteBuyer(buyer.id);
       setBuyerMsg(`✅ Buyer ${buyer.code} deleted`);
+      await refresh();
+    } catch (e) {
+      setBuyerMsg(e.message);
+    }
+  };
+
+  const handleSetBuyerActive = async (buyer, isActive) => {
+    try {
+      await api.setBuyerActive(buyer.id, isActive);
+      setBuyerMsg(`✅ Buyer ${buyer.code} marked as ${isActive ? 'active' : 'inactive'}`);
+      await refresh();
+    } catch (e) {
+      setBuyerMsg(e.message);
+    }
+  };
+
+  const handleSetWarehouseActive = async (employee, isActive) => {
+    try {
+      await api.setWarehouseEmployeeActive(employee.id, isActive);
+      setBuyerMsg(`✅ Warehouse login ${employee.code} marked as ${isActive ? 'active' : 'inactive'}`);
       await refresh();
     } catch (e) {
       setBuyerMsg(e.message);
@@ -176,6 +293,13 @@ export default function AdminDashboard({ user, onLogout }) {
     }
   };
 
+  useEffect(() => {
+    if (tab !== 'qr-tracking') return;
+    if (!qrTrackMsg || qrTrackMsg.startsWith('✅')) return;
+    if (!qrTrackMsgRef.current) return;
+    qrTrackMsgRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [tab, qrTrackMsg]);
+
   const canDeleteQRCode = (qr) => {
     const usedValue = qr?.used;
     const isUsed = usedValue === true || usedValue === 1 || usedValue === '1';
@@ -207,6 +331,15 @@ export default function AdminDashboard({ user, onLogout }) {
     const num = Number(value);
     if (!Number.isFinite(num)) return '—';
     return `₹${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const formatCompactCurrencyINR = (value) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
+    if (Math.abs(num) >= 10000000) return `₹${(num / 10000000).toFixed(2)}Cr`;
+    if (Math.abs(num) >= 100000) return `₹${(num / 100000).toFixed(2)}L`;
+    if (Math.abs(num) >= 1000) return `₹${(num / 1000).toFixed(2)}K`;
+    return `₹${num.toFixed(2)}`;
   };
 
   const handleDeleteBag = async (bag) => {
@@ -668,7 +801,8 @@ export default function AdminDashboard({ user, onLogout }) {
       return String(bag[key] || '').trim() === selectedValue;
     };
     return (
-      matches('buyer_name')
+      isWithinSelectedRange(getBagDateLabel(bag))
+      && matches('buyer_name')
       && matches('unique_code')
       && matches('apf_number')
       && matches('tobacco_grade')
@@ -695,9 +829,217 @@ export default function AdminDashboard({ user, onLogout }) {
     updated_at: formatDateTime(bag.updated_at),
   }));
 
-  const SortableTh = ({ label, sortKey, sortState, onSort, minWidth }) => (
+  const analyticsBuyerId = Number(analyticsBuyerFilter);
+  const analyticsScopedBags = useMemo(() => (
+    Number.isFinite(analyticsBuyerId) && analyticsBuyerId > 0
+      ? bags.filter((bag) => Number(bag.buyer_id) === analyticsBuyerId)
+      : bags
+  ), [bags, analyticsBuyerId]);
+  const analyticsScopedDispatches = useMemo(() => (
+    Number.isFinite(analyticsBuyerId) && analyticsBuyerId > 0
+      ? dispatches.filter((row) => Number(row.buyer_id) === analyticsBuyerId)
+      : dispatches
+  ), [dispatches, analyticsBuyerId]);
+
+  const analyticsTotalPurchaseValue = analyticsScopedBags.reduce((sum, bag) => {
+    const baleValue = Number.isFinite(Number(bag.bale_value))
+      ? Number(bag.bale_value)
+      : (Number(bag.weight || 0) * Number(bag.rate || 0));
+    return sum + (Number.isFinite(baleValue) ? baleValue : 0);
+  }, 0);
+  const analyticsTotalWeight = analyticsScopedBags.reduce((sum, bag) => {
+    const weight = Number(bag.weight);
+    return sum + (Number.isFinite(weight) ? weight : 0);
+  }, 0);
+  const analyticsStatusCounts = analyticsScopedDispatches.reduce((acc, row) => {
+    if (row.status === 'sent_to_admin') acc.sentToAdmin += 1;
+    if (row.status === 'sent_to_warehouse') acc.sentToWarehouse += 1;
+    if (row.status === 'warehouse_received') acc.warehouseReceived += 1;
+    if (row.status === 'unmatched_bags') acc.unmatchedBags += 1;
+    return acc;
+  }, { sentToAdmin: 0, sentToWarehouse: 0, warehouseReceived: 0, unmatchedBags: 0 });
+
+  const analyticsStatusCountsAll = dispatches.reduce((acc, row) => {
+    if (row.status === 'sent_to_admin') acc.sentToAdmin += 1;
+    if (row.status === 'sent_to_warehouse') acc.sentToWarehouse += 1;
+    if (row.status === 'warehouse_received') acc.warehouseReceived += 1;
+    acc.unmatchedBags += Number(row.unmatched_count || 0);
+    return acc;
+  }, { sentToAdmin: 0, sentToWarehouse: 0, warehouseReceived: 0, unmatchedBags: 0 });
+
+  const analyticsBuyerPurchaseValues = useMemo(() => {
+    const map = {};
+    analyticsScopedBags.forEach((bag) => {
+      const key = String(bag.buyer_code || bag.buyer_name || bag.buyer_id || 'Unknown');
+      if (!map[key]) map[key] = { label: key, value: 0 };
+      const baleValue = Number.isFinite(Number(bag.bale_value))
+        ? Number(bag.bale_value)
+        : (Number(bag.weight || 0) * Number(bag.rate || 0));
+      map[key].value += Number.isFinite(baleValue) ? baleValue : 0;
+    });
+    return Object.values(map).sort((a, b) => b.value - a.value);
+  }, [analyticsScopedBags]);
+
+  const analyticsPurchasesByDate = useMemo(() => {
+    const map = {};
+    analyticsScopedBags.forEach((bag) => {
+      const dateLabel = getBagDateLabel(bag);
+      if (!map[dateLabel]) map[dateLabel] = { label: dateLabel, value: 0 };
+      const baleValue = Number.isFinite(Number(bag.bale_value))
+        ? Number(bag.bale_value)
+        : (Number(bag.weight || 0) * Number(bag.rate || 0));
+      map[dateLabel].value += Number.isFinite(baleValue) ? baleValue : 0;
+    });
+    return Object.values(map)
+      .filter((row) => row.label && row.label !== '—')
+      .sort((a, b) => compareBy(parseDisplayDateToInputDate(a.label), parseDisplayDateToInputDate(b.label), 'asc'))
+      .slice(-8);
+  }, [analyticsScopedBags]);
+
+  const analyticsPurchasesByLocation = useMemo(() => {
+    const map = {};
+    analyticsScopedBags.forEach((bag) => {
+      const label = String(bag.purchase_location || 'Unknown');
+      if (!map[label]) map[label] = { label, value: 0 };
+      const baleValue = Number.isFinite(Number(bag.bale_value))
+        ? Number(bag.bale_value)
+        : (Number(bag.weight || 0) * Number(bag.rate || 0));
+      map[label].value += Number.isFinite(baleValue) ? baleValue : 0;
+    });
+    return Object.values(map).sort((a, b) => b.value - a.value).slice(0, 8);
+  }, [analyticsScopedBags]);
+
+  const analyticsDispatchRows = useMemo(
+    () => [...dispatches].sort((a, b) => compareBy(a?.[analyticsDispatchSort.key], b?.[analyticsDispatchSort.key], analyticsDispatchSort.direction)),
+    [dispatches, analyticsDispatchSort]
+  );
+
+  const dispatchStageLabel = (status) => {
+    if (status === 'sent_to_admin') return 'Sent to Admin';
+    if (status === 'sent_to_warehouse') return 'Sent to Warehouse';
+    if (status === 'warehouse_received') return 'Warehouse Received';
+    if (status === 'unmatched_bags') return 'Unmatched Bags';
+    return status || '—';
+  };
+
+  const navigateToTab = (targetTab) => {
+    setTab(targetTab);
+    refresh();
+  };
+
+  const AnalyticsStatCard = ({ title, value, subtitle, onClick }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        background: '#ffffff', border: '1px solid #d7e6ff', borderRadius: 12, padding: 14, textAlign: 'left',
+        boxShadow: '0 3px 10px rgba(11,46,107,0.10)', cursor: 'pointer', width: '100%',
+      }}
+      title="Click to open related tab"
+    >
+      <div style={{ fontSize: 10, letterSpacing: 0.4, textTransform: 'uppercase', color: '#4f6b99' }}>{title}</div>
+      <div style={{ fontSize: 24, color: '#0b2e6b', fontWeight: 900, lineHeight: 1.1, marginTop: 4 }}>{value}</div>
+      {subtitle ? <div style={{ fontSize: 12, color: '#5f7297', marginTop: 5 }}>{subtitle}</div> : null}
+    </button>
+  );
+
+  const DonutChartCard = ({ title, values, colors, totalLabel, onClick, valueFormatter, centerValueFormatter }) => {
+    const sum = values.reduce((acc, item) => acc + item.value, 0);
+    let currentAngle = 0;
+    const segments = values.map((item, idx) => {
+      const percent = sum > 0 ? (item.value / sum) * 100 : 0;
+      const start = currentAngle;
+      const end = currentAngle + percent;
+      currentAngle = end;
+      return `${colors[idx % colors.length]} ${start}% ${end}%`;
+    });
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          ...S.card,
+          marginBottom: 0,
+          cursor: 'pointer',
+          textAlign: 'left',
+          border: '1px solid #d7e6ff',
+        }}
+        title="Click to open related tab"
+      >
+        <div style={{ fontSize: 13, fontWeight: 800, color: '#0b2e6b', marginBottom: 10 }}>{title}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 14, alignItems: 'center' }}>
+          <div style={{ position: 'relative', width: 150, height: 150, margin: '0 auto' }}>
+            <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: `conic-gradient(${segments.join(', ') || '#93c5fd 0% 100%'})` }} />
+            <div style={{
+              position: 'absolute',
+              top: 25,
+              left: 25,
+              width: 100,
+              height: 100,
+              borderRadius: '50%',
+              background: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'column',
+              border: '1px solid #dbeafe',
+            }}>
+              <div style={{ fontSize: 15, color: '#0b2e6b', fontWeight: 900, textAlign: 'center', lineHeight: 1.15, maxWidth: 84, wordBreak: 'break-word' }}>
+                {centerValueFormatter ? centerValueFormatter(sum) : (valueFormatter ? valueFormatter(sum) : sum)}
+              </div>
+              <div style={{ fontSize: 10, color: '#5f7297', textTransform: 'uppercase' }}>{totalLabel}</div>
+            </div>
+          </div>
+          <div>
+            {values.map((item, idx) => (
+              <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 999, background: colors[idx % colors.length], display: 'inline-block' }} />
+                <span style={{ fontSize: 12, color: '#1e3a5f' }}>{item.label}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 800, color: '#0b2e6b' }}>{valueFormatter ? valueFormatter(item.value) : item.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </button>
+    );
+  };
+
+  const BarChartCard = ({ title, rows, color, colors, onClick, valueFormatter }) => {
+    const max = Math.max(...rows.map((row) => row.value), 1);
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          ...S.card,
+          marginBottom: 0,
+          cursor: 'pointer',
+          textAlign: 'left',
+          border: '1px solid #d7e6ff',
+        }}
+        title="Click to open related tab"
+      >
+        <div style={{ fontSize: 13, fontWeight: 800, color: '#0b2e6b', marginBottom: 10 }}>{title}</div>
+        {rows.length === 0 ? <div style={{ color: '#6b7280', fontSize: 12 }}>No data</div> : rows.map((row, index) => {
+          const barColor = Array.isArray(colors) && colors.length > 0 ? colors[index % colors.length] : color;
+          return (
+          <div key={row.label} style={{ marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12, color: '#1e3a5f', marginBottom: 4 }}>
+              <span>{row.label}</span>
+              <b style={{ color: '#0b2e6b' }}>{valueFormatter ? valueFormatter(row.value) : row.value}</b>
+            </div>
+            <div style={{ height: 10, background: '#e6f0ff', borderRadius: 999 }}>
+              <div style={{ height: 10, width: `${(row.value / max) * 100}%`, background: barColor, borderRadius: 999 }} />
+            </div>
+          </div>
+        );})}
+      </button>
+    );
+  };
+
+  const SortableTh = ({ label, sortKey, sortState, onSort, minWidth, thStyle }) => (
     <th
-      style={{ ...S.th, cursor: 'pointer', userSelect: 'none', fontWeight: 700, ...(minWidth ? { minWidth } : {}) }}
+      style={{ ...S.th, ...(thStyle || {}), cursor: 'pointer', userSelect: 'none', fontWeight: 700, ...(minWidth ? { minWidth } : {}) }}
       onClick={() => onSort(sortKey)}
       title="Click to sort"
     >
@@ -738,7 +1080,11 @@ export default function AdminDashboard({ user, onLogout }) {
   return (
     <div style={S.app}>
       <div style={S.topBar}>
-        <div style={S.topBarTitle}>🌿 Elite Tobacco — Admin</div>
+        <BrandLogo
+          size={38}
+          title="Elite Leaf Tobacco Company - Admin"
+          titleStyle={S.topBarTitle}
+        />
         <div style={S.buyerInfo}>
           <span style={S.buyerBadge}>🔐 Administrator</span>
           <ApiStatusBadge />
@@ -747,12 +1093,130 @@ export default function AdminDashboard({ user, onLogout }) {
         </div>
       </div>
 
-      <div style={{ ...S.page, maxWidth: 1088 }}>
+      <div style={{ ...S.page, maxWidth: 1195 }}>
         <div style={S.tabs}>
-          {[['overview','📊 Overview'],['buyers','👥 Buyers'],['apf-maintenance','🔢 APF Maintenance'],['non-fcv-locations','📍 NON-FCV Locations'],['tobacco-types','🌿 Tobacco Types'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['qr-tracking','📡 QR Tracking'],['generate','⚡ Generate QR'],['bags','📦 Total Purchase'],['database','🗄️ Database']].map(([id, label]) => (
+          {[['overview','📊 Overview'],['analytics','📈 Dashboard Analytics'],['buyers','🔐 Login Info'],['apf-maintenance','🔢 APF Maintenance'],['non-fcv-locations','📍 NON-FCV Locations'],['tobacco-types','🌿 Tobacco Types'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['qr-tracking','📡 QR Tracking'],['vehicle-dispatches','🚚 Vehicle Dispatches'],['generate','⚡ Generate QR'],['bags','📦 Total Purchase'],['database','🗄️ Database']].map(([id, label]) => (
             <button key={id} style={S.tab(tab === id)} onClick={() => { setTab(id); refresh(); }}>{label}</button>
           ))}
         </div>
+
+        {/* ── DASHBOARD ANALYTICS ── */}
+        {tab === 'analytics' && (
+          <div>
+            <div style={{
+              background: '#0b2e6b',
+              color: '#ffffff',
+              borderRadius: 12,
+              padding: '14px 16px',
+              marginBottom: 14,
+              boxShadow: '0 6px 16px rgba(11,46,107,0.22)',
+            }}>
+              <div style={{ fontSize: 17, fontWeight: 900, letterSpacing: 0.3 }}>Dashboard Analytics</div>
+              <div style={{ fontSize: 12, opacity: 0.94, marginTop: 2 }}>Interactive analytics with buyer-level filtering and dispatch tracking insights.</div>
+            </div>
+
+            <div style={{ ...S.card, background: '#ffffff', border: '1px solid #d7e6ff' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, alignItems: 'stretch' }}>
+                <AnalyticsStatCard title="Purchases" value={analyticsScopedBags.length} onClick={() => navigateToTab('bags')} />
+                <AnalyticsStatCard title="Total Purchase Value" value={formatCurrencyINR(analyticsTotalPurchaseValue)} onClick={() => navigateToTab('bags')} />
+                <AnalyticsStatCard title="Total Weight" value={`${analyticsTotalWeight.toFixed(2)} kg`} onClick={() => navigateToTab('bags')} />
+                <AnalyticsStatCard title="Dispatches" value={analyticsScopedDispatches.length} onClick={() => navigateToTab('vehicle-dispatches')} />
+                <div style={{ background: '#ffffff', border: '1px solid #d7e6ff', borderRadius: 12, padding: 14, boxShadow: '0 3px 10px rgba(11,46,107,0.10)' }}>
+                  <label style={{ ...S.label, marginBottom: 6 }}>Select Buyer</label>
+                  <select
+                    style={{ ...S.input, marginBottom: 0 }}
+                    value={analyticsBuyerFilter}
+                    onChange={(e) => setAnalyticsBuyerFilter(e.target.value)}
+                  >
+                    <option value="">All Buyers</option>
+                    {buyers.map((buyer) => (
+                      <option key={buyer.id} value={String(buyer.id)}>{buyer.code} - {buyer.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14, marginBottom: 14 }}>
+              <DonutChartCard
+                title="Buyer Purchase Values"
+                totalLabel="Purchase Value"
+                values={analyticsBuyerPurchaseValues}
+                colors={['#166534', '#65a30d', '#ca8a04', '#0f766e', '#0369a1', '#7c3aed']}
+                onClick={() => navigateToTab('bags')}
+                valueFormatter={formatCurrencyINR}
+                centerValueFormatter={formatCompactCurrencyINR}
+              />
+              <DonutChartCard
+                title="Warehouse / Dispatch Status"
+                totalLabel="Dispatches"
+                values={[
+                  { label: 'To Admin', value: analyticsStatusCountsAll.sentToAdmin },
+                  { label: 'To Warehouse', value: analyticsStatusCountsAll.sentToWarehouse },
+                  { label: 'Warehouse Received', value: analyticsStatusCountsAll.warehouseReceived },
+                  { label: 'Unmatched Bags', value: analyticsStatusCountsAll.unmatchedBags },
+                ]}
+                colors={['#0b2e6b', '#2563eb', '#14b8a6', '#f59e0b']}
+                onClick={() => navigateToTab('vehicle-dispatches')}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14, marginBottom: 14 }}>
+              <BarChartCard
+                title="Purchases by Date"
+                rows={analyticsPurchasesByDate}
+                colors={['#ddd6fe', '#c4b5fd', '#a78bfa', '#93c5fd', '#7dd3fc', '#a5f3fc', '#bfdbfe', '#e9d5ff']}
+                onClick={() => navigateToTab('bags')}
+                valueFormatter={formatCurrencyINR}
+              />
+              <BarChartCard
+                title="Purchases by Location"
+                rows={analyticsPurchasesByLocation}
+                colors={['#dcfce7', '#bbf7d0', '#86efac', '#fef3c7', '#fde68a', '#fcd34d', '#d1fae5', '#a7f3d0']}
+                onClick={() => navigateToTab('bags')}
+                valueFormatter={formatCurrencyINR}
+              />
+            </div>
+
+            <div style={{ ...S.card, background: '#ffffff', border: '1px solid #d7e6ff' }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#0b2e6b', marginBottom: 10 }}>Dispatch Tracking - All Buyers</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={S.table}>
+                  <thead>
+                    <tr>
+                      <SortableTh label="Dispatch" sortKey="dispatch_number" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Buyer" sortKey="buyer_code" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Vehicle" sortKey="vehicle_number" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Current Stage" sortKey="status" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Warehouse Employee" sortKey="warehouse_employee_name" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Bags" sortKey="item_count" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Weight" sortKey="total_weight" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Total Value" sortKey="total_bale_value" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Updated" sortKey="updated_at" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analyticsDispatchRows.length === 0 ? (
+                      <tr><td style={S.td} colSpan={9}>No dispatches available.</td></tr>
+                    ) : analyticsDispatchRows.map((row) => (
+                      <tr key={row.id}>
+                        <td style={S.td}>{row.dispatch_number || `DSP-${String(row.id).padStart(5, '0')}`}</td>
+                        <td style={S.td}>{row.buyer_code} - {row.buyer_name}</td>
+                        <td style={S.td}>{row.vehicle_number || '—'}</td>
+                        <td style={S.td}>{dispatchStageLabel(row.status)}</td>
+                        <td style={S.td}>{row.warehouse_employee_code ? `${row.warehouse_employee_code} - ${row.warehouse_employee_name}` : (row.warehouse_employee_name || '—')}</td>
+                        <td style={S.td}>{Number(row.item_count || 0)}</td>
+                        <td style={S.td}>{Number(row.total_weight || 0).toFixed(2)} kg</td>
+                        <td style={S.td}>{formatCurrencyINR(row.total_bale_value)}</td>
+                        <td style={S.td}>{formatDateTime(row.updated_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── OVERVIEW ── */}
         {tab === 'overview' && (
@@ -789,35 +1253,231 @@ export default function AdminDashboard({ user, onLogout }) {
           </div>
         )}
 
-        {/* ── BUYERS ── */}
+        {/* ── LOGIN INFO ── */}
         {tab === 'buyers' && (
           <div>
+            {/* ── Admin Logins Section ── */}
             <div style={S.card}>
-              <div style={S.subheading}>Add New Buyer</div>
+              <div style={S.subheading}>Admin Login Accounts ({adminLogins.length})</div>
+              {adminLoginMsg && <div style={adminLoginMsg.startsWith('✅') ? S.success : S.error}>{adminLoginMsg}</div>}
+              <table style={S.table}>
+                <thead><tr>{['Code / Username','Name','Password','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {adminLogins.map(al => (
+                    editingAdminLoginId === al.id ? (
+                      <tr key={al.id} style={{ background: '#fffbea' }}>
+                        <td style={{ ...S.td, fontWeight: 800 }}>{al.code}</td>
+                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editAdminLoginForm?.name ?? ''} onChange={e => setEditAdminLoginForm(f => ({ ...f, name: e.target.value }))} /></td>
+                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editAdminLoginForm?.password ?? ''} onChange={e => setEditAdminLoginForm(f => ({ ...f, password: e.target.value }))} /></td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={async () => {
+                              try {
+                                await api.updateAdminLogin(al.id, { name: editAdminLoginForm.name, password: editAdminLoginForm.password });
+                                setAdminLoginMsg('✅ Admin login updated');
+                                setEditingAdminLoginId(null);
+                                setEditAdminLoginForm(null);
+                                setAdminLogins(await api.getAdminLogins());
+                              } catch (e) { setAdminLoginMsg(e.message); }
+                            }}>Save</button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingAdminLoginId(null); setEditAdminLoginForm(null); }}>Cancel</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={al.id}>
+                        <td style={{ ...S.td, fontWeight: 800 }}>{al.code}</td>
+                        <td style={S.td}>{al.name}</td>
+                        <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{al.password}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingAdminLoginId(al.id); setEditAdminLoginForm({ name: al.name, password: '' }); setAdminLoginMsg(''); }}>✏️ Edit</button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={async () => {
+                              if (!window.confirm(`Delete admin "${al.code}"? This cannot be undone.`)) return;
+                              try {
+                                await api.deleteAdminLogin(al.id);
+                                setAdminLoginMsg(`✅ Admin "${al.code}" deleted`);
+                                setAdminLogins(await api.getAdminLogins());
+                              } catch (e) { setAdminLoginMsg(e.message); }
+                            }}>🗑 Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={S.card}>
+              <div style={S.subheading}>Add New Admin Login</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+                <div><label style={S.label}>Username / Code</label><input style={S.input} placeholder="e.g. admin2" value={newAdminCode} onChange={e => setNewAdminCode(e.target.value)} /></div>
+                <div><label style={S.label}>Display Name</label><input style={S.input} placeholder="e.g. Site Admin" value={newAdminName} onChange={e => setNewAdminName(e.target.value)} /></div>
+                <div><label style={S.label}>Password</label><input style={S.input} type="password" placeholder="Enter password" value={newAdminPassword} onChange={e => setNewAdminPassword(e.target.value)} /></div>
+                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 20px' }} onClick={async () => {
+                  try {
+                    await api.createAdminLogin({ code: newAdminCode, name: newAdminName, password: newAdminPassword });
+                    setAdminLoginMsg(`✅ Admin "${newAdminCode}" created`);
+                    setNewAdminCode(''); setNewAdminName(''); setNewAdminPassword('');
+                    setAdminLogins(await api.getAdminLogins());
+                  } catch (e) { setAdminLoginMsg(e.message); }
+                }}>Add Admin</button>
+              </div>
+            </div>
+
+            <div style={S.card}>
+              <div style={S.subheading}>Add Buyer / Warehouse Login</div>
               {buyerMsg && <div style={buyerMsg.startsWith('✅') ? S.success : S.error}>{buyerMsg}</div>}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 12, alignItems: 'end' }}>
-                <div><label style={S.label}>Buyer Code</label><input style={S.input} placeholder="e.g. B004" value={newCode} onChange={e => setNewCode(e.target.value)} /></div>
-                <div><label style={S.label}>Buyer Name</label><input style={S.input} placeholder="Full Name" value={newName} onChange={e => setNewName(e.target.value)} /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+                <div>
+                  <label style={S.label}>Login Type</label>
+                  <select style={S.input} value={newLoginType} onChange={e => setNewLoginType(e.target.value)}>
+                    <option value="buyer">Buyer Login</option>
+                    <option value="warehouse">Warehouse Login</option>
+                  </select>
+                </div>
+                <div><label style={S.label}>{newLoginType === 'warehouse' ? 'Warehouse Code' : 'Buyer Code'}</label><input style={S.input} placeholder={newLoginType === 'warehouse' ? 'e.g. W003' : 'e.g. B004'} value={newCode} onChange={e => setNewCode(e.target.value)} /></div>
+                <div><label style={S.label}>{newLoginType === 'warehouse' ? 'Warehouse Name' : 'Buyer Name'}</label><input style={S.input} placeholder="Full Name" value={newName} onChange={e => setNewName(e.target.value)} /></div>
                 <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 20px' }} onClick={handleAddBuyer}>Add</button>
               </div>
             </div>
             <div style={S.card}>
-              <div style={S.subheading}>All Buyers ({buyers.length})</div>
+              <div style={S.subheading}>Buyer Login Users ({buyers.length})</div>
+              {buyerMsg && <div style={buyerMsg.startsWith('✅') ? S.success : S.error}>{buyerMsg}</div>}
               <table style={S.table}>
-                <thead><tr>{['Code','Name','Password','QR Assigned','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <thead><tr>{['Code','Name','Password','Status','QR Assigned','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                 <tbody>
                   {buyers.map(b => (
-                    <tr key={b.id}>
-                      <td style={S.td}><b>{b.code}</b></td>
-                      <td style={S.td}>{b.name}</td>
-                      <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{b.password}</td>
-                      <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
-                      <td style={S.td}>
-                        <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteBuyer(b)}>
-                          🗑 Delete
-                        </button>
-                      </td>
-                    </tr>
+                    editingBuyerId === b.id ? (
+                      <tr key={b.id} style={{ background: '#fffbea' }}>
+                        <td style={{ ...S.td, fontWeight: 800 }}>{b.code}</td>
+                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editBuyerForm?.name ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, name: e.target.value }))} /></td>
+                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editBuyerForm?.password ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, password: e.target.value }))} /></td>
+                        <td style={S.td}><span style={{ fontWeight: 800, color: Number(b.is_active ?? 1) === 1 ? '#15803d' : '#b91c1c' }}>{Number(b.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span></td>
+                        <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={async () => {
+                              try {
+                                await api.updateBuyer(b.id, { name: editBuyerForm.name, password: editBuyerForm.password });
+                                setBuyerMsg('✅ Buyer updated');
+                                setEditingBuyerId(null);
+                                setEditBuyerForm(null);
+                                setBuyers(await api.getBuyers());
+                              } catch (e) { setBuyerMsg(e.message); }
+                            }}>Save</button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingBuyerId(null); setEditBuyerForm(null); }}>Cancel</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={b.id}>
+                        <td style={S.td}><b>{b.code}</b></td>
+                        <td style={S.td}>{b.name}</td>
+                        <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{b.password}</td>
+                        <td style={S.td}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '3px 8px',
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: 800,
+                            color: Number(b.is_active ?? 1) === 1 ? '#166534' : '#b91c1c',
+                            background: Number(b.is_active ?? 1) === 1 ? '#dcfce7' : '#fee2e2',
+                            border: Number(b.is_active ?? 1) === 1 ? '1px solid #86efac' : '1px solid #fca5a5'
+                          }}>{Number(b.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span>
+                        </td>
+                        <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(b.is_active ?? 1) === 1 ? 1 : 0.55 }}
+                              onClick={() => handleSetBuyerActive(b, true)}
+                            >
+                              Active
+                            </button>
+                            <button
+                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(b.is_active ?? 1) === 0 ? 1 : 0.55 }}
+                              onClick={() => handleSetBuyerActive(b, false)}
+                            >
+                              Inactive
+                            </button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingBuyerId(b.id); setEditBuyerForm({ name: b.name, password: '' }); setBuyerMsg(''); }}>✏️ Edit</button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteBuyer(b)}>🗑 Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={S.card}>
+              <div style={S.subheading}>Warehouse Login Users ({warehouseEmployees.length})</div>
+              <table style={S.table}>
+                <thead><tr>{['Code','Name','Password','Status','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {warehouseEmployees.map(w => (
+                    editingWarehouseId === w.id ? (
+                      <tr key={w.id} style={{ background: '#fffbea' }}>
+                        <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
+                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editWarehouseForm?.name ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, name: e.target.value }))} /></td>
+                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editWarehouseForm?.password ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, password: e.target.value }))} /></td>
+                        <td style={S.td}><span style={{ fontWeight: 800, color: Number(w.is_active ?? 1) === 1 ? '#15803d' : '#b91c1c' }}>{Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span></td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={async () => {
+                              try {
+                                await api.updateWarehouseEmployee(w.id, { name: editWarehouseForm.name, password: editWarehouseForm.password });
+                                setBuyerMsg('✅ Warehouse employee updated');
+                                setEditingWarehouseId(null);
+                                setEditWarehouseForm(null);
+                                setWarehouseEmployees(await api.getWarehouseEmployees());
+                              } catch (e) { setBuyerMsg(e.message); }
+                            }}>Save</button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingWarehouseId(null); setEditWarehouseForm(null); }}>Cancel</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={w.id}>
+                        <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
+                        <td style={S.td}>{w.name}</td>
+                        <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{w.password}</td>
+                        <td style={S.td}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '3px 8px',
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: 800,
+                            color: Number(w.is_active ?? 1) === 1 ? '#166534' : '#b91c1c',
+                            background: Number(w.is_active ?? 1) === 1 ? '#dcfce7' : '#fee2e2',
+                            border: Number(w.is_active ?? 1) === 1 ? '1px solid #86efac' : '1px solid #fca5a5'
+                          }}>{Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span>
+                        </td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(w.is_active ?? 1) === 1 ? 1 : 0.55 }}
+                              onClick={() => handleSetWarehouseActive(w, true)}
+                            >
+                              Active
+                            </button>
+                            <button
+                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(w.is_active ?? 1) === 0 ? 1 : 0.55 }}
+                              onClick={() => handleSetWarehouseActive(w, false)}
+                            >
+                              Inactive
+                            </button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingWarehouseId(w.id); setEditWarehouseForm({ name: w.name, password: '' }); setBuyerMsg(''); }}>✏️ Edit</button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteWarehouseEmployee(w)}>🗑 Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
                   ))}
                 </tbody>
               </table>
@@ -1158,7 +1818,7 @@ export default function AdminDashboard({ user, onLogout }) {
           <div>
             <div style={S.card}>
               <div style={S.subheading}>Track QR Code</div>
-              {qrTrackMsg && <div style={qrTrackMsg.startsWith('✅') ? S.success : S.error}>{qrTrackMsg}</div>}
+              {qrTrackMsg && <div ref={qrTrackMsgRef} style={qrTrackMsg.startsWith('✅') ? S.success : S.error}>{qrTrackMsg}</div>}
               <div style={{ display: 'grid', gridTemplateColumns: '2fr auto auto', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>QR Code</label>
@@ -1181,39 +1841,120 @@ export default function AdminDashboard({ user, onLogout }) {
 
             {qrTrackResult && (
               <div style={S.card}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
                   <div style={S.subheading}>Tracking Result: {qrTrackResult.code}</div>
-                  <span style={S.badge(qrTrackResult.status === 'USED' ? 'red' : 'green')}>{qrTrackResult.status}</span>
+                  <span style={S.badge(qrTrackResult.status === 'USED' ? 'red' : qrTrackResult.status === 'ASSIGNED' ? 'blue' : 'gray')}>{qrTrackResult.status}</span>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(220px,1fr))', gap: 14, marginTop: 12 }}>
-                  <div>
-                    <div style={{ ...S.label, marginBottom: 6 }}>QR Details</div>
-                    <div style={{ fontSize: 13, color: '#444', lineHeight: 1.7 }}>
+                {/* Row 1: QR Details + Buyer Details */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 14 }}>
+                  {/* QR Details */}
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 14 }}>
+                    <div style={{ ...S.label, marginBottom: 8 }}>🔲 QR Details</div>
+                    <div style={{ fontSize: 13, color: '#444', lineHeight: 1.8 }}>
                       <div><b>Code:</b> {qrTrackResult.qr?.unique_code || '—'}</div>
-                      <div><b>Assigned Buyer:</b> {qrTrackResult.qr?.buyer_code ? `${qrTrackResult.qr.buyer_code} - ${qrTrackResult.qr.buyer_name || '—'}` : 'Unassigned'}</div>
-                      <div><b>Used:</b> {qrTrackResult.qr?.used ? 'Yes' : 'No'}</div>
+                      <div><b>QR Status:</b> {qrTrackResult.status || '—'}</div>
                       <div><b>QR Created:</b> {formatDateTime(qrTrackResult.qr?.created_at)}</div>
+                      <div><b>Used:</b> {qrTrackResult.qr?.used ? <span style={{ color: '#dc2626' }}>Yes</span> : <span style={{ color: '#16a34a' }}>No</span>}</div>
                       <div><b>Tracked At:</b> {formatDateTime(qrTrackResult.tracked_at)}</div>
                     </div>
                   </div>
 
-                  <div>
-                    <div style={{ ...S.label, marginBottom: 6 }}>Latest Purchase Link</div>
-                    {!qrTrackResult.bag ? (
-                      <div style={{ fontSize: 13, color: '#777' }}>No bag linked to this QR code yet.</div>
+                  {/* Buyer Details */}
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 14 }}>
+                    <div style={{ ...S.label, marginBottom: 8 }}>👤 Buyer Details</div>
+                    {!qrTrackResult.qr?.buyer_id ? (
+                      <div style={{ fontSize: 13, color: '#777' }}>No buyer assigned to this QR code.</div>
                     ) : (
-                      <div style={{ fontSize: 13, color: '#444', lineHeight: 1.7 }}>
-                        <div><b>Bag ID:</b> {qrTrackResult.bag.id}</div>
-                        <div><b>Buyer:</b> {qrTrackResult.bag.buyer_code || '—'} {qrTrackResult.bag.buyer_name ? `- ${qrTrackResult.bag.buyer_name}` : ''}</div>
+                      <div style={{ fontSize: 13, color: '#444', lineHeight: 1.8 }}>
+                        <div><b>Buyer Code:</b> {qrTrackResult.qr?.buyer_code || '—'}</div>
+                        <div><b>Buyer Name:</b> {qrTrackResult.qr?.buyer_name || '—'}</div>
+                        {qrTrackResult.bag?.buyer_grade && <div><b>Buyer Grade:</b> {qrTrackResult.bag.buyer_grade}</div>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Row 2: Purchase/Bag Details + Dispatch Status */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+                  {/* Purchase Details */}
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 14 }}>
+                    <div style={{ ...S.label, marginBottom: 8 }}>📦 Purchase Details</div>
+                    {!qrTrackResult.bag ? (
+                      <div style={{ fontSize: 13, color: '#777' }}>No purchase recorded for this QR code yet.</div>
+                    ) : (
+                      <div style={{ fontSize: 13, color: '#444', lineHeight: 1.8 }}>
+                        <div><b>Bale Value:</b> {qrTrackResult.bag.bale_value != null ? `₹${Number(qrTrackResult.bag.bale_value).toLocaleString()}` : '—'}</div>
+                        <div><b>Weight:</b> {qrTrackResult.bag.weight ?? '—'} kg</div>
+                        <div><b>Rate:</b> {qrTrackResult.bag.rate ?? '—'}</div>
+                        <div><b>Invoice Number:</b> {qrTrackResult.bag.dispatch_invoice_number || qrTrackResult.dispatch?.invoice_number || '—'}</div>
                         <div><b>FCV Type:</b> {qrTrackResult.bag.fcv || '—'}</div>
                         <div><b>APF:</b> {qrTrackResult.bag.apf_number || '—'}</div>
-                        <div><b>Type/Variety:</b> {qrTrackResult.bag.type_of_tobacco || '—'}</div>
+                        <div><b>Type / Variety:</b> {qrTrackResult.bag.type_of_tobacco || '—'}</div>
+                        <div><b>TB Grade:</b> {qrTrackResult.bag.tobacco_grade || '—'}</div>
                         <div><b>Location:</b> {qrTrackResult.bag.purchase_location || '—'}</div>
-                        <div><b>Weight:</b> {qrTrackResult.bag.weight ?? '—'}</div>
-                        <div><b>Bale Value:</b> {qrTrackResult.bag.bale_value ?? '—'}</div>
                         <div><b>Purchase Time:</b> {formatDateTime(qrTrackResult.bag.date_of_purchase)}</div>
                         <div><b>Last Updated:</b> {formatDateTime(qrTrackResult.bag.updated_at)}</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dispatch Status */}
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 14 }}>
+                    <div style={{ ...S.label, marginBottom: 8 }}>🚚 Dispatch Status</div>
+                    {!qrTrackResult.dispatch ? (
+                      <div style={{ fontSize: 13, color: '#777' }}>Not dispatched yet.</div>
+                    ) : (
+                      <div style={{ fontSize: 13, color: '#444', lineHeight: 1.8 }}>
+                        <div style={{ marginBottom: 6 }}>
+                          <b>Status:</b>{' '}
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '2px 10px',
+                            borderRadius: 12,
+                            fontSize: 12,
+                            fontWeight: 700,
+                            background: qrTrackResult.dispatch.dispatch_status === 'warehouse_received' ? '#dcfce7'
+                              : qrTrackResult.dispatch.dispatch_status === 'unmatched_bags' ? '#fee2e2'
+                              : qrTrackResult.dispatch.dispatch_status === 'sent_to_warehouse' ? '#dbeafe'
+                              : '#fef9c3',
+                            color: qrTrackResult.dispatch.dispatch_status === 'warehouse_received' ? '#15803d'
+                              : qrTrackResult.dispatch.dispatch_status === 'unmatched_bags' ? '#b91c1c'
+                              : qrTrackResult.dispatch.dispatch_status === 'sent_to_warehouse' ? '#1d4ed8'
+                              : '#92400e',
+                          }}>
+                            {qrTrackResult.dispatch.dispatch_status === 'sent_to_admin' ? 'Sent to Admin'
+                              : qrTrackResult.dispatch.dispatch_status === 'sent_to_warehouse' ? 'Sent to Warehouse'
+                              : qrTrackResult.dispatch.dispatch_status === 'warehouse_received' ? 'Warehouse Received'
+                              : qrTrackResult.dispatch.dispatch_status === 'unmatched_bags' ? 'Unmatched Bags'
+                              : qrTrackResult.dispatch.dispatch_status}
+                          </span>
+                        </div>
+                        <div><b>Dispatch Number:</b> {qrTrackResult.dispatch.dispatch_number || '—'}</div>
+                        <div><b>Invoice Number:</b> {qrTrackResult.dispatch.invoice_number || '—'}</div>
+                        <div><b>Vehicle Number:</b> {qrTrackResult.dispatch.vehicle_number || '—'}</div>
+                        {qrTrackResult.dispatch.warehouse_employee_name && <div><b>Warehouse Employee:</b> {qrTrackResult.dispatch.warehouse_employee_name}</div>}
+                        <div><b>Sent to Admin:</b> {formatDateTime(qrTrackResult.dispatch.sent_to_admin_at)}</div>
+                        {qrTrackResult.dispatch.sent_to_warehouse_at && <div><b>Sent to Warehouse:</b> {formatDateTime(qrTrackResult.dispatch.sent_to_warehouse_at)}</div>}
+                        {qrTrackResult.dispatch.warehouse_confirmed_at && <div><b>Warehouse Confirmed:</b> {formatDateTime(qrTrackResult.dispatch.warehouse_confirmed_at)}</div>}
+                        <div style={{ marginTop: 6 }}><b>Item Scan:</b>{' '}
+                          <span style={{
+                            display: 'inline-block', padding: '1px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600,
+                            background: qrTrackResult.dispatch.item_scan_status === 'matched' ? '#dcfce7'
+                              : qrTrackResult.dispatch.item_scan_status === 'unmatched' ? '#fee2e2'
+                              : '#f1f5f9',
+                            color: qrTrackResult.dispatch.item_scan_status === 'matched' ? '#15803d'
+                              : qrTrackResult.dispatch.item_scan_status === 'unmatched' ? '#b91c1c'
+                              : '#64748b',
+                          }}>
+                            {qrTrackResult.dispatch.item_scan_status === 'matched' ? 'Scanned at Warehouse'
+                              : qrTrackResult.dispatch.item_scan_status === 'unmatched' ? 'Unmatched Scan'
+                              : 'Pending Scan'}
+                          </span>
+                          {qrTrackResult.dispatch.item_scan_status === 'matched' && qrTrackResult.dispatch.scanned_at && (
+                            <span style={{ marginLeft: 8, color: '#555' }}>on {formatDateTime(qrTrackResult.dispatch.scanned_at)}</span>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1221,6 +1962,10 @@ export default function AdminDashboard({ user, onLogout }) {
               </div>
             )}
           </div>
+        )}
+
+        {tab === 'vehicle-dispatches' && (
+          <AdminVehicleDispatches />
         )}
 
         {/* ── GENERATE QR ── */}
@@ -1306,21 +2051,6 @@ export default function AdminDashboard({ user, onLogout }) {
                     onClick={() => exportCSV(totalPurchaseCsvRows, `all_bags_${new Date().toISOString().split('T')[0]}.csv`)}
                   >
                     ⬇ CSV
-                  </button>
-                  <button
-                    style={{ ...exportBtnCsv, padding: '6px 10px', fontSize: 11, fontWeight: 700, color: '#d62839', borderColor: '#d62839' }}
-                    onClick={() => {
-                      const invoiceBags = filteredDisplayedBags.filter((bag) => isWithinSelectedRange(getBagDateLabel(bag)));
-                      generateInvoice(invoiceBags, {
-                        buyerName: displayedBuyer?.name || '',
-                        buyerCode: displayedBuyer?.code || '',
-                        dateFrom: selectedBaleStartDate,
-                        dateTo: selectedBaleEndDate,
-                        getBagDate: getBagDateLabel,
-                      });
-                    }}
-                  >
-                    🧾 Invoice
                   </button>
                 </div>
                 )}
@@ -1412,28 +2142,28 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={{ overflowX: 'auto' }}>
               <table style={S.table}>
                 <thead><tr>
-                      <SortableTh label="Buyer" sortKey="buyer_code" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Name" sortKey="buyer_name" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Code" sortKey="unique_code" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="APF" sortKey="apf_number" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="TB Grade" sortKey="tobacco_grade" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Type" sortKey="type_of_tobacco" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Location" sortKey="purchase_location" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Purchase Date" sortKey="purchase_date" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={170} />
-                      <SortableTh label="Buyer Grade" sortKey="buyer_grade" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Weight" sortKey="weight" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Rate" sortKey="rate" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Bale Value" sortKey="bale_value" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Date & Time" sortKey="date_of_purchase" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={220} />
-                      <SortableTh label="FCV" sortKey="fcv" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                      <SortableTh label="Updated" sortKey="updated_at" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={200} />
+                      <SortableTh label="Buyer" sortKey="buyer_code" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={60} />
+                      <SortableTh label="Name" sortKey="buyer_name" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={90} />
+                      <SortableTh label="Code" sortKey="unique_code" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={65} />
+                      <SortableTh label="APF" sortKey="apf_number" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={70} />
+                      <SortableTh label="TB Grade" sortKey="tobacco_grade" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={80} />
+                      <SortableTh label="Type" sortKey="type_of_tobacco" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={75} />
+                      <SortableTh label="Location" sortKey="purchase_location" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={85} />
+                      <SortableTh label="Purchase Date" sortKey="purchase_date" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={100} />
+                      <SortableTh label="Buyer Grade" sortKey="buyer_grade" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={80} />
+                      <SortableTh label="Weight" sortKey="weight" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={70} />
+                      <SortableTh label="Rate" sortKey="rate" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={65} />
+                      <SortableTh label="Bale Value" sortKey="bale_value" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={90} />
+                      <SortableTh label="Date & Time" sortKey="date_of_purchase" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={130} />
+                      <SortableTh label="FCV" sortKey="fcv" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={60} />
+                      <SortableTh label="Updated" sortKey="updated_at" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={130} />
                       <th style={S.th}>Action</th>
                     </tr>
                     <tr>
                       <th style={S.th}></th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 120, marginBottom: 0, fontWeight: 700 }}
+                          style={{ ...S.input, minWidth: 85, marginBottom: 0, fontWeight: 700, fontSize: 11 }}
                           value={bagsColumnFilters.buyer_name}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, buyer_name: e.target.value }))}
                         >
@@ -1445,7 +2175,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       </th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 110, marginBottom: 0, fontWeight: 700 }}
+                          style={{ ...S.input, minWidth: 60, marginBottom: 0, fontWeight: 700, fontSize: 11 }}
                           value={bagsColumnFilters.unique_code}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, unique_code: e.target.value }))}
                         >
@@ -1457,7 +2187,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       </th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 100, marginBottom: 0, fontWeight: 700 }}
+                          style={{ ...S.input, minWidth: 65, marginBottom: 0, fontWeight: 700, fontSize: 11 }}
                           value={bagsColumnFilters.apf_number}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, apf_number: e.target.value }))}
                         >
@@ -1469,7 +2199,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       </th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 110, marginBottom: 0, fontWeight: 700 }}
+                          style={{ ...S.input, minWidth: 75, marginBottom: 0, fontWeight: 700, fontSize: 11 }}
                           value={bagsColumnFilters.tobacco_grade}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, tobacco_grade: e.target.value }))}
                         >
@@ -1481,7 +2211,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       </th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 110, marginBottom: 0, fontWeight: 700 }}
+                          style={{ ...S.input, minWidth: 70, marginBottom: 0, fontWeight: 700, fontSize: 11 }}
                           value={bagsColumnFilters.type_of_tobacco}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, type_of_tobacco: e.target.value }))}
                         >
@@ -1493,7 +2223,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       </th>
                       <th style={S.th}>
                         <select
-                          style={{ ...S.input, minWidth: 110, marginBottom: 0, fontWeight: 700 }}
+                          style={{ ...S.input, minWidth: 80, marginBottom: 0, fontWeight: 700, fontSize: 11 }}
                           value={bagsColumnFilters.purchase_location}
                           onChange={(e) => setBagsColumnFilters((f) => ({ ...f, purchase_location: e.target.value }))}
                         >
