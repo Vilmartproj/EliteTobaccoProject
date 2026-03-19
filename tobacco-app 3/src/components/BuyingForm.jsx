@@ -55,7 +55,7 @@ const calendarValueToDisplayDate = (value) => {
   const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return '';
   const [, yyyy, mm, dd] = match;
-  return `${dd}/${mm}/${yyyy}`;
+  return `${dd}-${mm}-${yyyy}`;
 };
 
 const dateTimeInputToDisplayDate = (value) => {
@@ -99,6 +99,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
   const uniqueCodeInputRef = useRef(null);
   const scannerStreamRef = useRef(null);
   const scannerTimerRef = useRef(null);
+  const errorRef = useRef(null);
   const latestCodeRef = useRef('');
   const validateRequestRef = useRef(0);
   const isFCV = fcv === 'FCV';
@@ -160,6 +161,12 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
   };
 
   useEffect(() => () => stopScanner(), []);
+
+  useEffect(() => {
+    if (!error || !errorRef.current) return;
+    errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    errorRef.current.focus({ preventScroll: true });
+  }, [error]);
 
   const reset = ({ preserveFcvContext = false, preserveFcvLock = false, focusUniqueCode = false } = {}) => {
     const keepFcvContext = preserveFcvContext && fcv === 'FCV' && !!purchaseDate && !!apfNumber;
@@ -391,7 +398,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
         purchase_location: purchaseLocation || '',
         weight: parseFloat(weight), rate: parseFloat(rate), bale_value: baleValue, buyer_grade: buyerGrade,
         lot_number: isFCV ? lotNumber.trim() : '',
-        purchase_date: isFCV ? calendarValueToDisplayDate(purchaseDate) : calendarValueToDisplayDate(nonFcvPurchaseDate),
+        purchase_date: isFCV ? purchaseDate : nonFcvPurchaseDate,
         date_of_purchase: fromInputDateTime(dateOfPurchase),
       });
       setSaved(true);
@@ -419,7 +426,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
       <div style={{ ...S.heading, color: buyerTitleColor }}>Buying</div>
 
       {saved && <div style={S.success}>✅ Bag saved successfully!</div>}
-      {error && <div style={S.error}>⚠️ {error}</div>}
+      {error && <div ref={errorRef} tabIndex={-1} style={S.error}>⚠️ {error}</div>}
 
       {/* FCV Toggle */}
       <label style={labelWithMissing(isMissingField('fcv'))}>{requiredLabel('FCV / NON-FCV')}</label>
@@ -611,7 +618,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       {isNonFCV && (
         <div style={S.row}>
-          <label style={labelWithMissing(isMissingField('nonFcvPurchaseDate'))}>{requiredLabel('Date of Purchase (dd/mm/yyyy)')}</label>
+          <label style={labelWithMissing(isMissingField('nonFcvPurchaseDate'))}>{requiredLabel('Date of Purchase (dd-mm-yyyy)')}</label>
           <input
             style={inputWithMissing(S.input, isMissingField('nonFcvPurchaseDate'))}
             type="date"
@@ -629,7 +636,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       {isFCV && (
         <div style={S.row}>
-          <label style={labelWithMissing(isMissingField('purchaseDate'))}>{requiredLabel('Date of Purchase (dd/mm/yyyy)')}</label>
+          <label style={labelWithMissing(isMissingField('purchaseDate'))}>{requiredLabel('Date of Purchase (dd-mm-yyyy)')}</label>
           <input
             style={inputWithMissing(isPurchaseDateLocked ? lockedFieldStyle : S.input, isMissingField('purchaseDate'))}
             type="date"

@@ -118,7 +118,23 @@ function normalizeBuyerId(value) {
 function normalizeDbDate(value) {
   if (!value) return null;
   if (value instanceof Date) return value;
-  const parsed = new Date(value);
+
+  const text = String(value).trim();
+  if (!text) return null;
+
+  const ymd = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T].*)?$/);
+  if (ymd) {
+    const [, yyyy, mm, dd] = ymd;
+    return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  }
+
+  const dmy = text.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})(?:[ T].*)?$/);
+  if (dmy) {
+    const [, dd, mm, yyyy] = dmy;
+    return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  }
+
+  const parsed = new Date(text);
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed;
 }

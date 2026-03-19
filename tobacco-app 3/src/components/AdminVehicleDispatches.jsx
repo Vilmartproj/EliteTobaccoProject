@@ -109,6 +109,7 @@ export default function AdminVehicleDispatches() {
   const [detailsById, setDetailsById] = useState({});
   const [warehouseNotes, setWarehouseNotes] = useState({});
   const [assignedEmployeeByDispatch, setAssignedEmployeeByDispatch] = useState({});
+  const [qrTooltip, setQrTooltip] = useState({ visible: false, dispatchId: null, rect: null });
 
   const load = async (selectedBuyerId = buyerFilter) => {
     const parsedBuyerId = selectedBuyerId ? Number(selectedBuyerId) : null;
@@ -208,6 +209,14 @@ export default function AdminVehicleDispatches() {
     setWarehouseNotes((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleQrHover = async (e, dispatchId) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setQrTooltip({ visible: true, dispatchId, rect });
+    try { await ensureDetails(dispatchId); } catch (_) {}
+  };
+
+  const handleQrLeave = () => setQrTooltip((prev) => ({ ...prev, visible: false }));
+
   return (
     <div style={S.card}>
       <div style={S.subheading}>Vehicle QR Dispatch Workflow</div>
@@ -279,7 +288,13 @@ export default function AdminVehicleDispatches() {
                   <td style={S.td}>{row.way_bill_number || '—'}</td>
                   <td style={S.td}>{row.invoice_number || '—'}</td>
                   <td style={S.td}><span style={statusBadge(row.status)}>{statusLabel(row.status)}</span></td>
-                  <td style={S.td}>{row.item_count}</td>
+                  <td
+                    style={{ ...S.td, cursor: 'pointer', textDecoration: 'underline dotted' }}
+                    onMouseEnter={(e) => handleQrHover(e, row.id)}
+                    onMouseLeave={handleQrLeave}
+                  >
+                    {row.item_count}
+                  </td>
                   <td style={S.td}>{Number(row.total_weight || 0).toFixed(2)} kg</td>
                   <td style={S.td}>₹{formatInr(row.total_bale_value)}</td>
                   <td style={S.td}>{row.buyer_note || '—'}</td>
@@ -322,7 +337,7 @@ export default function AdminVehicleDispatches() {
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {row.status === 'sent_to_admin' && (
                         <button
-                          style={{ ...S.btnPrimary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: loading ? 0.6 : 1, background: isSelectedBuyer ? theme.border : undefined }}
+                          style={{ ...S.btnPrimary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: loading ? 0.6 : 1, background: '#ffb366', color: '#7a3800', border: '1px solid #e07800' }}
                           onClick={() => sendToWarehouse(row.id)}
                           disabled={loading}
                         >
@@ -354,6 +369,38 @@ export default function AdminVehicleDispatches() {
           </table>
         </div>
       )}
+
+      {qrTooltip.visible && qrTooltip.rect && (() => {
+        const items = detailsById[qrTooltip.dispatchId]?.items;
+        return (
+          <div style={{
+            position: 'fixed',
+            top: Math.min(qrTooltip.rect.bottom + 4, window.innerHeight - 300),
+            left: Math.min(qrTooltip.rect.left, window.innerWidth - 260),
+            background: '#fff',
+            border: '1.5px solid #b7d9f8',
+            borderRadius: 10,
+            padding: '10px 14px',
+            boxShadow: '0 6px 20px rgba(39,128,227,0.22)',
+            zIndex: 9999,
+            minWidth: 220,
+            maxWidth: 260,
+            maxHeight: 280,
+            overflowY: 'auto',
+            pointerEvents: 'none',
+          }}>
+            <div style={{ fontWeight: 800, fontSize: 12, color: '#2780e3', marginBottom: 6, borderBottom: '1px solid #dbeafe', paddingBottom: 4 }}>
+              QR Codes ({items ? items.length : '…'})
+            </div>
+            {!items && <div style={{ fontSize: 12, color: '#888' }}>Loading…</div>}
+            {items && items.map((item, i) => (
+              <div key={i} style={{ fontSize: 12, color: '#1b3555', padding: '3px 0', borderBottom: '1px solid #f0f6ff', fontWeight: 700 }}>
+                {item.unique_code}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }

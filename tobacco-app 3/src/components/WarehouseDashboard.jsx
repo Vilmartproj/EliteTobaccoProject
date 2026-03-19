@@ -213,7 +213,7 @@ export default function WarehouseDashboard({ user, onLogout }) {
                           Open
                         </button>
                       </td>
-                      <td style={S.td}>#{row.id}</td>
+                      <td style={S.td}>{row.dispatch_number || `DSP-${String(row.id).padStart(5, '0')}`}</td>
                       <td style={{ ...S.td, fontWeight: 700 }}>{row.vehicle_number}</td>
                       <td style={S.td}>{row.buyer_code} - {row.buyer_name}</td>
                       <td style={S.td}><span style={statusBadge(row.status)}>{statusLabel(row.status)}</span></td>

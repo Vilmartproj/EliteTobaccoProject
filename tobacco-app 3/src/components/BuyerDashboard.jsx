@@ -821,9 +821,9 @@ export default function BuyerDashboard({ user, onLogout }) {
         <div style={{ ...S.tabs, justifyContent: 'center' }}>
           <button style={{ ...S.tab(view === 'form'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('form')}>📝 New Purchase Entry</button>
           <button style={{ ...S.tab(view === 'bags'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('bags')}>📦 My Purchases <span style={{ fontWeight: 900, marginLeft: 4 }}>{bags.length}</span></button>
+          <button style={{ ...S.tab(view === 'vehicle-dispatch'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('vehicle-dispatch')}>🚚 Vehicle Dispatch</button>
           <button style={{ ...S.tab(view === 'bale-report'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('bale-report')}>📊 Purchase Report</button>
           <button style={{ ...S.tab(view === 'qr'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('qr')}>🔲 My QR Codes ({qrCodes.length})</button>
-          <button style={{ ...S.tab(view === 'vehicle-dispatch'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('vehicle-dispatch')}>🚚 Vehicle Dispatch</button>
         </div>
 
         {view === 'form' && (
@@ -1207,7 +1207,7 @@ export default function BuyerDashboard({ user, onLogout }) {
           <div style={S.card}>
             <div style={{ background: '#f0f7ff', border: '1.5px solid #b7d9f8', borderRadius: 10, padding: 16, marginBottom: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
               <div>
-                <div style={{ ...S.subheading, color: buyerTitleColor, marginBottom: 14 }}>Purchase Value Report ({sortedReportRows.length})</div>
+                <div style={{ ...S.subheading, color: buyerTitleColor, marginBottom: 14 }}>Purchase Report ({sortedReportRows.length})</div>
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: 150 }}>
                     <label style={S.label}>From Date</label>
@@ -1257,6 +1257,8 @@ export default function BuyerDashboard({ user, onLogout }) {
                   <thead><tr>
                     <SortableTh label="Code" sortKey="unique_code" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
                     <SortableTh label="Purchase Date" sortKey="purchaseDateRaw" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
+                    <SortableTh label="Dispatch" sortKey="vehicle_dispatch_number" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
+                    <SortableTh label="Invoice" sortKey="dispatch_invoice_number" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
                     <SortableTh label="Weight" sortKey="weightValue" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
                     <SortableTh label="Rate" sortKey="rateValue" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
                     <SortableTh label="Bale Value" sortKey="baleValue" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
@@ -1267,6 +1269,8 @@ export default function BuyerDashboard({ user, onLogout }) {
                       <tr key={row.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
                         <td style={S.td}><b>{row.unique_code}</b></td>
                         <td style={S.td}>{row.purchaseDateDisplay || '—'}</td>
+                        <td style={S.td}>{row.vehicle_dispatch_number || '—'}</td>
+                        <td style={S.td}>{row.dispatch_invoice_number || '—'}</td>
                         <td style={S.td}>{row.weightValue.toFixed(2)} kg</td>
                         <td style={S.td}>{row.rateValue.toFixed(2)}</td>
                         <td style={{ ...S.td, fontWeight: 700, color: '#166534' }}>{row.baleValue.toFixed(2)}</td>
