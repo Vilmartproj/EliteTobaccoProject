@@ -1004,7 +1004,7 @@ export default function AdminDashboard({ user, onLogout }) {
     );
   };
 
-  const BarChartCard = ({ title, rows, color, onClick }) => {
+  const BarChartCard = ({ title, rows, color, colors, onClick, valueFormatter }) => {
     const max = Math.max(...rows.map((row) => row.value), 1);
     return (
       <button
@@ -1020,17 +1020,19 @@ export default function AdminDashboard({ user, onLogout }) {
         title="Click to open related tab"
       >
         <div style={{ fontSize: 13, fontWeight: 800, color: '#0b2e6b', marginBottom: 10 }}>{title}</div>
-        {rows.length === 0 ? <div style={{ color: '#6b7280', fontSize: 12 }}>No data</div> : rows.map((row) => (
+        {rows.length === 0 ? <div style={{ color: '#6b7280', fontSize: 12 }}>No data</div> : rows.map((row, index) => {
+          const barColor = Array.isArray(colors) && colors.length > 0 ? colors[index % colors.length] : color;
+          return (
           <div key={row.label} style={{ marginBottom: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12, color: '#1e3a5f', marginBottom: 4 }}>
               <span>{row.label}</span>
-              <b style={{ color: '#0b2e6b' }}>{row.value}</b>
+              <b style={{ color: '#0b2e6b' }}>{valueFormatter ? valueFormatter(row.value) : row.value}</b>
             </div>
             <div style={{ height: 10, background: '#e6f0ff', borderRadius: 999 }}>
-              <div style={{ height: 10, width: `${(row.value / max) * 100}%`, background: color, borderRadius: 999 }} />
+              <div style={{ height: 10, width: `${(row.value / max) * 100}%`, background: barColor, borderRadius: 999 }} />
             </div>
           </div>
-        ))}
+        );})}
       </button>
     );
   };
@@ -1118,7 +1120,7 @@ export default function AdminDashboard({ user, onLogout }) {
                 <AnalyticsStatCard title="Purchases" value={analyticsScopedBags.length} onClick={() => navigateToTab('bags')} />
                 <AnalyticsStatCard title="Total Purchase Value" value={formatCurrencyINR(analyticsTotalPurchaseValue)} onClick={() => navigateToTab('bags')} />
                 <AnalyticsStatCard title="Total Weight" value={`${analyticsTotalWeight.toFixed(2)} kg`} onClick={() => navigateToTab('bags')} />
-                <AnalyticsStatCard title="Dispatches" value={analyticsScopedDispatches.length} subtitle="Click to open Vehicle Dispatches" onClick={() => navigateToTab('vehicle-dispatches')} />
+                <AnalyticsStatCard title="Dispatches" value={analyticsScopedDispatches.length} onClick={() => navigateToTab('vehicle-dispatches')} />
                 <div style={{ background: '#ffffff', border: '1px solid #d7e6ff', borderRadius: 12, padding: 14, boxShadow: '0 3px 10px rgba(11,46,107,0.10)' }}>
                   <label style={{ ...S.label, marginBottom: 6 }}>Select Buyer</label>
                   <select
@@ -1163,14 +1165,16 @@ export default function AdminDashboard({ user, onLogout }) {
               <BarChartCard
                 title="Purchases by Date"
                 rows={analyticsPurchasesByDate}
-                color="#1d4ed8"
+                colors={['#ddd6fe', '#c4b5fd', '#a78bfa', '#93c5fd', '#7dd3fc', '#a5f3fc', '#bfdbfe', '#e9d5ff']}
                 onClick={() => navigateToTab('bags')}
+                valueFormatter={formatCurrencyINR}
               />
               <BarChartCard
                 title="Purchases by Location"
                 rows={analyticsPurchasesByLocation}
-                color="#0891b2"
+                colors={['#dcfce7', '#bbf7d0', '#86efac', '#fef3c7', '#fde68a', '#fcd34d', '#d1fae5', '#a7f3d0']}
                 onClick={() => navigateToTab('bags')}
+                valueFormatter={formatCurrencyINR}
               />
             </div>
 
