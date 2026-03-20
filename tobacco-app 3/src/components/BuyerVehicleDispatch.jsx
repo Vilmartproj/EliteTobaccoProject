@@ -1,7 +1,11 @@
+
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { S as _S } from '../styles';
 import { formatDateTime } from '../utils/dateFormat';
+
+// Sorting logic for dispatch history
+// (moved after imports)
 
 const S = {
   ..._S,
@@ -88,10 +92,11 @@ export default function BuyerVehicleDispatch({ buyer }) {
   const [matchedCodes, setMatchedCodes] = useState([]);
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
+  // Fetch all dispatches globally for correct nextDispatchNumber
   const loadData = async () => {
     const [eligible, allDispatches] = await Promise.all([
       api.getEligibleVehicleQRCodes(buyer.id),
-      api.getVehicleDispatches(buyer.id),
+      api.getVehicleDispatches(), // No buyerId: fetch all
     ]);
     setEligibleRows(eligible);
     setDispatches(allDispatches);
@@ -417,24 +422,24 @@ export default function BuyerVehicleDispatch({ buyer }) {
             <table style={S.table}>
               <thead>
                 <tr>
-                  <th style={S.th}>ID</th>
-                  <th style={S.th}>Dispatch No</th>
-                  <th style={S.th}>Date</th>
-                  <th style={S.th}>Vehicle</th>
-                  <th style={S.th}>Vehicle Type</th>
-                  <th style={S.th}>Destination</th>
-                  <th style={S.th}>Way Bill</th>
-                  <th style={S.th}>Invoice</th>
-                  <th style={S.th}>Status</th>
-                  <th style={S.th}>QR Count</th>
-                  <th style={S.th}>Total Weight</th>
-                  <th style={S.th}>Total Bale Value</th>
-                  <th style={S.th}>Warehouse Note</th>
-                  <th style={S.th}>Updated</th>
+                  <SortableTh label="ID" sortKey="id" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Dispatch No" sortKey="dispatch_number" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Date" sortKey="dispatch_date" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Vehicle" sortKey="vehicle_number" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Vehicle Type" sortKey="vehicle_type" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Destination" sortKey="destination_location" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Way Bill" sortKey="way_bill_number" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Invoice" sortKey="invoice_number" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Status" sortKey="status" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="QR Count" sortKey="item_count" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Total Weight" sortKey="total_weight" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Total Bale Value" sortKey="total_bale_value" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Warehouse Note" sortKey="warehouse_note" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Updated" sortKey="updated_at" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
                 </tr>
               </thead>
               <tbody>
-                {dispatches.map((row) => {
+                {[...dispatches].sort((a, b) => compareBy(a[dispatchSort.key], b[dispatchSort.key], dispatchSort.direction)).map((row) => {
                   const isSentToWarehouse = row.status === 'sent_to_warehouse';
                   return (
                   <tr

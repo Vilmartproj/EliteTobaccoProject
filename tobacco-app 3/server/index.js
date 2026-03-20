@@ -1717,22 +1717,26 @@ app.post('/api/vehicle-dispatches', withAsync(async (req, res) => {
   try {
     await conn.beginTransaction();
 
+    // Find the max numeric part of dispatch_number globally
+    const maxDispatchRow = await conn.query(
+      `SELECT MAX(CAST(SUBSTRING(dispatch_number, 5) AS UNSIGNED)) AS max_num
+       FROM vehicle_dispatches
+       WHERE dispatch_number LIKE 'DSP-%'`
+    );
+    let nextDispatchNum = 1;
+    if (maxDispatchRow && maxDispatchRow[0] && maxDispatchRow[0][0] && maxDispatchRow[0][0].max_num) {
+      nextDispatchNum = Number(maxDispatchRow[0][0].max_num) + 1;
+    }
+    const dispatchNumber = `DSP-${String(nextDispatchNum).padStart(5, '0')}`;
+
     const [insertDispatchResult] = await conn.query(
       `INSERT INTO vehicle_dispatches
-       (buyer_id, vehicle_number, vehicle_type, destination_location, way_bill_number, invoice_number, dispatch_date, status, buyer_note, sent_to_admin_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, NOW(), 'sent_to_admin', ?, NOW(), NOW(), NOW())`,
-      [buyerId, vehicleNumber, vehicleType, destinationLocation, wayBillNumber, invoiceNumber, buyerNote]
+       (buyer_id, vehicle_number, vehicle_type, destination_location, way_bill_number, invoice_number, dispatch_date, status, buyer_note, sent_to_admin_at, created_at, updated_at, dispatch_number)
+       VALUES (?, ?, ?, ?, ?, ?, NOW(), 'sent_to_admin', ?, NOW(), NOW(), NOW(), ?)`,
+      [buyerId, vehicleNumber, vehicleType, destinationLocation, wayBillNumber, invoiceNumber, buyerNote, dispatchNumber]
     );
 
     const dispatchId = insertDispatchResult.insertId;
-    const dispatchNumber = `DSP-${String(dispatchId).padStart(5, '0')}`;
-
-    await conn.query(
-      `UPDATE vehicle_dispatches
-       SET dispatch_number = ?
-       WHERE id = ?`,
-      [dispatchNumber, dispatchId]
-    );
 
     for (const row of qrRows) {
       await conn.query(

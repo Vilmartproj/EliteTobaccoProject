@@ -880,7 +880,15 @@ export default function BuyerDashboard({ user, onLogout }) {
                 style={{ ...S.input, minWidth: 220, marginBottom: 0 }}
                 placeholder="Assign invoice number"
                 value={dispatchInvoiceNumber}
-                onChange={(e) => setDispatchInvoiceNumber(e.target.value)}
+                onChange={(e) => {
+                  // Allow only numbers and special characters (no letters)
+                  const val = e.target.value;
+                  const filtered = val.replace(/[A-Za-z]/g, '');
+                  setDispatchInvoiceNumber(filtered);
+                }}
+                inputMode="text"
+                pattern="[0-9\-\/\.,_#@ ]*"
+                title="Numbers and special characters only"
               />
               <button
                 style={{ ...S.btnPrimary, flex: 'none', padding: '6px 14px', opacity: dispatchAssignLoading ? 0.65 : 1 }}

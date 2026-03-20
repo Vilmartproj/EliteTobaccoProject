@@ -1,8 +1,44 @@
-import { useEffect, useMemo, useState } from 'react';
+
+// Sorting logic for admin vehicle dispatches
+
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { api } from '../api';
 import { S as _S } from '../styles';
 import { formatDateTime } from '../utils/dateFormat';
 import { generateInvoice } from '../utils/generateInvoice';
+
+
+// Sorting logic for admin vehicle dispatches
+const toggleSort = (sortState, setSortState, key) => {
+  if (sortState.key === key) {
+    setSortState({ key, direction: sortState.direction === 'asc' ? 'desc' : 'asc' });
+    return;
+  }
+  setSortState({ key, direction: 'asc' });
+};
+const compareBy = (aValue, bValue, direction) => {
+  const order = direction === 'asc' ? 1 : -1;
+  const aNum = Number(aValue);
+  const bNum = Number(bValue);
+  if (Number.isFinite(aNum) && Number.isFinite(bNum)) return (aNum - bNum) * order;
+  const aDate = Date.parse(aValue);
+  const bDate = Date.parse(bValue);
+  if (!Number.isNaN(aDate) && !Number.isNaN(bDate)) return (aDate - bDate) * order;
+  return String(aValue ?? '').localeCompare(String(bValue ?? ''), undefined, { numeric: true }) * order;
+};
+const SortableTh = ({ label, sortKey, sortState, onSort, minWidth }) => (
+  <th
+    style={{ ...S.th, cursor: 'pointer', userSelect: 'none', fontWeight: 700, ...(minWidth ? { minWidth } : {}) }}
+    onClick={() => onSort(sortKey)}
+    title="Click to sort"
+  >
+    {label}{sortState.key === sortKey ? (sortState.direction === 'asc' ? ' ▲' : ' ▼') : ''}
+  </th>
+);
+
+
+// Sorting logic for admin vehicle dispatches (moved after imports)
+// ...existing code...
 
 // ── Admin Vehicle Dispatches: teal → blue gradient (matching admin dashboard) ──
 const adminGradient = 'linear-gradient(135deg, #20c997 0%, #2780e3 100%)';
@@ -100,6 +136,8 @@ function buyerColorTheme(buyerId) {
 }
 
 export default function AdminVehicleDispatches() {
+
+  const [dispatchSort, setDispatchSort] = useState({ key: 'id', direction: 'desc' });
   const [dispatches, setDispatches] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [buyerFilter, setBuyerFilter] = useState('');
@@ -250,28 +288,28 @@ export default function AdminVehicleDispatches() {
           <table style={S.table}>
             <thead>
               <tr>
-                <th style={S.th}>ID</th>
-                <th style={S.th}>Dispatch No</th>
-                <th style={S.th}>Dispatch Date</th>
-                <th style={S.th}>Buyer</th>
-                <th style={S.th}>Vehicle</th>
-                <th style={S.th}>Vehicle Type</th>
-                <th style={S.th}>Destination</th>
-                <th style={S.th}>Way Bill</th>
-                <th style={S.th}>Invoice</th>
-                <th style={S.th}>Status</th>
-                <th style={S.th}>QR Count</th>
-                <th style={S.th}>Weight</th>
-                <th style={S.th}>Bale Value</th>
-                <th style={S.th}>Buyer Note</th>
-                <th style={S.th}>Warehouse Employee</th>
+                <SortableTh label="ID" sortKey="id" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                <SortableTh label="Dispatch No" sortKey="dispatch_number" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                <SortableTh label="Dispatch Date" sortKey="dispatch_date" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                <SortableTh label="Buyer" sortKey="buyer_name" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                <SortableTh label="Vehicle" sortKey="vehicle_number" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                <SortableTh label="Vehicle Type" sortKey="vehicle_type" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                <SortableTh label="Destination" sortKey="destination_location" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                <SortableTh label="Way Bill" sortKey="way_bill_number" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                <SortableTh label="Invoice" sortKey="invoice_number" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                <SortableTh label="Status" sortKey="status" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                <SortableTh label="QR Count" sortKey="item_count" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                <SortableTh label="Weight" sortKey="total_weight" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                <SortableTh label="Bale Value" sortKey="total_bale_value" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                <SortableTh label="Buyer Note" sortKey="buyer_note" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                <SortableTh label="Warehouse Employee" sortKey="warehouse_employee_name" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
                 <th style={S.th}>Admin/Warehouse Note</th>
                 <th style={S.th}>Scan Summary</th>
                 <th style={S.th}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {dispatches.map((row) => {
+              {[...dispatches].sort((a, b) => compareBy(a[dispatchSort.key], b[dispatchSort.key], dispatchSort.direction)).map((row) => {
                 const theme = buyerColorTheme(row.buyer_id);
                 const isSelectedBuyer = buyerFilter && Number(buyerFilter) === Number(row.buyer_id);
                 return (
