@@ -23,7 +23,7 @@ const S = {
   },
   topBarTitle: { fontSize: 14, fontWeight: 800, color: '#2780e3', letterSpacing: 1 },
   buyerBadge:  { background: warehouseGradient, border: '1px solid #1f67b9', borderRadius: 8, padding: '3px 10px', fontWeight: 800, color: '#ffffff', fontSize: 11 },
-  bagsBadge:   { background: warehouseGradient, color: '#ffffff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 800 },
+  balesBadge:   { background: warehouseGradient, color: '#ffffff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 800 },
   card:        { background: '#ffffff', borderRadius: 12, border: '1px solid #b7d9f8', padding: '16px', marginBottom: 16, boxShadow: '0 4px 16px rgba(39,128,227,0.16)' },
   heading:     { fontSize: 16, fontWeight: 800, color: '#2780e3', marginBottom: 14, letterSpacing: 0.5 },
   subheading:  { fontSize: 13, fontWeight: 800, color: '#2780e3', marginBottom: 10 },
@@ -69,7 +69,7 @@ function statusLabel(status) {
   if (status === 'sent_to_admin') return 'Sent to Admin';
   if (status === 'sent_to_warehouse') return 'Sent to Warehouse';
   if (status === 'warehouse_received') return 'Warehouse Received';
-  if (status === 'unmatched_bags') return 'Unmatched Bags';
+  if (status === 'unmatched_bags') return 'Unmatched Bales';
   return status;
 }
 
@@ -198,7 +198,7 @@ export default function WarehouseDashboard({ user, onLogout }) {
                     <th style={S.th}>Vehicle</th>
                     <th style={S.th}>Buyer</th>
                     <th style={S.th}>Status</th>
-                    <th style={S.th}>Bags</th>
+                    <th style={S.th}>Bales</th>
                     <th style={S.th}>Weight</th>
                     <th style={S.th}>Bale Value</th>
                     <th style={S.th}>Matched</th>

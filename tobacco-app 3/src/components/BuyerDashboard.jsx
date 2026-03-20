@@ -799,7 +799,7 @@ export default function BuyerDashboard({ user, onLogout }) {
             </div>
             <div style={{ ...S.buyerInfo, justifyContent: 'flex-start', width: '100%' }}>
               <span style={S.buyerBadge}>👤 {user.name} ({user.code})</span>
-              <span style={S.bagsBadge}>🛍️ {bags.length} Bags</span>
+              <span style={S.bagsBadge}>🛍️ {bags.length} Bales</span>
             </div>
           </div>
         ) : (
@@ -810,7 +810,7 @@ export default function BuyerDashboard({ user, onLogout }) {
             />
             <div style={S.buyerInfo}>
               <span style={S.buyerBadge}>👤 {user.name} ({user.code})</span>
-              <span style={S.bagsBadge}>🛍️ {bags.length} Bags</span>
+                <span style={S.bagsBadge}>🛍️ {bags.length} Bales</span>
               <button style={{ ...S.btnIcon, color: buyerButtonTextColor }} onClick={onLogout}>Logout</button>
             </div>
           </>
@@ -820,7 +820,7 @@ export default function BuyerDashboard({ user, onLogout }) {
       <div style={S.page}>
         <div style={{ ...S.tabs, justifyContent: 'center' }}>
           <button style={{ ...S.tab(view === 'form'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('form')}>📝 New Purchase Entry</button>
-          <button style={{ ...S.tab(view === 'bags'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('bags')}>📦 My Purchases <span style={{ fontWeight: 900, marginLeft: 4 }}>{bags.length}</span></button>
+          <button style={{ ...S.tab(view === 'bags'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('bags')}>📦 My Bales <span style={{ fontWeight: 900, marginLeft: 4 }}>{bags.length}</span></button>
           <button style={{ ...S.tab(view === 'vehicle-dispatch'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('vehicle-dispatch')}>🚚 Vehicle Dispatch</button>
           <button style={{ ...S.tab(view === 'bale-report'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('bale-report')}>📊 Purchase Report</button>
           <button style={{ ...S.tab(view === 'qr'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('qr')}>🔲 My QR Codes ({qrCodes.length})</button>
@@ -841,7 +841,7 @@ export default function BuyerDashboard({ user, onLogout }) {
         {view === 'bags' && (
           <div style={S.card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ ...S.subheading, color: buyerTitleColor }}>All Bags ({bags.length})</div>
+              <div style={{ ...S.subheading, color: buyerTitleColor }}>All Bales ({bags.length})</div>
             </div>
             {editMsg && <div style={editMsg.startsWith('✅') ? S.success : S.error}>{editMsg}</div>}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
@@ -918,7 +918,7 @@ export default function BuyerDashboard({ user, onLogout }) {
               </div>
             )}
             {loading ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>Loading…</p>
-            : bags.length === 0 ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>No bags saved yet.</p>
+            : bags.length === 0 ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>No bales saved yet.</p>
             : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ ...S.table, minWidth: 'max-content', width: 'max-content' }}>
@@ -932,6 +932,7 @@ export default function BuyerDashboard({ user, onLogout }) {
                       />
                     </th>
                     <SortableTh label="Code" sortKey="unique_code" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
+                    <SortableTh label="Lot Number" sortKey="lot_number" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
                     <SortableTh label="APF" sortKey="apf_number" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
                     <SortableTh label="TB Grade" sortKey="tobacco_grade" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
                     <SortableTh label="Type" sortKey="type_of_tobacco" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
@@ -952,6 +953,7 @@ export default function BuyerDashboard({ user, onLogout }) {
                         <tr key={b.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
                           <td style={S.td}>—</td>
                           <td style={{ ...S.td, fontWeight: 400 }}>{b.unique_code}</td>
+                          <td style={S.td}><input style={{ ...S.input, minWidth: 100 }} value={editForm?.lot_number ?? ''} onChange={e => setEditForm(f => ({ ...f, lot_number: e.target.value }))} /></td>
                           <td style={S.td}>
                             <SearchableSelect
                               options={apfNumberOptions}
@@ -1026,6 +1028,7 @@ export default function BuyerDashboard({ user, onLogout }) {
                             ) : '—'}
                           </td>
                           <td style={{ ...S.td, fontWeight: 800 }}>{b.unique_code}</td>
+                          <td style={{ ...S.td, fontWeight: 800 }}>{b.lot_number || '—'}</td>
                           <td style={{ ...S.td, fontWeight: 800 }}>{b.apf_number}</td>
                           <td style={{ ...S.td, fontWeight: 800 }}>{b.tobacco_grade}</td>
                           <td style={{ ...S.td, fontWeight: 800 }}>{b.type_of_tobacco || '—'}</td>

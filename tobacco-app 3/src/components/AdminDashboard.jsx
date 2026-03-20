@@ -10,7 +10,7 @@ const S = {
   ..._S,
   app: {
     minHeight: '100vh',
-    background: '#ffffff',
+    background: 'linear-gradient(135deg, rgb(246, 211, 101) 0%, rgb(253, 160, 133) 100%)',
     fontFamily: 'Roboto',
     fontWeight: 700,
     color: '#144b8b',
@@ -765,14 +765,14 @@ export default function AdminDashboard({ user, onLogout }) {
       ? Number(bag.bale_value)
       : (Number(bag.weight || 0) * Number(bag.rate || 0));
     const weight = Number(bag.weight);
-    if (!acc[dateLabel]) acc[dateLabel] = { total: 0, bags: 0, kgs: 0 };
+    if (!acc[dateLabel]) acc[dateLabel] = { total: 0, bales: 0, kgs: 0 };
     acc[dateLabel].total += baleValue;
-    acc[dateLabel].bags += 1;
+    acc[dateLabel].bales += 1;
     acc[dateLabel].kgs += Number.isFinite(weight) ? weight : 0;
     return acc;
   }, {});
   const dateWiseBaleTotals = Object.entries(dateWiseBaleTotalsMap)
-    .map(([date, values]) => ({ date, total: values.total, bags: values.bags, kgs: values.kgs }))
+    .map(([date, values]) => ({ date, total: values.total, bales: values.bales, kgs: values.kgs }))
     .sort((a, b) => compareBy(parseDisplayDateToInputDate(a.date), parseDisplayDateToInputDate(b.date), 'asc'));
   const filteredDateWiseBaleTotals = dateWiseBaleTotals.filter((row) => isWithinSelectedRange(row.date));
   const selectedDateTotal = filteredDateWiseBaleTotals.reduce((sum, row) => sum + row.total, 0);
@@ -1088,14 +1088,14 @@ export default function AdminDashboard({ user, onLogout }) {
         <div style={S.buyerInfo}>
           <span style={S.buyerBadge}>🔐 Administrator</span>
           <ApiStatusBadge />
-          <span style={S.bagsBadge}>📦 {stats.bags || 0} Bags</span>
+          <span style={S.bagsBadge}>📦 {stats.bags || 0} Bales</span>
           <button style={S.btnIcon} onClick={onLogout}>Logout</button>
         </div>
       </div>
 
       <div style={{ ...S.page, maxWidth: 1195 }}>
         <div style={S.tabs}>
-          {[['overview','📊 Overview'],['analytics','📈 Dashboard Analytics'],['buyers','🔐 Login Info'],['apf-maintenance','🔢 APF Maintenance'],['non-fcv-locations','📍 NON-FCV Locations'],['tobacco-types','🌿 Tobacco Types'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['qr-tracking','📡 QR Tracking'],['vehicle-dispatches','🚚 Vehicle Dispatches'],['generate','⚡ Generate QR'],['bags','📦 Total Purchase'],['database','🗄️ Database']].map(([id, label]) => (
+          {[['overview','📊 Overview'],['analytics','📈 Dashboard Analytics'],['buyers','🔐 Login Info'],['apf-maintenance','🔢 APF Maintenance'],['non-fcv-locations','📍 NON-FCV Locations'],['tobacco-types','🌿 Tobacco Types'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['qr-tracking','📡 QR Tracking'],['vehicle-dispatches','🚚 Buying Vehicle Dispatches'],['generate','⚡ Generate QR'],['bags','📦 Total Bales'],['database','🗄️ Database']].map(([id, label]) => (
             <button key={id} style={S.tab(tab === id)} onClick={() => { setTab(id); refresh(); }}>{label}</button>
           ))}
         </div>
@@ -1189,7 +1189,7 @@ export default function AdminDashboard({ user, onLogout }) {
                       <SortableTh label="Vehicle" sortKey="vehicle_number" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
                       <SortableTh label="Current Stage" sortKey="status" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
                       <SortableTh label="Warehouse Employee" sortKey="warehouse_employee_name" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
-                      <SortableTh label="Bags" sortKey="item_count" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
+                      <SortableTh label="Bales" sortKey="item_count" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
                       <SortableTh label="Weight" sortKey="total_weight" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
                       <SortableTh label="Total Value" sortKey="total_bale_value" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
                       <SortableTh label="Updated" sortKey="updated_at" sortState={analyticsDispatchSort} onSort={(key) => toggleSort(analyticsDispatchSort, setAnalyticsDispatchSort, key)} thStyle={{ background: '#0b2e6b', color: '#ffffff', borderColor: '#0b2e6b' }} />
@@ -1226,13 +1226,13 @@ export default function AdminDashboard({ user, onLogout }) {
               <StatCard icon="🔲" label="Total QR Codes"  value={stats.qrcodes    || 0} />
               <StatCard icon="✅" label="QR Used"          value={stats.qr_used    || 0} />
               <StatCard icon="🟢" label="QR Available"     value={stats.qr_avail   || 0} />
-              <StatCard icon="📦" label="Total Bags"       value={stats.bags       || 0} />
+              <StatCard icon="📦" label="Total Bales"       value={stats.bags       || 0} />
               <StatCard icon="⚖️" label="Total Weight"     value={`${(stats.total_weight || 0).toFixed(1)} kg`} />
             </div>
             <div style={S.card}>
               <div style={S.subheading}>Buyer Summary</div>
               <table style={S.table}>
-                <thead><tr>{['Code','Name','QR Assigned','QR Used','Bags'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <thead><tr>{['Code','Name','QR Assigned','QR Used','Bales'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                 <tbody>
                   {buyers.map(b => {
                     const bqr   = qrCodes.filter(q => q.buyer_id === b.id);

@@ -69,7 +69,7 @@ function statusLabel(status) {
   if (status === 'sent_to_admin') return 'Sent to Admin';
   if (status === 'sent_to_warehouse') return 'Sent to Warehouse';
   if (status === 'warehouse_received') return 'Warehouse Received';
-  if (status === 'unmatched_bags') return 'Unmatched Bags';
+  if (status === 'unmatched_bags') return 'Unmatched Bales';
   return status;
 }
 
@@ -226,7 +226,7 @@ export default function AdminVehicleDispatches() {
         <span style={S.badge('red')}>To Admin: {groupedCounts.sent_to_admin}</span>
         <span style={S.badge()}>To Warehouse: {groupedCounts.sent_to_warehouse}</span>
         <span style={S.badge('green')}>Warehouse Received: {groupedCounts.warehouse_received}</span>
-        <span style={S.badge('red')}>Unmatched Bags: {groupedCounts.unmatched_bags}</span>
+        <span style={S.badge('red')}>Unmatched Bales: {groupedCounts.unmatched_bags}</span>
       </div>
 
       <div style={{ marginBottom: 12, maxWidth: 320 }}>
