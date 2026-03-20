@@ -109,8 +109,13 @@ export default function BuyerVehicleDispatch({ buyer }) {
 
 
   const nextDispatchNumber = useMemo(() => {
-    const maxId = dispatches.reduce((maxValue, row) => Math.max(maxValue, Number(row.id || 0)), 0);
-    return `DSP-${String(maxId + 1).padStart(5, '0')}`;
+    // Find max numeric value from dispatch_number like DSP-00001
+    const maxNum = dispatches.reduce((maxValue, row) => {
+      const num = String(row.dispatch_number || '').match(/^DSP-(\d{5})$/);
+      const val = num ? Number(num[1]) : 0;
+      return Math.max(maxValue, val);
+    }, 0);
+    return `DSP-${String(maxNum + 1).padStart(5, '0')}`;
   }, [dispatches]);
 
   const dispatchDate = useMemo(() => formatDateTime(new Date()), []);

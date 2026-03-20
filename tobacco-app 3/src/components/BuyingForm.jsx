@@ -625,6 +625,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
         </div>
       )}
 
+
       {isNonFCV && (
         <div style={S.row}>
           <label style={labelWithMissing(isMissingField('nonFcvPurchaseDate'))}>{requiredLabel('Date of Purchase (dd-mm-yyyy)')}</label>
@@ -632,14 +633,39 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
             style={inputWithMissing(S.input, isMissingField('nonFcvPurchaseDate'))}
             type="date"
             lang="en-GB"
-            value={nonFcvPurchaseDate}
-            onChange={e => setNonFcvPurchaseDate(e.target.value)}
+            value={(() => {
+              const today = new Date();
+              const yyyy = today.getFullYear();
+              const mm = String(today.getMonth() + 1).padStart(2, '0');
+              const dd = String(today.getDate()).padStart(2, '0');
+              return `${yyyy}-${mm}-${dd}`;
+            })()}
+            min={(() => {
+              const today = new Date();
+              const yyyy = today.getFullYear();
+              const mm = String(today.getMonth() + 1).padStart(2, '0');
+              const dd = String(today.getDate()).padStart(2, '0');
+              return `${yyyy}-${mm}-${dd}`;
+            })()}
+            max={(() => {
+              const today = new Date();
+              const yyyy = today.getFullYear();
+              const mm = String(today.getMonth() + 1).padStart(2, '0');
+              const dd = String(today.getDate()).padStart(2, '0');
+              return `${yyyy}-${mm}-${dd}`;
+            })()}
+            onChange={() => {}}
+            readOnly
           />
-          {nonFcvPurchaseDate && (
-            <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-              Selected Date: {calendarValueToDisplayDate(nonFcvPurchaseDate)}
-            </div>
-          )}
+          <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+            Selected Date: {(() => {
+              const today = new Date();
+              const dd = String(today.getDate()).padStart(2, '0');
+              const mm = String(today.getMonth() + 1).padStart(2, '0');
+              const yyyy = today.getFullYear();
+              return `${dd}-${mm}-${yyyy}`;
+            })()}
+          </div>
         </div>
       )}
 
@@ -650,15 +676,40 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
             style={inputWithMissing(isPurchaseDateLocked ? lockedFieldStyle : S.input, isMissingField('purchaseDate'))}
             type="date"
             lang="en-GB"
-            value={purchaseDate}
-            onChange={e => setPurchaseDate(e.target.value)}
+            value={(() => {
+              const today = new Date();
+              const yyyy = today.getFullYear();
+              const mm = String(today.getMonth() + 1).padStart(2, '0');
+              const dd = String(today.getDate()).padStart(2, '0');
+              return `${yyyy}-${mm}-${dd}`;
+            })()}
+            min={(() => {
+              const today = new Date();
+              const yyyy = today.getFullYear();
+              const mm = String(today.getMonth() + 1).padStart(2, '0');
+              const dd = String(today.getDate()).padStart(2, '0');
+              return `${yyyy}-${mm}-${dd}`;
+            })()}
+            max={(() => {
+              const today = new Date();
+              const yyyy = today.getFullYear();
+              const mm = String(today.getMonth() + 1).padStart(2, '0');
+              const dd = String(today.getDate()).padStart(2, '0');
+              return `${yyyy}-${mm}-${dd}`;
+            })()}
+            onChange={() => {}}
+            readOnly
             disabled={isPurchaseDateLocked}
           />
-          {purchaseDate && (
-            <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-              Selected Date: {calendarValueToDisplayDate(purchaseDate)}
-            </div>
-          )}
+          <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+            Selected Date: {(() => {
+              const today = new Date();
+              const dd = String(today.getDate()).padStart(2, '0');
+              const mm = String(today.getMonth() + 1).padStart(2, '0');
+              const yyyy = today.getFullYear();
+              return `${dd}-${mm}-${yyyy}`;
+            })()}
+          </div>
           {isPurchaseDateLocked && (
             <div style={{ fontSize: 11, color: '#0284c7', fontWeight: 700, marginTop: 4 }}>
               🔒 Purchase Date locked after Save & Next Bag.
