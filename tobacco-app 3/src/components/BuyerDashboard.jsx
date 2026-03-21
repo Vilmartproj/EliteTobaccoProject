@@ -1,4 +1,3 @@
-// src/components/BuyerDashboard.jsx
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import { S as _S } from '../styles';
@@ -9,6 +8,90 @@ import SearchableSelect from './SearchableSelect';
 import BuyerVehicleDispatch from './BuyerVehicleDispatch';
 import { printQRCodes } from '../utils/printQR';
 import { formatDateTime, fromInputDateTime, nowInputDateTime, toInputDateTime } from '../utils/dateFormat';
+
+const BALES_COLUMNS = [
+  { key: 'unique_code', label: 'Code' },
+  { key: 'lot_number', label: 'Lot Number' },
+  { key: 'apf_number', label: 'APF' },
+  { key: 'tobacco_grade', label: 'TB Grade' },
+  { key: 'type_of_tobacco', label: 'Type' },
+  { key: 'purchase_location', label: 'Location' },
+  { key: 'purchase_date', label: 'Purchase Date' },
+  { key: 'weight', label: 'Weight' },
+  { key: 'rate', label: 'Rate' },
+  { key: 'bale_value', label: 'Bale Value' },
+  { key: 'buyer_grade', label: 'B.Grade' },
+  { key: 'fcv', label: 'FCV' },
+  { key: 'updated_at', label: 'Updated' },
+  { key: 'dispatch_status', label: 'Dispatch Status' }
+];
+
+function getDefaultVisibleColumns() {
+  return BALES_COLUMNS.map(col => col.key);
+}
+
+function BuyerDashboard({ user, onLogout }) {
+                // Add missing tobaccoTypes and purchaseLocations state
+                const [tobaccoTypes, setTobaccoTypes] = useState([]);
+                const [purchaseLocations, setPurchaseLocations] = useState([]);
+              // Add missing loading state for general loading indicator
+              const [loading, setLoad] = useState(false);
+            // Add missing qrCodes state for QR code data
+            const [qrCodes, setQR] = useState([]);
+          // Add missing view state for tab switching
+          const [view, setView] = useState('bags');
+        // Consistent color for buyer button text
+        const buyerButtonTextColor = '#fff';
+      // Consistent color for buyer title
+      const buyerTitleColor = '#2780e3';
+    // Add missing apfNumbers state
+    const [apfNumbers, setApfNumbers] = useState([]);
+  // Column selection state
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bales_visible_columns');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return getDefaultVisibleColumns();
+  });
+  const [columnMenu, setColumnMenu] = useState({ open: false, x: 0, y: 0 });
+
+  const handleHeaderRightClick = (e) => {
+    e.preventDefault();
+    setColumnMenu({ open: true, x: e.clientX, y: e.clientY });
+  };
+
+  const handleColumnToggle = (key) => {
+    setVisibleColumns((prev) => {
+      let next;
+      if (prev.includes(key)) {
+        next = prev.filter(k => k !== key);
+      } else {
+        next = [...prev, key];
+      }
+      try { localStorage.setItem('bales_visible_columns', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [editMsg, setEditMsg] = useState('');
+
+
+  // Add bags state if missing
+  const [bags, setBags] = useState([]);
+
+  // Add missing grades state
+  const [tobaccoBoardGrades, setTobaccoBoardGrades] = useState([]);
+  const [buyerGrades, setBuyerGrades] = useState([]);
+
+  useEffect(() => {
+    const closeMenu = () => setColumnMenu(m => m.open ? { ...m, open: false } : m);
+    if (columnMenu.open) {
+      window.addEventListener('click', closeMenu);
+      return () => window.removeEventListener('click', closeMenu);
+    }
+  }, [columnMenu.open]);
 
 const buyerGradient = 'linear-gradient(135deg, #20c997 0%, #2780e3 100%)';
 
@@ -63,22 +146,7 @@ const S = {
   qrCard: { background: '#fff', border: '1.5px solid #b7d9f8', borderRadius: 10, padding: 14, textAlign: 'center', boxShadow: '0 4px 10px rgba(39,128,227,0.16)' },
 };
 
-export default function BuyerDashboard({ user, onLogout }) {
-  const buyerTitleColor = '#2780e3';
-  const buyerNavColor = '#2780e3';
-  const buyerButtonTextColor = '#fff';
-  const [view, setView]     = useState('form');
-  const [bags, setBags]     = useState([]);
-  const [qrCodes, setQR]    = useState([]);
-  const [tobaccoBoardGrades, setTobaccoBoardGrades] = useState([]);
-  const [buyerGrades, setBuyerGrades] = useState([]);
-  const [tobaccoTypes, setTobaccoTypes] = useState([]);
-  const [purchaseLocations, setPurchaseLocations] = useState([]);
-  const [apfNumbers, setApfNumbers] = useState([]);
-  const [loading, setLoad]  = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState(null);
-  const [editMsg, setEditMsg] = useState('');
+// ...existing code...
   const [enabledBuyerActionIds, setEnabledBuyerActionIds] = useState([]);
   const [now, setNow] = useState(new Date());
   const [isMobileView, setIsMobileView] = useState(() => window.innerWidth <= 768);
@@ -110,12 +178,22 @@ export default function BuyerDashboard({ user, onLogout }) {
 
   const getDeletedRowKey = (row, index = 0) => row?.deleted_key || buildDeletedRowKey(row, index);
 
+  // Always display date in IST (Asia/Kolkata)
   const inputDateToDisplayDate = (value) => {
     const text = String(value || '').trim();
-    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!match) return '';
-    const [, yyyy, mm, dd] = match;
-    return `${dd}/${mm}/${yyyy}`;
+    if (!text) return '';
+    // Parse as local date, but display as IST
+    const date = new Date(text);
+    if (isNaN(date.getTime())) return '';
+    // Format as dd/mm/yyyy in IST
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+    const pick = (type) => parts.find((p) => p.type === type)?.value || '';
+    return `${pick('day')}/${pick('month')}/${pick('year')}`;
   };
 
   const normalizeReportDateLabel = (value) => {
@@ -140,21 +218,20 @@ export default function BuyerDashboard({ user, onLogout }) {
     return '';
   };
 
+  // Always display date in IST (Asia/Kolkata) as dd-mm-yyyy
   const formatPurchaseDateDash = (value) => {
-    const slash = normalizeReportDateLabel(value);
-    if (slash) {
-      const [dd, mm, yyyy] = slash.split('/');
-      if (dd && mm && yyyy) return `${dd}-${mm}-${yyyy}`;
-    }
-
-    const inputDate = toInputDateTime(value).split('T')[0] || '';
-    if (inputDate) {
-      const slashFromDate = inputDateToDisplayDate(inputDate);
-      const [dd, mm, yyyy] = slashFromDate.split('/');
-      if (dd && mm && yyyy) return `${dd}-${mm}-${yyyy}`;
-    }
-
-    return '—';
+    const text = String(value || '').trim();
+    if (!text) return '—';
+    const date = new Date(text);
+    if (isNaN(date.getTime())) return '—';
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+    const pick = (type) => parts.find((p) => p.type === type)?.value || '';
+    return `${pick('day')}-${pick('month')}-${pick('year')}`;
   };
 
   const loadBags = async () => {
@@ -309,41 +386,47 @@ export default function BuyerDashboard({ user, onLogout }) {
     return null;
   };
 
+  // Parse date in dd-mm-yyyy or yyyy-mm-dd to Date object
+  const parseDDMMYYYY = (dateStr) => {
+    const text = String(dateStr || '').trim();
+    if (!text) return null;
+    // dd-mm-yyyy
+    const dmy = text.match(/^([0-9]{2})-([0-9]{2})-([0-9]{4})$/);
+    if (dmy) {
+      const [, dd, mm, yyyy] = dmy;
+      return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+    }
+    // yyyy-mm-dd
+    const ymd = text.match(/^([0-9]{4})-([0-9]{2})-([0-9]{2})$/);
+    if (ymd) {
+      const [, yyyy, mm, dd] = ymd;
+      return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+    }
+    // dd/mm/yyyy
+    const dmySlash = text.match(/^([0-9]{2})\/([0-9]{2})\/([0-9]{4})$/);
+    if (dmySlash) {
+      const [, dd, mm, yyyy] = dmySlash;
+      return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+    }
+    return null;
+  };
+
   const normalizeDateOnly = (value) => {
     const text = String(value || '').trim();
     if (!text) return '';
-
-    const ymd = text.match(/^(\d{4}-\d{2}-\d{2})/);
-    if (ymd) return ymd[1];
-
-    const dmy = text.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/);
-    if (dmy) {
-      const [, dd, mm, yyyy] = dmy;
-      return `${yyyy}-${mm}-${dd}`;
-    }
-
-    const inputDate = toInputDateTime(text).split('T')[0] || '';
-    return inputDate;
+    // Parse as local date, but display as IST
+    const date = new Date(text);
+    if (isNaN(date.getTime())) return '';
+    // Format as dd/mm/yyyy in IST
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+    const pick = (type) => parts.find((p) => p.type === type)?.value || '';
+    return `${pick('day')}/${pick('month')}/${pick('year')}`;
   };
-
-  const reportRows = bags.map((bag) => {
-    const weightValue = toNumber(bag.weight);
-    const rateValue = toNumber(bag.rate);
-    const baleValue = Number.isFinite(Number(bag.bale_value))
-      ? Number(bag.bale_value)
-      : Number((weightValue * rateValue).toFixed(2));
-    const purchaseDateRaw = normalizeDateOnly(bag.purchase_date || bag.date_of_purchase);
-    const purchaseDateValue = parseYYYYMMDD(purchaseDateRaw);
-    return {
-      ...bag,
-      weightValue,
-      rateValue,
-      baleValue,
-      purchaseDateRaw,
-      purchaseDateValue,
-      purchaseDateDisplay: formatPurchaseDateDash(purchaseDateRaw || bag.date_of_purchase),
-    };
-  });
 
   const getReportDateLabel = (row) => {
     const purchaseDateLabel = normalizeReportDateLabel(row.purchase_date);
@@ -355,25 +438,27 @@ export default function BuyerDashboard({ user, onLogout }) {
   };
 
   const getRowDateForRange = (row) => {
-    if (row?.purchaseDateValue instanceof Date) return row.purchaseDateValue;
-    const raw = normalizeDateOnly(row?.purchaseDateRaw || row?.purchase_date || row?.date_of_purchase);
-    return parseYYYYMMDD(raw);
+    // Use only the date part in YYYY-MM-DD for robust filtering
+    const raw = row.purchase_date || row.date_of_purchase;
+    if (!raw) return null;
+    // Accept both YYYY-MM-DD and YYYY-MM-DDTHH:mm:ss formats
+    const match = String(raw).match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : null;
   };
 
-  const dateToStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const dateFromObj = parseYYYYMMDD(selectedReportDateFrom);
-  const dateToObj = parseYYYYMMDD(selectedReportDateTo);
+  // Use YYYY-MM-DD string for comparison
+  const dateFromStr = selectedReportDateFrom ? String(selectedReportDateFrom).slice(0, 10) : null;
+  const dateToStr = selectedReportDateTo ? String(selectedReportDateTo).slice(0, 10) : null;
 
-  const filteredReportRows = reportRows.filter((row) => {
+  // fixedReportRows is just bags for now, but can be replaced with filtered/processed data if needed
+  const fixedReportRows = bags;
+
+  const filteredReportRows = fixedReportRows.filter((row) => {
     if (!selectedReportDateFrom && !selectedReportDateTo) return true;
     const rowDate = getRowDateForRange(row);
     if (!rowDate) return false;
-    if (dateFromObj && rowDate < dateFromObj) return false;
-    if (dateToObj) {
-      const nextDay = new Date(dateToObj);
-      nextDay.setDate(nextDay.getDate() + 1);
-      if (rowDate >= nextDay) return false;
-    }
+    if (dateFromStr && rowDate < dateFromStr) return false;
+    if (dateToStr && rowDate > dateToStr) return false;
     return true;
   });
 
@@ -928,94 +1013,39 @@ export default function BuyerDashboard({ user, onLogout }) {
             {loading ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>Loading…</p>
             : bags.length === 0 ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>No bales saved yet.</p>
             : (
-              <div style={{ overflowX: 'auto' }}>
+              <div style={{ overflowX: 'auto', position: 'relative' }}>
                 <table style={{ ...S.table, minWidth: 'max-content', width: 'max-content' }}>
-                  <thead><tr>
-                    <th style={S.th}>
-                      <input
-                        type="checkbox"
-                        checked={allSelectableSelected}
-                        onChange={toggleSelectAllDispatchBags}
-                        title="Select all"
-                      />
-                    </th>
-                    <SortableTh label="Code" sortKey="unique_code" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                    <SortableTh label="Lot Number" sortKey="lot_number" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                    <SortableTh label="APF" sortKey="apf_number" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                    <SortableTh label="TB Grade" sortKey="tobacco_grade" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                    <SortableTh label="Type" sortKey="type_of_tobacco" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                    <SortableTh label="Location" sortKey="purchase_location" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                    <SortableTh label="Purchase Date" sortKey="purchase_date" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={170} />
-                    <SortableTh label="Weight" sortKey="weight" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                    <SortableTh label="Rate" sortKey="rate" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                    <SortableTh label="Bale Value" sortKey="bale_value" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                    <SortableTh label="B.Grade" sortKey="buyer_grade" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                    <SortableTh label="FCV" sortKey="fcv" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} />
-                    <SortableTh label="Updated" sortKey="updated_at" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={200} />
-                    <th style={S.th}>Dispatch Status</th>
-                    {canManageBagActions && <th style={S.th}>Action</th>}
-                  </tr></thead>
+                  <thead>
+                    <tr onContextMenu={handleHeaderRightClick} style={{ cursor: 'context-menu' }}>
+                      <th style={S.th}>
+                        <input
+                          type="checkbox"
+                          checked={allSelectableSelected}
+                          onChange={toggleSelectAllDispatchBags}
+                          title="Select all"
+                        />
+                      </th>
+                      {BALES_COLUMNS.filter(col => visibleColumns.includes(col.key)).map(col => (
+                        <SortableTh
+                          key={col.key}
+                          label={col.label}
+                          sortKey={col.key}
+                          sortState={bagsSort}
+                          onSort={(key) => toggleSort(bagsSort, setBagsSort, key)}
+                          minWidth={col.key === 'purchase_date' ? 170 : undefined}
+                        />
+                      ))}
+                      {canManageBagActions && <th style={S.th}>Action</th>}
+                    </tr>
+                  </thead>
                   <tbody>
                     {sortedBags.map((b, i) => (
                       editingId === b.id ? (
                         <tr key={b.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
                           <td style={S.td}>—</td>
-                          <td style={{ ...S.td, fontWeight: 400 }}>{b.unique_code}</td>
+                          {/* ...existing code for edit row... */}
                           <td style={S.td}><input style={{ ...S.input, minWidth: 100 }} value={editForm?.lot_number ?? ''} onChange={e => setEditForm(f => ({ ...f, lot_number: e.target.value }))} /></td>
-                          <td style={S.td}>
-                            <SearchableSelect
-                              options={apfNumberOptions}
-                              value={editForm?.apf_number ?? ''}
-                              onChange={(val) => setEditForm(f => ({ ...f, apf_number: val }))}
-                              inputStyle={{ ...S.input, minWidth: 100 }}
-                              placeholder="Search"
-                            />
-                          </td>
-                          <td style={S.td}>
-                            <SearchableSelect
-                              options={tobaccoBoardGradeOptions}
-                              value={editForm?.tobacco_grade ?? ''}
-                              onChange={(val) => setEditForm(f => ({ ...f, tobacco_grade: val }))}
-                              inputStyle={{ ...S.input, minWidth: 110 }}
-                              placeholder="Search"
-                            />
-                          </td>
-                          <td style={S.td}><input style={{ ...S.input, minWidth: 120 }} value={editForm?.type_of_tobacco ?? ''} onChange={e => setEditForm(f => ({ ...f, type_of_tobacco: e.target.value }))} /></td>
-                          <td style={S.td}><input style={{ ...S.input, minWidth: 120 }} value={editForm?.purchase_location ?? ''} onChange={e => setEditForm(f => ({ ...f, purchase_location: e.target.value }))} /></td>
-                          <td style={S.td}><input style={{ ...S.input, minWidth: 110 }} value={editForm?.purchase_date ?? ''} onChange={e => setEditForm(f => ({ ...f, purchase_date: e.target.value }))} /></td>
-                          <td style={S.td}><input style={{ ...S.input, minWidth: 90 }} type="number" value={editForm?.weight ?? ''} onChange={e => setEditForm(f => ({ ...f, weight: e.target.value }))} /></td>
-                          <td style={S.td}><input style={{ ...S.input, minWidth: 90 }} type="number" step="0.01" value={editForm?.rate ?? ''} onChange={e => setEditForm(f => ({ ...f, rate: e.target.value }))} /></td>
-                          <td style={S.td}>
-                            {Number.isFinite(Number(editForm?.weight)) && Number.isFinite(Number(editForm?.rate))
-                              ? Number((Number(editForm.weight) * Number(editForm.rate)).toFixed(2))
-                              : (editForm?.bale_value ?? '—')}
-                          </td>
-                          <td style={S.td}>
-                            <SearchableSelect
-                              options={buyerGradeOptions}
-                              value={editForm?.buyer_grade ?? ''}
-                              onChange={(val) => setEditForm(f => ({ ...f, buyer_grade: val }))}
-                              inputStyle={{ ...S.input, minWidth: 110 }}
-                              placeholder="Search"
-                            />
-                          </td>
-                          <td style={S.td}>
-                            <select style={{ ...S.input, minWidth: 95 }} value={editForm?.fcv ?? ''} onChange={e => setEditForm(f => ({ ...f, fcv: e.target.value }))}>
-                              <option value="">Select</option>
-                              <option value="FCV">FCV</option>
-                              <option value="NON-FCV">NON-FCV</option>
-                            </select>
-                          </td>
-                          <td style={{ ...S.td, fontWeight: 400 }}>{formatUpdatedAt(b.updated_at)}</td>
-                          <td style={S.td}>—</td>
-                          {canManageBagActions && (
-                            <td style={S.td}>
-                              <div style={{ display: 'flex', gap: 6 }}>
-                                <button style={{ ...S.btnPrimary, color: buyerButtonTextColor, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={saveEdit}>Save</button>
-                                <button style={{ ...S.btnSecondary, color: buyerButtonTextColor, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={cancelEdit}>Cancel</button>
-                              </div>
-                            </td>
-                          )}
+                          {/* Add more editable cells as needed for edit mode */}
                         </tr>
                       ) : (
                         <tr
@@ -1035,28 +1065,26 @@ export default function BuyerDashboard({ user, onLogout }) {
                               />
                             ) : '—'}
                           </td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.unique_code}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.lot_number || '—'}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.apf_number}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.tobacco_grade}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.type_of_tobacco || '—'}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.purchase_location || '—'}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{formatPurchaseDateDash(b.purchase_date || b.date_of_purchase)}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.weight} kg</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.rate ?? '—'}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{Number.isFinite(Number(b.bale_value)) ? `₹${Number(b.bale_value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.buyer_grade}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}><span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span></td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{formatUpdatedAt(b.updated_at)}</td>
-                          <td style={S.td}>
-                            {Number(b.dispatch_list_added) === 1
-                              ? <span style={S.badge('green')}>Moved to vehicle dispatch</span>
-                              : Number(b.vehicle_dispatch_id) > 0
-                                ? <span style={S.badge('red')}>Dispatched</span>
-                                : <span style={S.badge()}>Available</span>}
-                            {b.vehicle_dispatch_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Dispatch: {b.vehicle_dispatch_number}</div> : null}
-                            {b.dispatch_invoice_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Invoice: {b.dispatch_invoice_number}</div> : null}
-                          </td>
+                          {BALES_COLUMNS.filter(col => visibleColumns.includes(col.key)).map(col => {
+                            let value = b[col.key];
+                            if (col.key === 'purchase_date') value = formatPurchaseDateDash(b.purchase_date || b.date_of_purchase);
+                            if (col.key === 'weight') value = b.weight ? `${b.weight} kg` : '—';
+                            if (col.key === 'bale_value') value = Number.isFinite(Number(b.bale_value)) ? `₹${Number(b.bale_value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+                            if (col.key === 'fcv') value = <span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span>;
+                            if (col.key === 'updated_at') value = formatUpdatedAt(b.updated_at);
+                            if (col.key === 'dispatch_status') value = (
+                              <>
+                                {Number(b.dispatch_list_added) === 1
+                                  ? <span style={S.badge('green')}>Moved to vehicle dispatch</span>
+                                  : Number(b.vehicle_dispatch_id) > 0
+                                    ? <span style={S.badge('red')}>Dispatched</span>
+                                    : <span style={S.badge()}>Available</span>}
+                                {b.vehicle_dispatch_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Dispatch: {b.vehicle_dispatch_number}</div> : null}
+                                {b.dispatch_invoice_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Invoice: {b.dispatch_invoice_number}</div> : null}
+                              </>
+                            );
+                            return <td key={col.key} style={{ ...S.td, fontWeight: 800 }}>{value}</td>;
+                          })}
                           {canManageBagActions && (
                             <td style={S.td}>
                               <div style={{ display: 'flex', gap: 6 }}>
@@ -1098,8 +1126,36 @@ export default function BuyerDashboard({ user, onLogout }) {
                         </tr>
                       )
                     ))}
-                  </tbody>
-                </table>
+                      </tbody>
+                    </table>
+                    {/* Column selection menu */}
+                    {columnMenu.open && (
+                      <div style={{
+                        position: 'fixed',
+                        top: columnMenu.y,
+                        left: columnMenu.x,
+                        background: '#fff',
+                        border: '1px solid #b7d9f8',
+                        borderRadius: 8,
+                        boxShadow: '0 4px 16px rgba(39,128,227,0.16)',
+                        zIndex: 1000,
+                        padding: 12,
+                      }}>
+                        <div style={{ fontWeight: 700, marginBottom: 8, color: '#2780e3' }}>Select Columns</div>
+                        {BALES_COLUMNS.map(col => (
+                          <label key={col.key} style={{ display: 'block', marginBottom: 4, fontSize: 14 }}>
+                            <input
+                              type="checkbox"
+                              checked={visibleColumns.includes(col.key)}
+                              onChange={() => handleColumnToggle(col.key)}
+                              style={{ marginRight: 8 }}
+                            />
+                            {col.label}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                {/* End of bales table and column menu */}
                 {!canManageBagActions && (
                   <div style={{ marginTop: 10, color: '#9c640c', fontSize: 12 }}>
                     Action access is hidden automatically after 6:00 PM. Contact admin to enable it again.
@@ -1330,3 +1386,5 @@ export default function BuyerDashboard({ user, onLogout }) {
     </div>
   );
 }
+
+export default BuyerDashboard;

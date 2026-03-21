@@ -1,3 +1,5 @@
+
+
 // src/components/BuyingForm.jsx
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
@@ -50,12 +52,22 @@ const S = {
   },
 };
 
+// Always display date in IST (Asia/Kolkata)
 const calendarValueToDisplayDate = (value) => {
   const text = String(value || '').trim();
-  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return '';
-  const [, yyyy, mm, dd] = match;
-  return `${dd}-${mm}-${yyyy}`;
+  if (!text) return '';
+  // Parse as local date, but display as IST
+  const date = new Date(text);
+  if (isNaN(date.getTime())) return '';
+  // Format as dd-mm-yyyy in IST
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const pick = (type) => parts.find((p) => p.type === type)?.value || '';
+  return `${pick('day')}-${pick('month')}-${pick('year')}`;
 };
 
 const dateTimeInputToDisplayDate = (value) => {
@@ -84,7 +96,13 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
   const [lotNumber, setLotNumber]       = useState('');
   const [typeOfTobacco, setTypeOfTobacco] = useState('');
   const [purchaseLocation, setPurchaseLocation] = useState('');
-  const [purchaseDate, setPurchaseDate] = useState('');
+  const [purchaseDate, setPurchaseDate] = useState(() => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  });
   const [nonFcvPurchaseDate, setNonFcvPurchaseDate] = useState('');
   const [dateOfPurchase, setDate]       = useState(nowInputDateTime());
   const [error, setError]               = useState('');
@@ -338,6 +356,12 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
       setApfNumber('');
       setTobaccoGrade('');
       setPurchaseDate('');
+      // Set nonFcvPurchaseDate to today
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      setNonFcvPurchaseDate(`${yyyy}-${mm}-${dd}`);
     }
     if (!value) {
       setTypeOfTobacco('');
@@ -364,6 +388,11 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     if (!weight)                       return 'Weight is required';
     if (!rate)                         return 'Rate is required';
     if (!buyerGrade)                   return 'Buyer Grade is required';
+    // Prevent out-of-range baleValue
+    const MAX_BALE_VALUE = 99999999.99;
+    if (baleValue !== '' && Number(baleValue) > MAX_BALE_VALUE) {
+      return `Bale Value exceeds maximum allowed (${MAX_BALE_VALUE}). Please enter smaller weight or rate.`;
+    }
     return null;
   };
 
@@ -397,6 +426,8 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     if (err) { setError(err); return; }
     setLoading(true);
     try {
+      // Use the selected purchase date for both fields
+      const selectedDate = isFCV ? purchaseDate : nonFcvPurchaseDate;
       await api.saveBag({
         unique_code: uniqueCode.trim(), buyer_id: buyer.id,
         buyer_code: buyer.code, buyer_name: buyer.name,
@@ -407,8 +438,8 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
         purchase_location: purchaseLocation || '',
         weight: parseFloat(weight), rate: parseFloat(rate), bale_value: baleValue, buyer_grade: buyerGrade,
         lot_number: isFCV ? lotNumber.trim() : '',
-        purchase_date: isFCV ? purchaseDate : nonFcvPurchaseDate,
-        date_of_purchase: fromInputDateTime(dateOfPurchase),
+        purchase_date: selectedDate,
+        date_of_purchase: selectedDate,
       });
       setSaved(true);
       setSubmitAttempted(false);
@@ -633,20 +664,14 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
             style={inputWithMissing(S.input, isMissingField('nonFcvPurchaseDate'))}
             type="date"
             lang="en-GB"
-            value={(() => {
+            value={nonFcvPurchaseDate || (() => {
               const today = new Date();
               const yyyy = today.getFullYear();
               const mm = String(today.getMonth() + 1).padStart(2, '0');
               const dd = String(today.getDate()).padStart(2, '0');
               return `${yyyy}-${mm}-${dd}`;
             })()}
-            min={(() => {
-              const today = new Date();
-              const yyyy = today.getFullYear();
-              const mm = String(today.getMonth() + 1).padStart(2, '0');
-              const dd = String(today.getDate()).padStart(2, '0');
-              return `${yyyy}-${mm}-${dd}`;
-            })()}
+            min="2020-01-01"
             max={(() => {
               const today = new Date();
               const yyyy = today.getFullYear();
@@ -654,17 +679,10 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
               const dd = String(today.getDate()).padStart(2, '0');
               return `${yyyy}-${mm}-${dd}`;
             })()}
-            onChange={() => {}}
-            readOnly
+            onChange={e => setNonFcvPurchaseDate(e.target.value)}
           />
           <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-            Selected Date: {(() => {
-              const today = new Date();
-              const dd = String(today.getDate()).padStart(2, '0');
-              const mm = String(today.getMonth() + 1).padStart(2, '0');
-              const yyyy = today.getFullYear();
-              return `${dd}-${mm}-${yyyy}`;
-            })()}
+            Selected Date: {nonFcvPurchaseDate ? calendarValueToDisplayDate(nonFcvPurchaseDate) : ''}
           </div>
         </div>
       )}
@@ -676,20 +694,14 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
             style={inputWithMissing(isPurchaseDateLocked ? lockedFieldStyle : S.input, isMissingField('purchaseDate'))}
             type="date"
             lang="en-GB"
-            value={(() => {
+            value={purchaseDate || (() => {
               const today = new Date();
               const yyyy = today.getFullYear();
               const mm = String(today.getMonth() + 1).padStart(2, '0');
               const dd = String(today.getDate()).padStart(2, '0');
               return `${yyyy}-${mm}-${dd}`;
             })()}
-            min={(() => {
-              const today = new Date();
-              const yyyy = today.getFullYear();
-              const mm = String(today.getMonth() + 1).padStart(2, '0');
-              const dd = String(today.getDate()).padStart(2, '0');
-              return `${yyyy}-${mm}-${dd}`;
-            })()}
+            min="2020-01-01"
             max={(() => {
               const today = new Date();
               const yyyy = today.getFullYear();
@@ -697,18 +709,11 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
               const dd = String(today.getDate()).padStart(2, '0');
               return `${yyyy}-${mm}-${dd}`;
             })()}
-            onChange={() => {}}
-            readOnly
+            onChange={e => setPurchaseDate(e.target.value)}
             disabled={isPurchaseDateLocked}
           />
           <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-            Selected Date: {(() => {
-              const today = new Date();
-              const dd = String(today.getDate()).padStart(2, '0');
-              const mm = String(today.getMonth() + 1).padStart(2, '0');
-              const yyyy = today.getFullYear();
-              return `${dd}-${mm}-${yyyy}`;
-            })()}
+            Selected Date: {purchaseDate ? calendarValueToDisplayDate(purchaseDate) : ''}
           </div>
           {isPurchaseDateLocked && (
             <div style={{ fontSize: 11, color: '#0284c7', fontWeight: 700, marginTop: 4 }}>

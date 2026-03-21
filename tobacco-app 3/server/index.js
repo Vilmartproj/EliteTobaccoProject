@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
+const { DateTime } = require('luxon');
+
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -115,28 +117,54 @@ function normalizeBuyerId(value) {
   return parsed;
 }
 
+// Always parse and store dates in Asia/Kolkata (IST) timezone using luxon
+// This ensures that all purchase_date and date_of_purchase fields are saved and compared in IST, avoiding UTC/local mismatches
 function normalizeDbDate(value) {
   if (!value) return null;
-  if (value instanceof Date) return value;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
 
   const text = String(value).trim();
   if (!text) return null;
 
-  const ymd = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T].*)?$/);
-  if (ymd) {
-    const [, yyyy, mm, dd] = ymd;
-    return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  // Try ISO or YYYY-MM-DD
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (match) {
+    const [, y, m, d, hh = '00', mm = '00', ss = '00'] = match;
+    // Use luxon to create a DateTime in Asia/Kolkata
+    const dt = DateTime.fromObject({
+      year: Number(y),
+      month: Number(m),
+      day: Number(d),
+      hour: Number(hh),
+      minute: Number(mm),
+      second: Number(ss),
+    }, { zone: 'Asia/Kolkata' });
+    if (dt.isValid) return dt.toJSDate();
   }
 
-  const dmy = text.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})(?:[ T].*)?$/);
-  if (dmy) {
-    const [, dd, mm, yyyy] = dmy;
-    return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  // Try DD-MM-YYYY or DD/MM/YYYY
+  const existingFormat = text.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (existingFormat) {
+    const [, d, m, y, hh = '00', mm = '00', ss = '00'] = existingFormat;
+    const dt = DateTime.fromObject({
+      year: Number(y),
+      month: Number(m),
+      day: Number(d),
+      hour: Number(hh),
+      minute: Number(mm),
+      second: Number(ss),
+    }, { zone: 'Asia/Kolkata' });
+    if (dt.isValid) return dt.toJSDate();
   }
 
+  // Try parsing as Date, then convert to IST
   const parsed = new Date(text);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed;
+  if (!Number.isNaN(parsed.getTime())) {
+    const dt = DateTime.fromJSDate(parsed, { zone: 'Asia/Kolkata' });
+    if (dt.isValid) return dt.toJSDate();
+  }
+
+  return null;
 }
 
 async function q(sql, params = []) {

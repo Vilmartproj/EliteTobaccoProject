@@ -77,6 +77,34 @@ function formatInr(value) {
 }
 
 export default function BuyerVehicleDispatch({ buyer }) {
+    // Sorting logic for dispatch history
+    const [dispatchSort, setDispatchSort] = useState({ key: 'id', direction: 'desc' });
+    const toggleSort = (sortState, setSortState, key) => {
+      if (sortState.key === key) {
+        setSortState({ key, direction: sortState.direction === 'asc' ? 'desc' : 'asc' });
+        return;
+      }
+      setSortState({ key, direction: 'asc' });
+    };
+    const compareBy = (aValue, bValue, direction) => {
+      const order = direction === 'asc' ? 1 : -1;
+      const aNum = Number(aValue);
+      const bNum = Number(bValue);
+      if (Number.isFinite(aNum) && Number.isFinite(bNum)) return (aNum - bNum) * order;
+      const aDate = Date.parse(aValue);
+      const bDate = Date.parse(bValue);
+      if (!Number.isNaN(aDate) && !Number.isNaN(bDate)) return (aDate - bDate) * order;
+      return String(aValue ?? '').localeCompare(String(bValue ?? ''), undefined, { numeric: true }) * order;
+    };
+    const SortableTh = ({ label, sortKey, sortState, onSort, minWidth }) => (
+      <th
+        style={{ ...S.th, cursor: 'pointer', userSelect: 'none', fontWeight: 700, ...(minWidth ? { minWidth } : {}) }}
+        onClick={() => onSort(sortKey)}
+        title="Click to sort"
+      >
+        {label}{sortState.key === sortKey ? (sortState.direction === 'asc' ? ' ▲' : ' ▼') : ''}
+      </th>
+    );
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [vehicleType, setVehicleType] = useState('');
   const [destinationLocation, setDestinationLocation] = useState('');

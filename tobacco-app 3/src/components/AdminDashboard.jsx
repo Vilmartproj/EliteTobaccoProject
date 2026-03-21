@@ -1095,7 +1095,22 @@ export default function AdminDashboard({ user, onLogout }) {
 
       <div style={{ ...S.page, maxWidth: 1195 }}>
         <div style={S.tabs}>
-          {[['overview','📊 Overview'],['analytics','📈 Dashboard Analytics'],['buyers','🔐 Login Info'],['apf-maintenance','🔢 APF Maintenance'],['non-fcv-locations','📍 NON-FCV Locations'],['tobacco-types','🌿 Tobacco Types'],['tb-grades','🏷️ TB Grades'],['buyer-grades','🏷️ Buyer Grades'],['qrcodes','🔲 QR Codes'],['qr-tracking','📡 QR Tracking'],['vehicle-dispatches','🚚 Buying Vehicle Dispatches'],['generate','⚡ Generate QR'],['bags','📦 Total Bales'],['database','🗄️ Database']].map(([id, label]) => (
+          {[
+            ['overview','📊 Overview'],
+            ['analytics','📈 Dashboard Analytics'],
+            ['vehicle-dispatches','🚚 Buying Vehicle Dispatches'],
+            ['bags','📦 Total Bales'],
+            ['buyers','🔐 Login Info'],
+            ['apf-maintenance','🔢 APF Maintenance'],
+            ['non-fcv-locations','📍 NON-FCV Locations'],
+            ['tobacco-types','🌿 Tobacco Types'],
+            ['tb-grades','🏷️ TB Grades'],
+            ['buyer-grades','🏷️ Buyer Grades'],
+            ['qrcodes','🔲 QR Codes'],
+            ['qr-tracking','📡 QR Tracking'],
+            ['generate','⚡ Generate QR'],
+            ['database','🗄️ Database']
+          ].map(([id, label]) => (
             <button key={id} style={S.tab(tab === id)} onClick={() => { setTab(id); refresh(); }}>{label}</button>
           ))}
         </div>
