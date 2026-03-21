@@ -1010,159 +1010,217 @@ const S = {
                 </div>
               </div>
             )}
-            {loading ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>Loading…</p>
-            : bags.length === 0 ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>No bales saved yet.</p>
-            : (
-              <div style={{ overflowX: 'auto', position: 'relative' }}>
-                <table style={{ ...S.table, minWidth: 'max-content', width: 'max-content' }}>
-                  <thead>
-                    <tr onContextMenu={handleHeaderRightClick} style={{ cursor: 'context-menu' }}>
-                      <th style={S.th}>
-                        <input
-                          type="checkbox"
-                          checked={allSelectableSelected}
-                          onChange={toggleSelectAllDispatchBags}
-                          title="Select all"
-                        />
-                      </th>
-                      {BALES_COLUMNS.filter(col => visibleColumns.includes(col.key)).map(col => (
-                        <SortableTh
-                          key={col.key}
-                          label={col.label}
-                          sortKey={col.key}
-                          sortState={bagsSort}
-                          onSort={(key) => toggleSort(bagsSort, setBagsSort, key)}
-                          minWidth={col.key === 'purchase_date' ? 170 : undefined}
-                        />
-                      ))}
-                      {canManageBagActions && <th style={S.th}>Action</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedBags.map((b, i) => (
-                      editingId === b.id ? (
-                        <tr key={b.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
-                          <td style={S.td}>—</td>
-                          {/* ...existing code for edit row... */}
-                          <td style={S.td}><input style={{ ...S.input, minWidth: 100 }} value={editForm?.lot_number ?? ''} onChange={e => setEditForm(f => ({ ...f, lot_number: e.target.value }))} /></td>
-                          {/* Add more editable cells as needed for edit mode */}
-                        </tr>
-                      ) : (
-                        <tr
-                          key={b.id}
-                          style={{
-                            background: qrScanDeleteId === Number(b.id) ? '#ffe0e0' : (selectedDispatchBagIds.includes(Number(b.id)) ? '#fff2b8' : (i % 2 === 0 ? '#fffafa' : '#fff')),
-                            outline: qrScanDeleteId === Number(b.id) ? '2px solid #ef4444' : 'none',
-                            opacity: (Number(b.dispatch_list_added) === 1 || Number(b.vehicle_dispatch_id) > 0) ? 0.55 : 1,
-                          }}
-                        >
-                          <td style={S.td}>
-                            {getDispatchState(b).selectable ? (
-                              <input
-                                type="checkbox"
-                                checked={selectedDispatchBagIds.includes(Number(b.id))}
-                                onChange={() => toggleDispatchSelection(b.id)}
-                              />
-                            ) : '—'}
-                          </td>
-                          {BALES_COLUMNS.filter(col => visibleColumns.includes(col.key)).map(col => {
-                            let value = b[col.key];
-                            if (col.key === 'purchase_date') value = formatPurchaseDateDash(b.purchase_date || b.date_of_purchase);
-                            if (col.key === 'weight') value = b.weight ? `${b.weight} kg` : '—';
-                            if (col.key === 'bale_value') value = Number.isFinite(Number(b.bale_value)) ? `₹${Number(b.bale_value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
-                            if (col.key === 'fcv') value = <span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span>;
-                            if (col.key === 'updated_at') value = formatUpdatedAt(b.updated_at);
-                            if (col.key === 'dispatch_status') value = (
-                              <>
-                                {Number(b.dispatch_list_added) === 1
-                                  ? <span style={S.badge('green')}>Moved to vehicle dispatch</span>
-                                  : Number(b.vehicle_dispatch_id) > 0
-                                    ? <span style={S.badge('red')}>Dispatched</span>
-                                    : <span style={S.badge()}>Available</span>}
-                                {b.vehicle_dispatch_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Dispatch: {b.vehicle_dispatch_number}</div> : null}
-                                {b.dispatch_invoice_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Invoice: {b.dispatch_invoice_number}</div> : null}
-                              </>
-                            );
-                            return <td key={col.key} style={{ ...S.td, fontWeight: 800 }}>{value}</td>;
-                          })}
-                          {canManageBagActions && (
-                            <td style={S.td}>
-                              <div style={{ display: 'flex', gap: 6 }}>
-                                <button style={{ ...S.btnSecondary, color: buyerButtonTextColor, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: (Number(b.dispatch_list_added) === 1 || Number(b.vehicle_dispatch_id) > 0) ? 0.6 : 1 }} onClick={() => startEdit(b)} disabled={Number(b.dispatch_list_added) === 1 || Number(b.vehicle_dispatch_id) > 0}>
-                                  Edit
-                                </button>
-                                {selectedDispatchBagIds.includes(Number(b.id)) && getDispatchState(b).selectable && (
-                                  <button
-                                    type="button"
-                                    style={{ ...S.btnSecondary, color: '#fff', borderColor: '#1f67b9', background: '#2780e3', flex: 'none', padding: '6px 10px', fontSize: 12 }}
-                                    onClick={() => removeSelectedDispatchBag(b.id)}
-                                  >
-                                    Remove
-                                  </button>
-                                )}
-                                {qrScanDeleteId === Number(b.id) && getDispatchState(b).selectable && (
-                                  <button
-                                    type="button"
-                                    style={{ ...S.btnSecondary, color: '#fff', borderColor: '#1f67b9', background: '#2780e3', fontWeight: 700, flex: 'none', padding: '6px 10px', fontSize: 12 }}
-                                    disabled={deleteLoading}
-                                    onClick={() => handleDeleteScannedBag(b.id)}
-                                  >
-                                    {deleteLoading ? 'Deleting...' : '🗑️ Delete'}
-                                  </button>
-                                )}
-                                {selectedDispatchBagIds.includes(Number(b.id)) && getDispatchState(b).selectable && qrScanDeleteId !== Number(b.id) && (
-                                  <button
-                                    type="button"
-                                    style={{ ...S.btnSecondary, color: '#fff', borderColor: '#1f67b9', background: '#2780e3', fontWeight: 700, flex: 'none', padding: '6px 10px', fontSize: 12 }}
-                                    disabled={deleteLoading}
-                                    onClick={() => handleDeleteScannedBag(b.id)}
-                                  >
-                                    {deleteLoading ? 'Deleting...' : '🗑️ Delete'}
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          )}
-                        </tr>
-                      )
-                    ))}
-                      </tbody>
-                    </table>
-                    {/* Column selection menu */}
-                    {columnMenu.open && (
-                      <div style={{
-                        position: 'fixed',
-                        top: columnMenu.y,
-                        left: columnMenu.x,
-                        background: '#fff',
-                        border: '1px solid #b7d9f8',
-                        borderRadius: 8,
-                        boxShadow: '0 4px 16px rgba(39,128,227,0.16)',
-                        zIndex: 1000,
-                        padding: 12,
-                      }}>
-                        <div style={{ fontWeight: 700, marginBottom: 8, color: '#2780e3' }}>Select Columns</div>
-                        {BALES_COLUMNS.map(col => (
-                          <label key={col.key} style={{ display: 'block', marginBottom: 4, fontSize: 14 }}>
-                            <input
-                              type="checkbox"
-                              checked={visibleColumns.includes(col.key)}
-                              onChange={() => handleColumnToggle(col.key)}
-                              style={{ marginRight: 8 }}
-                            />
-                            {col.label}
-                          </label>
-                        ))}
+
+            {/* Split tables: Not Dispatched and Dispatched */}
+            {(() => {
+              const notDispatchedBags = sortedBags.filter(b => Number(b.vehicle_dispatch_id) === 0);
+              const dispatchedBags = sortedBags.filter(b => Number(b.vehicle_dispatch_id) > 0);
+              return (
+                <>
+                  {/* Not Dispatched Table */}
+                  <div style={{ marginBottom: 32 }}>
+                    <div style={{ fontWeight: 700, color: buyerTitleColor, marginBottom: 8 }}>Not Dispatched ({notDispatchedBags.length})</div>
+                    {loading ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>Loading…</p>
+                    : notDispatchedBags.length === 0 ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>No available bales.</p>
+                    : (
+                      <div style={{ overflowX: 'auto', position: 'relative' }}>
+                        <table style={{ ...S.table, minWidth: 'max-content', width: 'max-content' }}>
+                          <thead>
+                            <tr onContextMenu={handleHeaderRightClick} style={{ cursor: 'context-menu' }}>
+                              <th style={S.th}>
+                                <input
+                                  type="checkbox"
+                                  checked={allSelectableSelected}
+                                  onChange={toggleSelectAllDispatchBags}
+                                  title="Select all"
+                                />
+                              </th>
+                              {BALES_COLUMNS.filter(col => visibleColumns.includes(col.key)).map(col => (
+                                <SortableTh
+                                  key={col.key}
+                                  label={col.label}
+                                  sortKey={col.key}
+                                  sortState={bagsSort}
+                                  onSort={(key) => toggleSort(bagsSort, setBagsSort, key)}
+                                  minWidth={col.key === 'purchase_date' ? 110 : col.key === 'dispatch_status' ? 110 : undefined}
+                                />
+                              ))}
+                              {canManageBagActions && <th style={S.th}>Action</th>}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {notDispatchedBags.map((b, i) => (
+                              editingId === b.id ? (
+                                <tr key={b.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
+                                  <td style={S.td}>—</td>
+                                  {/* ...existing code for edit row... */}
+                                  <td style={S.td}><input style={{ ...S.input, minWidth: 100 }} value={editForm?.lot_number ?? ''} onChange={e => setEditForm(f => ({ ...f, lot_number: e.target.value }))} /></td>
+                                  {/* Add more editable cells as needed for edit mode */}
+                                </tr>
+                              ) : (
+                                <tr
+                                  key={b.id}
+                                  style={{
+                                    background: qrScanDeleteId === Number(b.id) ? '#ffe0e0' : (selectedDispatchBagIds.includes(Number(b.id)) ? '#fff2b8' : (i % 2 === 0 ? '#fffafa' : '#fff')),
+                                    outline: qrScanDeleteId === Number(b.id) ? '2px solid #ef4444' : 'none',
+                                    opacity: (Number(b.dispatch_list_added) === 1) ? 0.55 : 1,
+                                  }}
+                                >
+                                  <td style={S.td}>
+                                    {getDispatchState(b).selectable ? (
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedDispatchBagIds.includes(Number(b.id))}
+                                        onChange={() => toggleDispatchSelection(b.id)}
+                                      />
+                                    ) : '—'}
+                                  </td>
+                                  {BALES_COLUMNS.filter(col => visibleColumns.includes(col.key)).map(col => {
+                                    let value = b[col.key];
+                                    if (col.key === 'purchase_date') value = formatPurchaseDateDash(b.purchase_date || b.date_of_purchase);
+                                    if (col.key === 'weight') value = b.weight ? `${b.weight} kg` : '—';
+                                    if (col.key === 'bale_value') value = Number.isFinite(Number(b.bale_value)) ? `₹${Number(b.bale_value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+                                    if (col.key === 'fcv') value = <span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span>;
+                                    if (col.key === 'updated_at') value = formatUpdatedAt(b.updated_at);
+                                    if (col.key === 'dispatch_status') value = (
+                                      <>
+                                        {Number(b.dispatch_list_added) === 1
+                                          ? <span style={S.badge('green')}>Moved to vehicle dispatch</span>
+                                          : <span style={S.badge()}>Available</span>}
+                                        {b.vehicle_dispatch_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Dispatch: {b.vehicle_dispatch_number}</div> : null}
+                                        {b.dispatch_invoice_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Invoice: {b.dispatch_invoice_number}</div> : null}
+                                      </>
+                                    );
+                                    return <td key={col.key} style={{ ...S.td, fontWeight: 800 }}>{value}</td>;
+                                  })}
+                                  {canManageBagActions && (
+                                    <td style={S.td}>
+                                      <div style={{ display: 'flex', gap: 6 }}>
+                                        <button style={{ ...S.btnSecondary, color: buyerButtonTextColor, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: (Number(b.dispatch_list_added) === 1) ? 0.6 : 1 }} onClick={() => startEdit(b)} disabled={Number(b.dispatch_list_added) === 1}>
+                                          Edit
+                                        </button>
+                                        {selectedDispatchBagIds.includes(Number(b.id)) && getDispatchState(b).selectable && (
+                                          <button
+                                            type="button"
+                                            style={{ ...S.btnSecondary, color: '#fff', borderColor: '#1f67b9', background: '#2780e3', flex: 'none', padding: '6px 10px', fontSize: 12 }}
+                                            onClick={() => removeSelectedDispatchBag(b.id)}
+                                          >
+                                            Remove
+                                          </button>
+                                        )}
+                                        {qrScanDeleteId === Number(b.id) && getDispatchState(b).selectable && (
+                                          <button
+                                            type="button"
+                                            style={{ ...S.btnSecondary, color: '#fff', borderColor: '#1f67b9', background: '#2780e3', fontWeight: 700, flex: 'none', padding: '6px 10px', fontSize: 12 }}
+                                            disabled={deleteLoading}
+                                            onClick={() => handleDeleteScannedBag(b.id)}
+                                          >
+                                            {deleteLoading ? 'Deleting...' : '🗑️ Delete'}
+                                          </button>
+                                        )}
+                                        {selectedDispatchBagIds.includes(Number(b.id)) && getDispatchState(b).selectable && qrScanDeleteId !== Number(b.id) && (
+                                          <button
+                                            type="button"
+                                            style={{ ...S.btnSecondary, color: '#fff', borderColor: '#1f67b9', background: '#2780e3', fontWeight: 700, flex: 'none', padding: '6px 10px', fontSize: 12 }}
+                                            disabled={deleteLoading}
+                                            onClick={() => handleDeleteScannedBag(b.id)}
+                                          >
+                                            {deleteLoading ? 'Deleting...' : '🗑️ Delete'}
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  )}
+                                </tr>
+                              )
+                            ))}
+                          </tbody>
+                        </table>
+                        {/* Column selection menu */}
+                        {columnMenu.open && (
+                          <div style={{
+                            position: 'fixed',
+                            top: columnMenu.y,
+                            left: columnMenu.x,
+                            background: '#fff',
+                            border: '1px solid #b7d9f8',
+                            borderRadius: 8,
+                            boxShadow: '0 4px 16px rgba(39,128,227,0.16)',
+                            zIndex: 1000,
+                            padding: 12,
+                          }}>
+                            <div style={{ fontWeight: 700, marginBottom: 8, color: '#2780e3' }}>Select Columns</div>
+                            {BALES_COLUMNS.map(col => (
+                              <label key={col.key} style={{ display: 'block', marginBottom: 4, fontSize: 14 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={visibleColumns.includes(col.key)}
+                                  onChange={() => handleColumnToggle(col.key)}
+                                  style={{ marginRight: 8 }}
+                                />
+                                {col.label}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        {!canManageBagActions && (
+                          <div style={{ marginTop: 10, color: '#9c640c', fontSize: 12 }}>
+                            Action access is hidden automatically after 6:00 PM. Contact admin to enable it again.
+                          </div>
+                        )}
                       </div>
                     )}
-                {/* End of bales table and column menu */}
-                {!canManageBagActions && (
-                  <div style={{ marginTop: 10, color: '#9c640c', fontSize: 12 }}>
-                    Action access is hidden automatically after 6:00 PM. Contact admin to enable it again.
                   </div>
-                )}
-              </div>
-            )}
+                  {/* Dispatched Table */}
+                  <div>
+                    <div style={{ fontWeight: 700, color: buyerTitleColor, marginBottom: 8 }}>Dispatched ({dispatchedBags.length})</div>
+                    {dispatchedBags.length === 0 ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>No dispatched bales.</p>
+                    : (
+                      <div style={{ overflowX: 'auto', position: 'relative' }}>
+                        <table style={{ ...S.table, minWidth: 'max-content', width: 'max-content' }}>
+                          <thead>
+                            <tr>
+                              {BALES_COLUMNS.filter(col => visibleColumns.includes(col.key)).map(col => (
+                                <SortableTh
+                                  key={col.key}
+                                  label={col.label}
+                                  sortKey={col.key}
+                                  sortState={bagsSort}
+                                  onSort={(key) => toggleSort(bagsSort, setBagsSort, key)}
+                                  minWidth={col.key === 'purchase_date' ? 170 : undefined}
+                                />
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dispatchedBags.map((b, i) => (
+                              <tr key={b.id} style={{ background: i % 2 === 0 ? '#f3f4f6' : '#fff' }}>
+                                {BALES_COLUMNS.filter(col => visibleColumns.includes(col.key)).map(col => {
+                                  let value = b[col.key];
+                                  if (col.key === 'purchase_date') value = formatPurchaseDateDash(b.purchase_date || b.date_of_purchase);
+                                  if (col.key === 'weight') value = b.weight ? `${b.weight} kg` : '—';
+                                  if (col.key === 'bale_value') value = Number.isFinite(Number(b.bale_value)) ? `₹${Number(b.bale_value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+                                  if (col.key === 'fcv') value = <span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span>;
+                                  if (col.key === 'updated_at') value = formatUpdatedAt(b.updated_at);
+                                  if (col.key === 'dispatch_status') value = (
+                                    <>
+                                      <span style={S.badge('red')}>Dispatched</span>
+                                      {b.vehicle_dispatch_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Dispatch: {b.vehicle_dispatch_number}</div> : null}
+                                      {b.dispatch_invoice_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Invoice: {b.dispatch_invoice_number}</div> : null}
+                                    </>
+                                  );
+                                  return <td key={col.key} style={{ ...S.td, fontWeight: 800 }}>{value}</td>;
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
 
             <div style={{ marginTop: 22 }}>
               <div style={{ ...S.subheading, color: buyerTitleColor }}>Deleted Purchase History ({deletedHistory.length})</div>
