@@ -384,7 +384,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     if (isFCV && !purchaseDate)            return 'Purchase Date is required for FCV';
     if (isFCV && !apfNumber)           return 'APF Number is required for FCV';
     if (isFCV && !tobaccoGrade)        return 'Tobacco Board Grade is required for FCV';
-    if (isFCV && !lotNumber.trim())    return 'Lot Number is required for FCV';
+    if (!lotNumber.trim())    return 'Lot Number is required';
     if (!weight)                       return 'Weight is required';
     if (!rate)                         return 'Rate is required';
     if (!buyerGrade)                   return 'Buyer Grade is required';
@@ -405,7 +405,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     if (field === 'purchaseDate') return isFCV && !purchaseDate;
     if (field === 'apfNumber') return isFCV && !apfNumber;
     if (field === 'tobaccoGrade') return isFCV && !tobaccoGrade;
-    if (field === 'lotNumber') return isFCV && !lotNumber.trim();
+    if (field === 'lotNumber') return !lotNumber.trim();
     if (field === 'weight') return !weight;
     if (field === 'rate') return !rate;
     if (field === 'buyerGrade') return !buyerGrade;

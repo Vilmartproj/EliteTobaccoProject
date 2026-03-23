@@ -3,6 +3,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from '../api';
 import { S as _S } from '../styles';
 import QRCode from './QRCode';
+import AdminUserReview from './AdminUserReview';
+
 
 // ── Admin colour theme: teal → blue gradient (matching buyer dashboard) ──────
 const adminGradient = 'linear-gradient(135deg, #20c997 0%, #2780e3 100%)';
@@ -83,6 +85,10 @@ export default function AdminDashboard({ user, onLogout }) {
   const [dispatches, setDispatches] = useState([]);
   const [analyticsBuyerFilter, setAnalyticsBuyerFilter] = useState('');
   const [analyticsDispatchSort, setAnalyticsDispatchSort] = useState({ key: 'updated_at', direction: 'desc' });
+
+  // User review ref for pending count
+  const userReviewRef = useRef(null);
+  const [pendingUserCount, setPendingUserCount] = useState(0);
 
   // Generate QR state
   const [genStart, setGenStart]   = useState('200');
@@ -193,6 +199,15 @@ export default function AdminDashboard({ user, onLogout }) {
   };
 
   useEffect(() => { refresh(); }, []);
+  // Poll pending user count every 5s when on admin dashboard
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (userReviewRef.current && typeof userReviewRef.current.getPendingCount === 'function') {
+        setPendingUserCount(userReviewRef.current.getPendingCount());
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleGenerateQR = async () => {
     if (!genStart || !genCount) { setGenMsg('Fill all fields'); return; }
@@ -237,6 +252,10 @@ export default function AdminDashboard({ user, onLogout }) {
       setBuyerMsg(`✅ Buyer ${buyer.code} deleted`);
       await refresh();
     } catch (e) {
+      // If backend prevents deletion due to assigned QR or bales, show popup
+      if (String(e.message).includes('Cannot delete buyer with bags') || String(e.message).includes('Cannot delete buyer with assigned QR codes')) {
+        window.alert('Cannot delete buyer with bales or assigned QR codes.');
+      }
       setBuyerMsg(e.message);
     }
   };
@@ -407,7 +426,7 @@ export default function AdminDashboard({ user, onLogout }) {
       const numericRate = parseFloat(editBagForm.rate);
       const baleValue = Number.isFinite(numericWeight) && Number.isFinite(numericRate)
         ? Number((numericWeight * numericRate).toFixed(2))
-        : (editBagForm.bale_value ?? null);
+        : (editBagForm?.bale_value ?? null);
       await api.updateBag(editingBagId, {
         ...editBagForm,
         weight: numericWeight,
@@ -700,51 +719,48 @@ export default function AdminDashboard({ user, onLogout }) {
     ? sortedBags.filter((b) => Number(b.buyer_id) === selectedBuyerIdNum)
     : sortedBags;
   const displayedBuyer = buyers.find((b) => b.id === selectedBuyerIdNum) || null;
-  const inputDateToDisplayDate = (value) => {
+  // Robust date normalization and display
+  const normalizeToYMD = (value) => {
+    // Accepts dd-mm-yyyy, dd/mm/yyyy, yyyy-mm-dd, yyyy/mm/dd, ISO, etc.
     const text = String(value || '').trim();
-    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!match) return '';
-    const [, yyyy, mm, dd] = match;
-    return `${dd}/${mm}/${yyyy}`;
-  };
-  const parseDisplayDateToInputDate = (dateText) => {
-    const text = String(dateText || '').trim();
     if (!text) return '';
-
-    const ddmmyyyy = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (ddmmyyyy) {
-      const [, dd, mm, yyyy] = ddmmyyyy;
+    let d, m, y;
+    // dd-mm-yyyy or dd/mm/yyyy
+    let m1 = text.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/);
+    if (m1) {
+      [, d, m, y] = m1;
+      return `${y}-${m}-${d}`;
+    }
+    // yyyy-mm-dd or yyyy/mm/dd
+    let m2 = text.match(/^(\d{4})[\/-](\d{2})[\/-](\d{2})$/);
+    if (m2) {
+      [, y, m, d] = m2;
+      return `${y}-${m}-${d}`;
+    }
+    // ISO or Date object
+    const date = new Date(text);
+    if (!isNaN(date.getTime())) {
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const dd = String(date.getDate()).padStart(2, '0');
       return `${yyyy}-${mm}-${dd}`;
     }
-
-    const ddmmyyyyDash = text.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-    if (ddmmyyyyDash) {
-      const [, dd, mm, yyyy] = ddmmyyyyDash;
-      return `${yyyy}-${mm}-${dd}`;
-    }
-
-    const yyyymmdd = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (yyyymmdd) {
-      const [, yyyy, mm, dd] = yyyymmdd;
-      return `${yyyy}-${mm}-${dd}`;
-    }
-
-    const inputDateTime = toInputDateTime(text);
-    if (inputDateTime) return inputDateTime.split('T')[0] || '';
-
     return '';
   };
-  const getBagDateLabel = (bag) => {
-    const purchaseDate = parseDisplayDateToInputDate(bag.purchase_date);
-    if (purchaseDate) return inputDateToDisplayDate(purchaseDate);
-
-    const dateOfPurchase = parseDisplayDateToInputDate(bag.date_of_purchase);
-    if (dateOfPurchase) return inputDateToDisplayDate(dateOfPurchase);
-
-    const fallback = formatDateTime(bag.date_of_purchase).split(' ')[0] || '';
-    const fallbackDate = parseDisplayDateToInputDate(fallback);
-    return fallbackDate ? inputDateToDisplayDate(fallbackDate) : '—';
+  const inputDateToDisplayDate = (value) => {
+    const ymd = normalizeToYMD(value);
+    if (!ymd) return '';
+    const [yyyy, mm, dd] = ymd.split('-');
+    return `${dd}-${mm}-${yyyy}`;
   };
+  const getBagDateLabel = (bag) => {
+    // Prefer purchase_date, fallback to date_of_purchase
+    const ymd = normalizeToYMD(bag.purchase_date) || normalizeToYMD(bag.date_of_purchase);
+    if (!ymd) return '—';
+    const [yyyy, mm, dd] = ymd.split('-');
+    return `${dd}-${mm}-${yyyy}`;
+  };
+  const parseDisplayDateToInputDate = (dateText) => normalizeToYMD(dateText);
   const formatPurchaseDateDash = (value) => {
     const normalized = parseDisplayDateToInputDate(value);
     if (!normalized) return '—';
@@ -755,9 +771,13 @@ export default function AdminDashboard({ user, onLogout }) {
   const isWithinSelectedRange = (dateLabel) => {
     const normalized = parseDisplayDateToInputDate(dateLabel);
     if (!normalized) return !selectedBaleStartDate && !selectedBaleEndDate;
+    // If both start and end date are set and are the same, match only that date
+    if (selectedBaleStartDate && selectedBaleEndDate && selectedBaleStartDate === selectedBaleEndDate) {
+      return normalized === selectedBaleStartDate;
+    }
     if (selectedBaleStartDate && normalized < selectedBaleStartDate) return false;
     if (selectedBaleEndDate && normalized > selectedBaleEndDate) return false;
-    return true;
+    return true; // Compare using yyyy-mm-dd for strict matching
   };
   const dateWiseBaleTotalsMap = displayedBags.reduce((acc, bag) => {
     const dateLabel = getBagDateLabel(bag);
@@ -1020,9 +1040,7 @@ export default function AdminDashboard({ user, onLogout }) {
         title="Click to open related tab"
       >
         <div style={{ fontSize: 13, fontWeight: 800, color: '#0b2e6b', marginBottom: 10 }}>{title}</div>
-        {rows.length === 0 ? <div style={{ color: '#6b7280', fontSize: 12 }}>No data</div> : rows.map((row, index) => {
-          const barColor = Array.isArray(colors) && colors.length > 0 ? colors[index % colors.length] : color;
-          return (
+        {rows.length === 0 ? <div style={{ color: '#6b7280', fontSize: 12 }}>No data</div> : rows.map((row, index) => (
           <div key={row.label} style={{ marginBottom: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12, color: '#1e3a5f', marginBottom: 4 }}>
               <span>{row.label}</span>
@@ -1032,7 +1050,7 @@ export default function AdminDashboard({ user, onLogout }) {
               <div style={{ height: 10, width: `${(row.value / max) * 100}%`, background: barColor, borderRadius: 999 }} />
             </div>
           </div>
-        );})}
+        ))}
       </button>
     );
   };
@@ -1095,7 +1113,7 @@ export default function AdminDashboard({ user, onLogout }) {
 
       <div style={{ ...S.page, maxWidth: 1195 }}>
         <div style={S.tabs}>
-          {[
+          {[ 
             ['overview','📊 Overview'],
             ['analytics','📈 Dashboard Analytics'],
             ['vehicle-dispatches','🚚 Buying Vehicle Dispatches'],
@@ -1109,13 +1127,18 @@ export default function AdminDashboard({ user, onLogout }) {
             ['qrcodes','🔲 QR Codes'],
             ['qr-tracking','📡 QR Tracking'],
             ['generate','⚡ Generate QR'],
-            ['database','🗄️ Database']
+            ['database','🗄️ Database'],
+            ['user-review',`📝 User Review${pendingUserCount > 0 ? ' (' + pendingUserCount + ')' : ''}`]
           ].map(([id, label]) => (
             <button key={id} style={S.tab(tab === id)} onClick={() => { setTab(id); refresh(); }}>{label}</button>
           ))}
         </div>
 
         {/* ── DASHBOARD ANALYTICS ── */}
+                {/* ── USER REVIEW ── */}
+                {tab === 'user-review' && (
+                  <AdminUserReview ref={userReviewRef} />
+                )}
         {tab === 'analytics' && (
           <div>
             <div style={{
@@ -1166,10 +1189,10 @@ export default function AdminDashboard({ user, onLogout }) {
                 title="Warehouse / Dispatch Status"
                 totalLabel="Dispatches"
                 values={[
-                  { label: 'To Admin', value: analyticsStatusCountsAll.sentToAdmin },
-                  { label: 'To Warehouse', value: analyticsStatusCountsAll.sentToWarehouse },
-                  { label: 'Warehouse Received', value: analyticsStatusCountsAll.warehouseReceived },
-                  { label: 'Unmatched Bags', value: analyticsStatusCountsAll.unmatchedBags },
+                  { label: 'To Admin', value: analyticsStatusCounts.sentToAdmin },
+                  { label: 'To Warehouse', value: analyticsStatusCounts.sentToWarehouse },
+                  { label: 'Warehouse Received', value: analyticsStatusCounts.warehouseReceived },
+                  { label: 'Unmatched Bags', value: analyticsStatusCounts.unmatchedBags },
                 ]}
                 colors={['#0b2e6b', '#2563eb', '#14b8a6', '#f59e0b']}
                 onClick={() => navigateToTab('vehicle-dispatches')}
@@ -1236,7 +1259,8 @@ export default function AdminDashboard({ user, onLogout }) {
         {/* ── OVERVIEW ── */}
         {tab === 'overview' && (
           <div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 20 }}>
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 20 }}>
               <StatCard icon="👥" label="Total Buyers"    value={stats.buyers     || 0} />
               <StatCard icon="🔲" label="Total QR Codes"  value={stats.qrcodes    || 0} />
               <StatCard icon="✅" label="QR Used"          value={stats.qr_used    || 0} />
@@ -1509,7 +1533,13 @@ export default function AdminDashboard({ user, onLogout }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>APF Number</label>
-                  <input ref={apfCodeInputRef} style={S.input} placeholder="e.g. 121" value={apfNumberCode} onChange={e => setApfNumberCode(e.target.value)} />
+                  <input
+                    ref={apfCodeInputRef}
+                    style={{ ...S.input, textTransform: 'uppercase' }}
+                    placeholder="e.g. 121"
+                    value={apfNumberCode}
+                    onChange={e => setApfNumberCode(e.target.value.toUpperCase())}
+                  />
                 </div>
                 <div>
                   <label style={S.label}>Description (Optional)</label>
@@ -2111,19 +2141,15 @@ export default function AdminDashboard({ user, onLogout }) {
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-                  {hasPurchaseSummarySelection && (
-                    <>
-                      <span style={{ fontSize: 16, fontWeight: 700, color: '#166534' }}>
-                        Total Purchase Value: {formatCurrencyINR(selectedDateTotal)}
-                      </span>
-                      <span style={{ fontSize: 15, fontWeight: 700, color: '#334155' }}>
-                        Total Bags: {selectedScopeBagCount}
-                      </span>
-                      <span style={{ fontSize: 15, fontWeight: 700, color: '#334155' }}>
-                        Total Kgs: {selectedScopeTotalKgs.toFixed(2)}
-                      </span>
-                    </>
-                  )}
+                  <span style={{ fontSize: 16, fontWeight: 700, color: '#166534' }}>
+                    Total Purchase Value: {formatCurrencyINR(selectedDateTotal)}
+                  </span>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: '#334155' }}>
+                    Total Bales: {selectedScopeBagCount}
+                  </span>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: '#334155' }}>
+                    Total Kgs: {selectedScopeTotalKgs.toFixed(2)}
+                  </span>
                   <button
                     style={{ ...S.btnSecondary, flex: 'none', padding: '12px 22px', fontSize: 14, fontWeight: 800, minWidth: 250 }}
                     onClick={handleToggleBuyerActionAfter6pm}
@@ -2136,12 +2162,12 @@ export default function AdminDashboard({ user, onLogout }) {
               </div>
               {filteredDateWiseBaleTotals.length > 0 ? (
                 <table style={{ ...S.table, minWidth: 520 }}>
-                  <thead><tr><th style={{ ...S.th, fontWeight: 700 }}>Date</th><th style={{ ...S.th, fontWeight: 700 }}>Total Bags</th><th style={{ ...S.th, fontWeight: 700 }}>Total Kgs</th><th style={{ ...S.th, fontWeight: 700 }}>Total Purchase Value</th></tr></thead>
+                  <thead><tr><th style={{ ...S.th, fontWeight: 700 }}>Date</th><th style={{ ...S.th, fontWeight: 700 }}>Total Bales</th><th style={{ ...S.th, fontWeight: 700 }}>Total Kgs</th><th style={{ ...S.th, fontWeight: 700 }}>Total Purchase Value</th></tr></thead>
                   <tbody>
                     {filteredDateWiseBaleTotals.map((row, idx) => (
                       <tr key={`${row.date}-${idx}`}>
                         <td style={{ ...S.td, fontWeight: 700 }}>{row.date}</td>
-                        <td style={{ ...S.td, fontWeight: 700 }}>{row.bags}</td>
+                        <td style={{ ...S.td, fontWeight: 700 }}>{row.bales}</td>
                         <td style={{ ...S.td, fontWeight: 700 }}>{row.kgs.toFixed(2)}</td>
                         <td style={{ ...S.td, fontWeight: 700 }}>{formatCurrencyINR(row.total)}</td>
                       </tr>
@@ -2332,7 +2358,7 @@ export default function AdminDashboard({ user, onLogout }) {
                             <td style={totalPurchaseTd}>{b.tobacco_grade}</td>
                             <td style={totalPurchaseTd}>{b.type_of_tobacco || '—'}</td>
                             <td style={totalPurchaseTd}>{b.purchase_location || '—'}</td>
-                            <td style={totalPurchaseTd}>{formatPurchaseDateDash(b.purchase_date || b.date_of_purchase)}</td>
+                            <td style={totalPurchaseTd}>{getBagDateLabel(b)}</td>
                             <td style={totalPurchaseTd}>{b.buyer_grade || '—'}</td>
                             <td style={totalPurchaseTd}>{b.weight} kg</td>
                             <td style={totalPurchaseTd}>{b.rate ?? '—'}</td>

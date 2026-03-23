@@ -4,7 +4,7 @@ import { api } from '../api';
 import { S } from '../styles';
 import BrandLogo from './BrandLogo';
 
-export default function LoginPage({ onLogin }) {
+export default function LoginPage({ onLogin, onShowRegister }) {
   const [code, setCode]       = useState('');
   const [password, setPass]   = useState('');
   const [error, setError]     = useState('');
@@ -59,6 +59,11 @@ export default function LoginPage({ onLogin }) {
         <button style={{ ...S.btnPrimary, width: '100%', marginTop: 8, opacity: loading ? 0.7 : 1 }} onClick={handleLogin} disabled={loading}>
           {loading ? 'Logging in…' : 'Login →'}
         </button>
+        <div style={{ textAlign: 'center', marginTop: 18 }}>
+          <button type="button" style={{ background: 'none', border: 'none', color: '#2780e3', textDecoration: 'underline', cursor: 'pointer', fontSize: 15 }} onClick={onShowRegister}>
+            First time user? Register here
+          </button>
+        </div>
 
 
       </div>

@@ -98,4 +98,9 @@ export const api = {
   getDbTables:      ()             => req('GET',  '/db/tables'),
   getDbTable:       (name)         => req('GET',  `/db/table/${name}`),
   runDbQuery:       (sql)          => req('GET',  `/db/query?sql=${encodeURIComponent(sql)}`),
+  registerUser: (body) => req('POST', '/register-user', body),
+  // Registration requests (admin review)
+  getRegistrationRequests: () => req('GET', '/registration-requests'),
+  approveRegistrationRequest: (id, body) => req('POST', `/registration-requests/${id}/approve`, body),
+  denyRegistrationRequest: (id, body) => req('POST', `/registration-requests/${id}/deny`, body),
 };

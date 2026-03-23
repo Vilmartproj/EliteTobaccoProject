@@ -1,3 +1,7 @@
+
+// User registration endpoint (moved after app initialization and imports)
+// Place this after 'const app = express();' and all required imports
+
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
@@ -622,6 +626,92 @@ app.delete('/api/admin-logins/:id', withAsync(async (req, res) => {
   if (Number(total[0]?.total || 0) <= 1) return res.status(400).json({ error: 'Cannot delete the last admin account' });
   await q('DELETE FROM admin_logins WHERE id = ?', [id]);
   res.json({ success: true });
+}));
+
+// ── User Registration Endpoint (admin can add buyers) ──
+// User registration request (pending approval)
+app.post('/api/register-user', withAsync(async (req, res) => {
+  const { username, name, password, email, phone, role, address } = req.body || {};
+  const normUsername = String(username || '').trim();
+  const normName = String(name || '').trim();
+  const normPassword = String(password || '').trim();
+  const normEmail = email ? String(email).trim() : null;
+  const normPhone = phone ? String(phone).trim() : null;
+  const normRole = String(role || '').trim().toLowerCase();
+  const normAddress = address ? String(address).trim() : null;
+  if (!normUsername || !normName || !normPassword || !normRole) {
+    return res.status(400).json({ error: 'username, name, password, and role are required' });
+  }
+  if (!['buyer','warehouse','admin'].includes(normRole)) {
+    return res.status(400).json({ error: 'Invalid role' });
+  }
+  try {
+    const result = await q(
+      'INSERT INTO registration_requests (username, name, password, email, phone, address, role, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, \'pending\', NOW())',
+      [normUsername, normName, normPassword, normEmail, normPhone, normAddress, normRole]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) {
+    if (err && err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'Username already exists' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+}));
+
+// Admin: List all registration requests (pending, approved, denied)
+app.get('/api/registration-requests', withAsync(async (req, res) => {
+  const rows = await q('SELECT * FROM registration_requests ORDER BY created_at DESC');
+  res.json(rows);
+}));
+
+// Admin: Approve a registration request
+app.post('/api/registration-requests/:id/approve', withAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  const reviewerId = req.body.reviewerId || null;
+  const reviewNote = req.body.reviewNote || null;
+  // Get the request
+  const [request] = await q('SELECT * FROM registration_requests WHERE id = ?', [id]);
+  if (!request) return res.status(404).json({ error: 'Request not found' });
+  if (request.status !== 'pending') return res.status(400).json({ error: 'Request already reviewed' });
+  // Insert into correct table
+  let insertSql, insertParams;
+  if (request.role === 'buyer') {
+    insertSql = 'INSERT INTO buyers (code, name, password, created_at) VALUES (?, ?, ?, NOW())';
+    insertParams = [request.username, request.name, request.password];
+  } else if (request.role === 'warehouse') {
+    insertSql = 'INSERT INTO warehouse_employees (code, name, password, created_at) VALUES (?, ?, ?, NOW())';
+    insertParams = [request.username, request.name, request.password];
+  } else if (request.role === 'admin') {
+    insertSql = 'INSERT INTO admin_logins (code, name, password, created_at) VALUES (?, ?, ?, NOW())';
+    insertParams = [request.username, request.name, request.password];
+  } else {
+    return res.status(400).json({ error: 'Invalid role' });
+  }
+  try {
+    await q(insertSql, insertParams);
+    await q('UPDATE registration_requests SET status = \'approved\', reviewed_at = NOW(), reviewed_by = ?, review_note = ? WHERE id = ?', [reviewerId, reviewNote, id]);
+    res.json({ success: true });
+    // TODO: Send notification (email, SMS, WhatsApp)
+  } catch (err) {
+    if (err && err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'User already exists in target table' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+}));
+
+// Admin: Deny a registration request
+app.post('/api/registration-requests/:id/deny', withAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  const reviewerId = req.body.reviewerId || null;
+  const reviewNote = req.body.reviewNote || null;
+  const [request] = await q('SELECT * FROM registration_requests WHERE id = ?', [id]);
+  if (!request) return res.status(404).json({ error: 'Request not found' });
+  if (request.status !== 'pending') return res.status(400).json({ error: 'Request already reviewed' });
+  await q('UPDATE registration_requests SET status = \'denied\', reviewed_at = NOW(), reviewed_by = ?, review_note = ? WHERE id = ?', [reviewerId, reviewNote, id]);
+  res.json({ success: true });
+  // TODO: Send notification (email, SMS, WhatsApp)
 }));
 
 app.get('/api/buyers', withAsync(async (_req, res) => {

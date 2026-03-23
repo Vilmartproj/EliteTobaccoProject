@@ -462,8 +462,9 @@ const S = {
     return true;
   });
 
-  const totalBaleValue = filteredReportRows.reduce((sum, row) => sum + row.baleValue, 0);
-  const totalWeight = filteredReportRows.reduce((sum, row) => sum + row.weightValue, 0);
+  // Calculate totals from all bags, not just filtered rows, for always-visible totals
+  const totalBaleValue = bags.reduce((sum, row) => sum + (Number.isFinite(Number(row.bale_value)) ? Number(row.bale_value) : (Number(row.weight) * Number(row.rate) || 0)), 0);
+  const totalWeight = bags.reduce((sum, row) => sum + (Number(row.weight) || 0), 0);
   const sortedBags = [...bags].sort((a, b) => compareBy(a?.[bagsSort.key], b?.[bagsSort.key], bagsSort.direction));
   const sortedReportRows = [...filteredReportRows].sort((a, b) => compareBy(a?.[reportSort.key], b?.[reportSort.key], reportSort.direction));
   const sortedDeletedHistory = [...deletedHistory].sort((a, b) => compareBy(a?.deleted_at, b?.deleted_at, 'desc'));
@@ -732,7 +733,7 @@ const S = {
       rate: rateValue,
       bale_value: computedBaleValue,
       buyer_grade: row?.buyer_grade || '',
-      lot_number: isFCV ? (row?.lot_number || '') : '',
+      lot_number: row?.lot_number || '',
       purchase_date: purchaseDate,
       date_of_purchase: row?.date_of_purchase || fromInputDateTime(nowInputDateTime()),
     };
@@ -1081,6 +1082,7 @@ const S = {
                                     if (col.key === 'weight') value = b.weight ? `${b.weight} kg` : '—';
                                     if (col.key === 'bale_value') value = Number.isFinite(Number(b.bale_value)) ? `₹${Number(b.bale_value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
                                     if (col.key === 'fcv') value = <span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span>;
+                                    if (col.key === 'lot_number') value = b.lot_number || '—';
                                     if (col.key === 'updated_at') value = formatUpdatedAt(b.updated_at);
                                     if (col.key === 'dispatch_status') value = (
                                       <>
@@ -1390,18 +1392,73 @@ const S = {
                     <SortableTh label="FCV" sortKey="fcv" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
                   </tr></thead>
                   <tbody>
-                    {sortedReportRows.map((row, i) => (
-                      <tr key={row.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
-                        <td style={S.td}><b>{row.unique_code}</b></td>
-                        <td style={S.td}>{row.purchaseDateDisplay || '—'}</td>
-                        <td style={S.td}>{row.vehicle_dispatch_number || '—'}</td>
-                        <td style={S.td}>{row.dispatch_invoice_number || '—'}</td>
-                        <td style={S.td}>{row.weightValue.toFixed(2)} kg</td>
-                        <td style={S.td}>{row.rateValue.toFixed(2)}</td>
-                        <td style={{ ...S.td, fontWeight: 700, color: '#166534' }}>{row.baleValue.toFixed(2)}</td>
-                        <td style={S.td}><span style={S.badge(row.fcv === 'FCV' ? 'green' : 'red')}>{row.fcv}</span></td>
-                      </tr>
-                    ))}
+                    {(() => {
+                      // Find the min and max invoice numbers in the report rows
+                      const invoiceNumbers = sortedReportRows
+                        .map(row => Number(row.dispatch_invoice_number))
+                        .filter(n => Number.isFinite(n));
+                      let minInvoice = Math.min(...invoiceNumbers);
+                      let maxInvoice = Math.max(...invoiceNumbers);
+                      // If no invoice numbers, just render as before
+                      if (!Number.isFinite(minInvoice) || !Number.isFinite(maxInvoice)) {
+                        return sortedReportRows.map((row, i) => (
+                          <tr key={row.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
+                            <td style={S.td}><b>{row.unique_code}</b></td>
+                            <td style={S.td}>{formatPurchaseDateDash(row.purchase_date || row.date_of_purchase)}</td>
+                            <td style={S.td}>{row.vehicle_dispatch_number || '—'}</td>
+                            <td style={S.td}>{row.dispatch_invoice_number || (row.unique_code ? (bags.find(b => b.unique_code === row.unique_code)?.dispatch_invoice_number || '—') : '—')}</td>
+                            <td style={S.td}>{Number.isFinite(Number(row.weight)) ? Number(row.weight).toFixed(2) + ' kg' : '—'}</td>
+                            <td style={S.td}>{Number.isFinite(Number(row.rate)) ? Number(row.rate).toFixed(2) : '—'}</td>
+                            <td style={{ ...S.td, fontWeight: 700, color: '#166534' }}>{Number.isFinite(Number(row.bale_value)) ? Number(row.bale_value).toFixed(2) : '—'}</td>
+                            <td style={S.td}><span style={S.badge(row.fcv === 'FCV' ? 'green' : 'red')}>{row.fcv}</span></td>
+                          </tr>
+                        ));
+                      }
+                      // Build a map from invoice number to row(s)
+                      const invoiceMap = {};
+                      sortedReportRows.forEach(row => {
+                        const inv = Number(row.dispatch_invoice_number);
+                        if (Number.isFinite(inv)) {
+                          if (!invoiceMap[inv]) invoiceMap[inv] = [];
+                          invoiceMap[inv].push(row);
+                        }
+                      });
+                      // Render rows for every invoice number in the range
+                      const rows = [];
+                      for (let inv = minInvoice; inv <= maxInvoice; inv++) {
+                        if (invoiceMap[inv]) {
+                          invoiceMap[inv].forEach((row, i) => {
+                            rows.push(
+                              <tr key={row.id} style={{ background: rows.length % 2 === 0 ? '#fffafa' : '#fff' }}>
+                                <td style={S.td}><b>{row.unique_code}</b></td>
+                                <td style={S.td}>{formatPurchaseDateDash(row.purchase_date || row.date_of_purchase)}</td>
+                                <td style={S.td}>{row.vehicle_dispatch_number || '—'}</td>
+                                <td style={S.td}>{row.dispatch_invoice_number || '—'}</td>
+                                <td style={S.td}>{Number.isFinite(Number(row.weight)) ? Number(row.weight).toFixed(2) + ' kg' : '—'}</td>
+                                <td style={S.td}>{Number.isFinite(Number(row.rate)) ? Number(row.rate).toFixed(2) : '—'}</td>
+                                <td style={{ ...S.td, fontWeight: 700, color: '#166534' }}>{Number.isFinite(Number(row.bale_value)) ? Number(row.bale_value).toFixed(2) : '—'}</td>
+                                <td style={S.td}><span style={S.badge(row.fcv === 'FCV' ? 'green' : 'red')}>{row.fcv}</span></td>
+                              </tr>
+                            );
+                          });
+                        } else {
+                          // No row for this invoice number, show a placeholder row
+                          rows.push(
+                            <tr key={`missing-invoice-${inv}`} style={{ background: rows.length % 2 === 0 ? '#fffafa' : '#fff', opacity: 0.5 }}>
+                              <td style={S.td}>—</td>
+                              <td style={S.td}>—</td>
+                              <td style={S.td}>—</td>
+                              <td style={S.td}>{inv}</td>
+                              <td style={S.td}>—</td>
+                              <td style={S.td}>—</td>
+                              <td style={S.td}>—</td>
+                              <td style={S.td}>—</td>
+                            </tr>
+                          );
+                        }
+                      }
+                      return rows;
+                    })()}
                   </tbody>
                 </table>
               </div>
