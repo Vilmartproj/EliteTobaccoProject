@@ -1026,6 +1026,12 @@ export default function AdminDashboard({ user, onLogout }) {
 
   const BarChartCard = ({ title, rows, color, colors, onClick, valueFormatter }) => {
     const max = Math.max(...rows.map((row) => row.value), 1);
+    // Use color prop, or colors array, or fallback to a default
+    const getBarColor = (index) => {
+      if (color) return color;
+      if (Array.isArray(colors) && colors.length > 0) return colors[index % colors.length];
+      return '#2780e3'; // fallback default
+    };
     return (
       <button
         type="button"
@@ -1047,7 +1053,7 @@ export default function AdminDashboard({ user, onLogout }) {
               <b style={{ color: '#0b2e6b' }}>{valueFormatter ? valueFormatter(row.value) : row.value}</b>
             </div>
             <div style={{ height: 10, background: '#e6f0ff', borderRadius: 999 }}>
-              <div style={{ height: 10, width: `${(row.value / max) * 100}%`, background: barColor, borderRadius: 999 }} />
+              <div style={{ height: 10, width: `${(row.value / max) * 100}%`, background: getBarColor(index), borderRadius: 999 }} />
             </div>
           </div>
         ))}

@@ -418,6 +418,10 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
   const doSave = async (exit) => {
     setSubmitAttempted(true);
     setError('');
+    if (!lotNumber.trim()) {
+      setError('Lot Number is required');
+      return;
+    }
     if (uniqueCode.trim() && codeStatus === null) {
       await checkCode(uniqueCode.trim());
       return;
@@ -428,7 +432,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     try {
       // Use the selected purchase date for both fields
       const selectedDate = isFCV ? purchaseDate : nonFcvPurchaseDate;
-      await api.saveBag({
+      const payload = {
         unique_code: uniqueCode.trim(), buyer_id: buyer.id,
         buyer_code: buyer.code, buyer_name: buyer.name,
         fcv,
@@ -437,10 +441,12 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
         type_of_tobacco: isNonFCV ? typeOfTobacco : '',
         purchase_location: purchaseLocation || '',
         weight: parseFloat(weight), rate: parseFloat(rate), bale_value: baleValue, buyer_grade: buyerGrade,
-        lot_number: isFCV ? lotNumber.trim() : '',
+        lot_number: lotNumber.trim(),
         purchase_date: selectedDate,
         date_of_purchase: selectedDate,
-      });
+      };
+      console.log('DEBUG: API payload for saveBag:', payload);
+      await api.saveBag(payload);
       setSaved(true);
       setSubmitAttempted(false);
       if (exit) {

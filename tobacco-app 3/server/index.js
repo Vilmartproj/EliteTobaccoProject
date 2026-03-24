@@ -1307,6 +1307,8 @@ app.get('/api/bags', withAsync(async (req, res) => {
 }));
 
 app.post('/api/bags', withAsync(async (req, res) => {
+    // Debug log for incoming bag creation
+    console.log('DEBUG /api/bags POST body:', JSON.stringify(req.body, null, 2));
   const body = req.body || {};
   const fcvType = String(body.fcv || '').trim();
   const typeOfTobacco = String(body.type_of_tobacco || '').trim();
@@ -1319,39 +1321,42 @@ app.post('/api/bags', withAsync(async (req, res) => {
     if (!apfNumber) return res.status(400).json({ error: 'Invalid APF number. Please select from APF master.' });
     const apfExists = await q('SELECT id FROM apf_numbers WHERE number = ? LIMIT 1', [apfNumber]);
     if (apfExists.length === 0) return res.status(400).json({ error: 'Invalid APF number. Please select from APF master.' });
-    if (!lotNumber) return res.status(400).json({ error: 'Lot Number is required for FCV.' });
   }
+  // Enforce lot_number is required for both FCV and NON-FCV
+  if (!lotNumber) return res.status(400).json({ error: 'Lot Number is required.' });
 
   const buyerId = normalizeBuyerId(body.buyer_id);
 
+  const insertValues = [
+    String(body.unique_code || String(Math.random())),
+    buyerId,
+    String(body.buyer_code || '').trim(),
+    String(body.buyer_name || '').trim(),
+    fcvType || '',
+    typeOfTobacco,
+    fcvType === 'FCV' ? apfNumber : '',
+    String(body.tobacco_grade || '').trim(),
+    purchaseDateValue,
+    body.weight ?? null,
+    body.rate ?? null,
+    body.bale_value ?? null,
+    String(body.buyer_grade || '').trim(),
+    lotNumber, // Always save lot number for both FCV and NON-FCV
+    dateOfPurchaseValue,
+    String(body.purchase_location || '').trim(),
+    String(body.moisture || '').trim(),
+    String(body.colour || '').trim(),
+    String(body.sandy_leaves || '').trim(),
+    String(body.total_bales || '').trim(),
+  ];
+  console.log('DEBUG: SQL insert values for bags:', JSON.stringify(insertValues, null, 2));
   const result = await q(
     `INSERT INTO bags (
       unique_code, buyer_id, buyer_code, buyer_name, fcv, type_of_tobacco, apf_number, tobacco_grade,
       purchase_date, weight, rate, bale_value, buyer_grade, lot_number, date_of_purchase, purchase_location,
       moisture, colour, sandy_leaves, total_bales, saved_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-    [
-      String(body.unique_code || String(Math.random())),
-      buyerId,
-      String(body.buyer_code || '').trim(),
-      String(body.buyer_name || '').trim(),
-      fcvType || '',
-      typeOfTobacco,
-      fcvType === 'FCV' ? apfNumber : '',
-      String(body.tobacco_grade || '').trim(),
-      purchaseDateValue,
-      body.weight ?? null,
-      body.rate ?? null,
-      body.bale_value ?? null,
-      String(body.buyer_grade || '').trim(),
-      fcvType === 'FCV' ? lotNumber : '',
-      dateOfPurchaseValue,
-      String(body.purchase_location || '').trim(),
-      String(body.moisture || '').trim(),
-      String(body.colour || '').trim(),
-      String(body.sandy_leaves || '').trim(),
-      String(body.total_bales || '').trim(),
-    ]
+    insertValues
   );
 
   if (body.unique_code) {
@@ -1431,7 +1436,7 @@ app.put('/api/bags/:id', withAsync(async (req, res) => {
       merged.rate ?? null,
       merged.bale_value ?? null,
       merged.buyer_grade || null,
-      fcvType === 'FCV' ? String(merged.lot_number || '').trim() : '',
+      String(merged.lot_number || '').trim(), // Always save lot number
       dateOfPurchaseValue,
       merged.purchase_location || null,
       bagId,
