@@ -22,6 +22,7 @@ const BALES_COLUMNS = [
   { key: 'bale_value', label: 'Bale Value' },
   { key: 'buyer_grade', label: 'B.Grade' },
   { key: 'fcv', label: 'FCV' },
+  { key: 'dispatch_invoice_number', label: 'Invoice Number' },
   { key: 'updated_at', label: 'Updated' },
   { key: 'dispatch_status', label: 'Dispatch Status' }
 ];
@@ -147,6 +148,8 @@ const S = {
 };
 
 // ...existing code...
+  // Restore dispatchInvoiceNumber state for manual input
+  const [dispatchInvoiceNumber, setDispatchInvoiceNumber] = useState('');
   const [enabledBuyerActionIds, setEnabledBuyerActionIds] = useState([]);
   const [now, setNow] = useState(new Date());
   const [isMobileView, setIsMobileView] = useState(() => window.innerWidth <= 768);
@@ -289,17 +292,21 @@ const S = {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(deletedHistoryKey);
-      const parsed = raw ? JSON.parse(raw) : [];
-      const normalized = Array.isArray(parsed)
-        ? parsed.map((item, index) => ({
-            ...item,
-            deleted_key: item?.deleted_key || buildDeletedRowKey(item, index),
-          }))
-        : [];
-      setDeletedHistory(normalized);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const normalized = Array.isArray(parsed)
+          ? parsed.map((item, index) => ({
+              ...item,
+              deleted_key: item?.deleted_key || buildDeletedRowKey(item, index),
+            }))
+          : [];
+        setDeletedHistory(normalized);
+      }
+      // If no key, do not update state at all (never clear on relogin)
     } catch {
-      setDeletedHistory([]);
+      // Do not clear state on error
     }
+    // eslint-disable-next-line
   }, [deletedHistoryKey]);
 
   useEffect(() => {
@@ -840,19 +847,18 @@ const S = {
       setEditMsg('Select at least one purchase to move');
       return;
     }
-
-    // Auto-generate a global invoice number
-    const invoiceNumber = `INV-${Date.now()}`;
-
+    if (!dispatchInvoiceNumber.trim()) {
+      setEditMsg('Please enter an invoice number');
+      return;
+    }
+    const invoiceNumber = dispatchInvoiceNumber.trim();
     const eligibleBags = selectedDispatchBagIds
       .map((id) => bags.find((bag) => Number(bag.id) === Number(id)))
       .filter((bag) => bag && getDispatchState(bag).selectable);
-
     if (eligibleBags.length === 0) {
       setEditMsg('No eligible purchases found in selected list');
       return;
     }
-
     try {
       setDispatchAssignLoading(true);
       await Promise.all(eligibleBags.map((bag) => api.addBagToDispatchList(bag.id, { invoice_number: invoiceNumber })));
@@ -959,7 +965,15 @@ const S = {
               >
                 {dispatchScanLoading ? 'Selecting...' : 'Scan QR'}
               </button>
-              {/* Invoice number is now auto-generated globally, input removed */}
+              {/* Invoice number input restored for buyer entry */}
+              <input
+                style={{ ...S.input, minWidth: 180, marginBottom: 0 }}
+                placeholder="Invoice number"
+                value={dispatchInvoiceNumber}
+                onChange={e => setDispatchInvoiceNumber(e.target.value)}
+                disabled={dispatchAssignLoading}
+                required
+              />
               <button
                 style={{ ...S.btnPrimary, flex: 'none', padding: '6px 14px', opacity: dispatchAssignLoading ? 0.65 : 1 }}
                 disabled={dispatchAssignLoading || selectedDispatchBagIds.length === 0}
@@ -999,7 +1013,8 @@ const S = {
             {/* Split tables: Not Dispatched and Dispatched */}
             {(() => {
               const notDispatchedBags = sortedBags.filter(b => Number(b.vehicle_dispatch_id) === 0);
-              const dispatchedBags = sortedBags.filter(b => Number(b.vehicle_dispatch_id) > 0);
+              // Only show dispatched bags for the logged-in buyer
+              const dispatchedBags = sortedBags.filter(b => Number(b.vehicle_dispatch_id) > 0 && Number(b.buyer_id) === Number(user.id));
               return (
                 <>
                   {/* Not Dispatched Table */}
@@ -1068,13 +1083,14 @@ const S = {
                                     if (col.key === 'fcv') value = <span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span>;
                                     if (col.key === 'lot_number') value = b.lot_number || '—';
                                     if (col.key === 'updated_at') value = formatUpdatedAt(b.updated_at);
+                                    if (col.key === 'dispatch_invoice_number') value = b.dispatch_invoice_number || '—';
                                     if (col.key === 'dispatch_status') value = (
                                       <>
                                         {Number(b.dispatch_list_added) === 1
                                           ? <span style={S.badge('green')}>Moved to vehicle dispatch</span>
                                           : <span style={S.badge()}>Available</span>}
                                         {b.vehicle_dispatch_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Dispatch: {b.vehicle_dispatch_number}</div> : null}
-                                        {b.dispatch_invoice_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Invoice: {b.dispatch_invoice_number}</div> : null}
+                                        {/* Invoice number now has its own column */}
                                       </>
                                     );
                                     return <td key={col.key} style={{ ...S.td, fontWeight: 800 }}>{value}</td>;

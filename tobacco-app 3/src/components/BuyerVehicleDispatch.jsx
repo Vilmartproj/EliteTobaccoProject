@@ -128,7 +128,7 @@ export default function BuyerVehicleDispatch({ buyer }) {
     ]);
     setEligibleRows(eligible);
     // Use all dispatches for global dispatch number
-    setDispatches(allDispatches);
+    setDispatches(allDispatches.filter(d => Number(d.buyer_id) === Number(buyer.id)));
   };
 
   useEffect(() => {

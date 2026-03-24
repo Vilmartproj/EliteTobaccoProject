@@ -351,6 +351,15 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
       setTypeOfTobacco('');
       setPurchaseLocation('');
       setNonFcvPurchaseDate('');
+      // If purchaseDate is empty, set to today
+      setPurchaseDate(prev => {
+        if (prev) return prev;
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+      });
     }
     if (value === 'NON-FCV') {
       setApfNumber('');
