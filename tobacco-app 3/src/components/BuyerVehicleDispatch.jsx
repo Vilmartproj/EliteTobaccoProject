@@ -127,9 +127,8 @@ export default function BuyerVehicleDispatch({ buyer }) {
       api.getVehicleDispatches(), // No buyerId: fetch all
     ]);
     setEligibleRows(eligible);
-    // Filter dispatches to only those for this buyer
-    const buyerDispatches = allDispatches.filter(d => String(d.buyer_id) === String(buyer.id));
-    setDispatches(buyerDispatches);
+    // Use all dispatches for global dispatch number
+    setDispatches(allDispatches);
   };
 
   useEffect(() => {

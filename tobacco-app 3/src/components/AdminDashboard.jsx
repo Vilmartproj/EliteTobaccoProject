@@ -900,19 +900,31 @@ export default function AdminDashboard({ user, onLogout }) {
     return Object.values(map).sort((a, b) => b.value - a.value);
   }, [analyticsScopedBags]);
 
-  const analyticsPurchasesByDate = useMemo(() => {
+  // Group purchases by month for analytics
+  const analyticsPurchasesByMonth = useMemo(() => {
     const map = {};
     analyticsScopedBags.forEach((bag) => {
       const dateLabel = getBagDateLabel(bag);
-      if (!map[dateLabel]) map[dateLabel] = { label: dateLabel, value: 0 };
+      if (!dateLabel) return;
+      const date = new Date(dateLabel);
+      if (isNaN(date.getTime())) return;
+      const monthLabel = date.toLocaleString('default', { month: 'short', year: 'numeric' });
+      if (!map[monthLabel]) map[monthLabel] = { label: monthLabel, value: 0 };
       const baleValue = Number.isFinite(Number(bag.bale_value))
         ? Number(bag.bale_value)
         : (Number(bag.weight || 0) * Number(bag.rate || 0));
-      map[dateLabel].value += Number.isFinite(baleValue) ? baleValue : 0;
+      map[monthLabel].value += Number.isFinite(baleValue) ? baleValue : 0;
     });
     return Object.values(map)
       .filter((row) => row.label && row.label !== '—')
-      .sort((a, b) => compareBy(parseDisplayDateToInputDate(a.label), parseDisplayDateToInputDate(b.label), 'asc'))
+      .sort((a, b) => {
+        // Sort by year then month
+        const [aMonth, aYear] = a.label.split(' ');
+        const [bMonth, bYear] = b.label.split(' ');
+        const aDate = new Date(`${aMonth} 1, ${aYear}`);
+        const bDate = new Date(`${bMonth} 1, ${bYear}`);
+        return aDate - bDate;
+      })
       .slice(-8);
   }, [analyticsScopedBags]);
 
@@ -1207,8 +1219,8 @@ export default function AdminDashboard({ user, onLogout }) {
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14, marginBottom: 14 }}>
               <BarChartCard
-                title="Purchases by Date"
-                rows={analyticsPurchasesByDate}
+                title="Purchases by Monthly"
+                rows={analyticsPurchasesByMonth}
                 colors={['#ddd6fe', '#c4b5fd', '#a78bfa', '#93c5fd', '#7dd3fc', '#a5f3fc', '#bfdbfe', '#e9d5ff']}
                 onClick={() => navigateToTab('bags')}
                 valueFormatter={formatCurrencyINR}

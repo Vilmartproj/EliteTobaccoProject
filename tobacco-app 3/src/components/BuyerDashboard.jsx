@@ -156,7 +156,7 @@ const S = {
   const [selectedReportDateTo, setSelectedReportDateTo] = useState('');
   const [dispatchScanCode, setDispatchScanCode] = useState('');
   const [dispatchScanLoading, setDispatchScanLoading] = useState(false);
-  const [dispatchInvoiceNumber, setDispatchInvoiceNumber] = useState('');
+  // Removed dispatchInvoiceNumber state, invoice number will be auto-generated
   const [selectedDispatchBagIds, setSelectedDispatchBagIds] = useState([]);
   const [dispatchAssignLoading, setDispatchAssignLoading] = useState(false);
   const [qrScanDeleteId, setQrScanDeleteId] = useState(null);
@@ -841,11 +841,8 @@ const S = {
       return;
     }
 
-    const invoiceNumber = String(dispatchInvoiceNumber || '').trim();
-    if (!invoiceNumber) {
-      setEditMsg('Invoice number is required before moving purchases');
-      return;
-    }
+    // Auto-generate a global invoice number
+    const invoiceNumber = `INV-${Date.now()}`;
 
     const eligibleBags = selectedDispatchBagIds
       .map((id) => bags.find((bag) => Number(bag.id) === Number(id)))
@@ -962,20 +959,7 @@ const S = {
               >
                 {dispatchScanLoading ? 'Selecting...' : 'Scan QR'}
               </button>
-              <input
-                style={{ ...S.input, minWidth: 220, marginBottom: 0 }}
-                placeholder="Assign invoice number"
-                value={dispatchInvoiceNumber}
-                onChange={(e) => {
-                  // Allow only numbers and special characters (no letters)
-                  const val = e.target.value;
-                  const filtered = val.replace(/[A-Za-z]/g, '');
-                  setDispatchInvoiceNumber(filtered);
-                }}
-                inputMode="text"
-                pattern="[0-9\-\/\.,_#@ ]*"
-                title="Numbers and special characters only"
-              />
+              {/* Invoice number is now auto-generated globally, input removed */}
               <button
                 style={{ ...S.btnPrimary, flex: 'none', padding: '6px 14px', opacity: dispatchAssignLoading ? 0.65 : 1 }}
                 disabled={dispatchAssignLoading || selectedDispatchBagIds.length === 0}
