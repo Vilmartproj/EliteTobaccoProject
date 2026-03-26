@@ -1,3 +1,4 @@
+
 // src/api.js  –  all backend calls in one place
 
 const BASE = import.meta.env.VITE_API_BASE || '/api';
@@ -7,7 +8,12 @@ async function req(method, path, body) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const opts = { method, headers: { 'Content-Type': 'application/json' }, signal: controller.signal };
-  if (body) opts.body = JSON.stringify(body);
+  if (body) {
+    opts.body = JSON.stringify(body);
+    if (method === 'POST' || method === 'PUT') {
+      console.log('[API DEBUG] POST/PUT', path, 'payload:', body);
+    }
+  }
   try {
     const res = await fetch(BASE + path, opts);
     const contentType = res.headers.get('content-type') || '';
@@ -35,6 +41,7 @@ async function req(method, path, body) {
 }
 
 export const api = {
+    setBagDeleteInProgress: (id) => req('PUT', `/bags/${id}/set-delete-in-progress`),
   login:            (body)         => req('POST', '/login', body),
   getAdminLogins:   ()             => req('GET',  '/admin-logins'),
   createAdminLogin: (body)         => req('POST', '/admin-logins', body),
@@ -91,6 +98,10 @@ export const api = {
   updateBag:        (id, body)     => req('PUT',  `/bags/${id}`, body),
   addBagToDispatchList:(id, body)  => req('PUT',  `/bags/${id}/add-to-dispatch-list`, body),
   deleteBag:        (id)           => req('DELETE', `/bags/${id}`),
+  // Delete bag by unique_code (QR code)
+  deleteBagByCode:  (uniqueCode)   => req('DELETE', `/bags/by-code/${encodeURIComponent(uniqueCode)}`),
+  // Unassign QR code (set to available)
+  unassignQRCode:   (uniqueCode)   => req('PUT', `/qrcodes/unassign/${encodeURIComponent(uniqueCode)}`),
   getBuyerBagActionSetting: ()     => req('GET',  '/settings/buyer-bag-actions'),
   updateBuyerBagActionSetting: (body) => req('PUT', '/settings/buyer-bag-actions', body),
   getStats:         ()             => req('GET',  '/stats'),
@@ -103,4 +114,9 @@ export const api = {
   getRegistrationRequests: () => req('GET', '/registration-requests'),
   approveRegistrationRequest: (id, body) => req('POST', `/registration-requests/${id}/approve`, body),
   denyRegistrationRequest: (id, body) => req('POST', `/registration-requests/${id}/deny`, body),
+  // Deleted Purchase History
+  getDeletedBags: (buyerId) => req('GET', `/deleted-bags?buyer_id=${buyerId}`),
+  addDeletedBag: (body) => req('POST', '/deleted-bags', body),
+  deleteDeletedBag: (id) => req('DELETE', `/deleted-bags/${id}`),
+  restoreDeletedBags: (ids) => req('POST', '/deleted-bags/restore', { ids }),
 };

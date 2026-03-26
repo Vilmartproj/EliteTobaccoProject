@@ -1,14 +1,52 @@
-
-// User registration endpoint (moved after app initialization and imports)
-// Place this after 'const app = express();' and all required imports
+// --- IMPORTS AND APP INITIALIZATION ---
 
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
 const { DateTime } = require('luxon');
 
-
 const app = express();
+
+// Delete bag by unique_code (QR code)
+
+app.delete('/api/bags/by-code/:unique_code', withAsync(async (req, res) => {
+  // Always decode the unique_code from the URL
+  const rawParam = String(req.params.unique_code || '').trim();
+  const uniqueCode = decodeURIComponent(rawParam);
+  console.log('[DEBUG] /api/bags/by-code/:unique_code', { rawParam, decoded: uniqueCode });
+  if (!uniqueCode) return res.status(400).json({ error: 'unique_code required' });
+  const rows = await q('SELECT * FROM bags WHERE unique_code = ? LIMIT 1', [uniqueCode]);
+  if (rows.length === 0) {
+    console.log('[DEBUG] Bag not found for unique_code:', uniqueCode);
+    return res.status(404).json({ error: 'Bag not found' });
+  }
+  const bag = rows[0];
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query('DELETE FROM bags WHERE unique_code = ?', [uniqueCode]);
+    await conn.query('UPDATE qr_codes SET used = 0, buyer_id = NULL WHERE unique_code = ?', [uniqueCode]);
+    await conn.commit();
+    res.json({ success: true, bag });
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}));
+
+// Unassign QR code (set to available)
+
+app.put('/api/qrcodes/unassign/:unique_code', withAsync(async (req, res) => {
+  const uniqueCode = decodeURIComponent(String(req.params.unique_code || '').trim());
+  if (!uniqueCode) return res.status(400).json({ error: 'unique_code required' });
+  const qrRows = await q('SELECT * FROM qr_codes WHERE unique_code = ? LIMIT 1', [uniqueCode]);
+  if (qrRows.length === 0) return res.status(404).json({ error: 'QR code not found' });
+  await q('UPDATE qr_codes SET used = 0, buyer_id = NULL WHERE unique_code = ?', [uniqueCode]);
+  res.json({ success: true });
+}));
+app.use(express.json());
 const PORT = Number(process.env.PORT || 3001);
 
 const DB_HOST = process.env.DB_HOST || '127.0.0.1';
@@ -105,6 +143,137 @@ const ALLOWED_TABLES = ['buyers', 'warehouse_employees', 'apf_numbers', 'tobacco
 let pool;
 
 app.use(cors());
+
+// --- DELETED BAGS TABLE AND API ENDPOINTS ---
+// 1. Create deleted_bags table if not exists
+async function ensureDeletedBagsTable() {
+  await q(`
+    CREATE TABLE IF NOT EXISTS deleted_bags (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      buyer_id INT NOT NULL,
+      unique_code VARCHAR(100) NOT NULL,
+      bag_data JSON NOT NULL,
+      deleted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX (buyer_id),
+      INDEX (unique_code)
+    ) ENGINE=InnoDB;
+  `);
+}
+
+// Call this in DB init
+const oldInitDatabase = initDatabase;
+initDatabase = async function() {
+  await oldInitDatabase();
+  await ensureDeletedBagsTable();
+};
+
+// 2. API: Get deleted bags for a buyer
+app.get('/api/deleted-bags', withAsync(async (req, res) => {
+  const buyerId = Number(req.query.buyer_id);
+  if (!buyerId) return res.status(400).json({ error: 'buyer_id required' });
+  // Get deleted_bags as before
+  const deletedRows = await q('SELECT * FROM deleted_bags WHERE buyer_id = ? ORDER BY deleted_at DESC', [buyerId]);
+  // Also get bags with status 'Delete in-progress' not already in deleted_bags
+  const deletedCodes = new Set(deletedRows.map(row => row.unique_code));
+  const inProgressRows = await q('SELECT * FROM bags WHERE buyer_id = ? AND status = ?', [buyerId, 'Delete in-progress']);
+  // Only add bags not already in deleted_bags
+  const extraRows = inProgressRows.filter(row => !deletedCodes.has(row.unique_code)).map(row => {
+    let deletedAt = row.updated_at || row.created_at || null;
+    if (deletedAt instanceof Date) deletedAt = deletedAt.toISOString();
+    if (typeof deletedAt === 'number') deletedAt = new Date(deletedAt).toISOString();
+    if (!deletedAt) deletedAt = '';
+    return {
+      id: null, // not in deleted_bags table
+      buyer_id: row.buyer_id,
+      unique_code: row.unique_code,
+      bag_data: row,
+      deleted_at: deletedAt,
+      db_id: row.id,
+    };
+  });
+  const allRows = [
+    ...deletedRows.map(row => {
+      let deletedAt = row.deleted_at;
+      if (deletedAt instanceof Date) deletedAt = deletedAt.toISOString();
+      if (typeof deletedAt === 'number') deletedAt = new Date(deletedAt).toISOString();
+      if (!deletedAt) deletedAt = '';
+      return {
+        ...row,
+        bag_data: typeof row.bag_data === 'string' ? JSON.parse(row.bag_data) : row.bag_data,
+        deleted_at: deletedAt,
+      };
+    }),
+    ...extraRows
+  ];
+  // Sort by deleted_at descending (string compare, ISO format)
+  allRows.sort((a, b) => (b.deleted_at || '').localeCompare(a.deleted_at || ''));
+  res.json(allRows);
+}));
+
+// 3. API: Add a deleted bag
+app.post('/api/deleted-bags', withAsync(async (req, res) => {
+  const { buyer_id, unique_code, bag_data } = req.body || {};
+  if (!buyer_id || !unique_code || !bag_data) return res.status(400).json({ error: 'buyer_id, unique_code, bag_data required' });
+  await q('INSERT INTO deleted_bags (buyer_id, unique_code, bag_data, deleted_at) VALUES (?, ?, ?, NOW())', [buyer_id, unique_code, JSON.stringify(bag_data)]);
+  res.json({ success: true });
+}));
+
+// 4. API: Permanently delete a deleted bag
+app.delete('/api/deleted-bags/:id', withAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'id required' });
+  await q('DELETE FROM deleted_bags WHERE id = ?', [id]);
+  res.json({ success: true });
+}));
+
+// Set bag status to 'delete in-progress' (called before actual delete)
+app.put('/api/bags/:id/set-delete-in-progress', withAsync(async (req, res) => {
+  const bagId = Number(req.params.id);
+  const rows = await q('SELECT * FROM bags WHERE id = ? LIMIT 1', [bagId]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Bag not found' });
+  await q('UPDATE bags SET status = ? WHERE id = ?', ['Delete in-progress', bagId]);
+  res.json({ success: true });
+}));
+
+// 5. API: Restore deleted bags (move back to bags table)
+app.post('/api/deleted-bags/restore', withAsync(async (req, res) => {
+  const { ids } = req.body || {};
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids required' });
+  const restored = [];
+  // Try to restore from deleted_bags first
+  if (ids.length > 0) {
+    const rows = await q(`SELECT * FROM deleted_bags WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
+    for (const row of rows) {
+      const bag = typeof row.bag_data === 'string' ? JSON.parse(row.bag_data) : row.bag_data;
+      // Ensure status is set to 'available' on restore
+      bag.status = 'available';
+      try {
+        await q(`INSERT INTO bags (unique_code, buyer_id, buyer_code, buyer_name, fcv, apf_number, tobacco_grade, type_of_tobacco, purchase_location, weight, rate, bale_value, buyer_grade, lot_number, purchase_date, date_of_purchase, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE status='available'`, [
+          bag.unique_code, bag.buyer_id, bag.buyer_code, bag.buyer_name, bag.fcv, bag.apf_number, bag.tobacco_grade, bag.type_of_tobacco, bag.purchase_location, bag.weight, bag.rate, bag.bale_value, bag.buyer_grade, bag.lot_number, bag.purchase_date, bag.date_of_purchase, bag.status
+        ]);
+        restored.push(row.id);
+      } catch (e) { /* skip errors */ }
+    }
+    if (restored.length > 0) {
+      await q(`DELETE FROM deleted_bags WHERE id IN (${restored.map(() => '?').join(',')})`, restored);
+    }
+  }
+  // Also handle restoring bags that are only in bags table (status 'Delete in-progress')
+  // These ids will not be found in deleted_bags, so try updating bags table directly
+  // Only update if status is 'Delete in-progress'
+  if (ids.length > 0) {
+    const bagRows = await q(`SELECT * FROM bags WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
+    for (const bag of bagRows) {
+      if (bag.status === 'Delete in-progress') {
+        await q('UPDATE bags SET status = ? WHERE id = ?', ['available', bag.id]);
+        restored.push(bag.id);
+      }
+    }
+  }
+  res.json({ restored });
+}));
 app.use(express.json());
 
 function resolveGradeType(value, fallback = DEFAULT_GRADE_TYPE) {
@@ -1389,6 +1558,7 @@ app.put('/api/bags/:id', withAsync(async (req, res) => {
     'lot_number',
     'date_of_purchase',
     'purchase_location',
+    'status', // allow status to be updated
   ];
 
   const merged = { ...currentBag };
@@ -1398,6 +1568,8 @@ app.put('/api/bags/:id', withAsync(async (req, res) => {
         merged.apf_number = String(updates.apf_number || '').trim();
       } else if (field === 'lot_number') {
         merged.lot_number = String(updates.lot_number || '').trim();
+      } else if (field === 'status') {
+        merged.status = String(updates.status || '').trim();
       } else {
         merged[field] = updates[field];
       }
@@ -1424,7 +1596,7 @@ app.put('/api/bags/:id', withAsync(async (req, res) => {
     `UPDATE bags
      SET fcv = ?, type_of_tobacco = ?, apf_number = ?, tobacco_grade = ?, purchase_date = ?,
          weight = ?, rate = ?, bale_value = ?, buyer_grade = ?, lot_number = ?, date_of_purchase = ?,
-         purchase_location = ?, updated_at = NOW()
+         purchase_location = ?, status = ?, updated_at = NOW()
      WHERE id = ?`,
     [
       merged.fcv || null,
@@ -1439,6 +1611,7 @@ app.put('/api/bags/:id', withAsync(async (req, res) => {
       String(merged.lot_number || '').trim(), // Always save lot number
       dateOfPurchaseValue,
       merged.purchase_location || null,
+      merged.status || currentBag.status,
       bagId,
     ]
   );

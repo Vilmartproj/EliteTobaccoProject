@@ -1,13 +1,22 @@
-import { useState, useEffect, useRef } from 'react';
+import DeletedHistoryTable from './BuyerDashboard/DeletedHistoryTable';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { api } from '../api';
 import { S as _S } from '../styles';
-import BrandLogo from './BrandLogo';
+import TopBar from './BuyerDashboard/TopBar';
+import TabsNav from './BuyerDashboard/TabsNav';
+import BalesTable from './BuyerDashboard/BalesTable';
+import SelectedDispatchList from './BuyerDashboard/SelectedDispatchList';
 import BuyingForm from './BuyingForm';
 import QRCode from './QRCode';
 import SearchableSelect from './SearchableSelect';
 import BuyerVehicleDispatch from './BuyerVehicleDispatch';
 import { printQRCodes } from '../utils/printQR';
 import { formatDateTime, fromInputDateTime, nowInputDateTime, toInputDateTime } from '../utils/dateFormat';
+
+// Gradient used for buyer badges and backgrounds
+const buyerGradient = 'linear-gradient(90deg, #2780e3 0%, #56ccf2 100%)';
+
+
 
 const BALES_COLUMNS = [
   { key: 'unique_code', label: 'Code' },
@@ -24,7 +33,8 @@ const BALES_COLUMNS = [
   { key: 'fcv', label: 'FCV' },
   { key: 'dispatch_invoice_number', label: 'Invoice Number' },
   { key: 'updated_at', label: 'Updated' },
-  { key: 'dispatch_status', label: 'Dispatch Status' }
+  { key: 'dispatch_status', label: 'Dispatch Status' },
+  { key: 'status', label: 'Bag Status' }
 ];
 
 function getDefaultVisibleColumns() {
@@ -32,21 +42,197 @@ function getDefaultVisibleColumns() {
 }
 
 function BuyerDashboard({ user, onLogout }) {
-                // Add missing tobaccoTypes and purchaseLocations state
-                const [tobaccoTypes, setTobaccoTypes] = useState([]);
-                const [purchaseLocations, setPurchaseLocations] = useState([]);
-              // Add missing loading state for general loading indicator
-              const [loading, setLoad] = useState(false);
-            // Add missing qrCodes state for QR code data
-            const [qrCodes, setQR] = useState([]);
-          // Add missing view state for tab switching
-          const [view, setView] = useState('bags');
-        // Consistent color for buyer button text
-        const buyerButtonTextColor = '#fff';
-      // Consistent color for buyer title
-      const buyerTitleColor = '#2780e3';
-    // Add missing apfNumbers state
-    const [apfNumbers, setApfNumbers] = useState([]);
+                // Toggle selection of a bag for dispatch
+                const toggleDispatchSelection = (bagId) => {
+                  setSelectedDispatchBagIds((prev) =>
+                    prev.includes(bagId)
+                      ? prev.filter((id) => id !== bagId)
+                      : [...prev, bagId]
+                  );
+                };
+              // Remove a bag from the selected dispatch list
+              const removeSelectedDispatchBag = (bagId) => {
+                setSelectedDispatchBagIds((prev) => prev.filter((id) => id !== bagId));
+              };
+            // Assign invoice number and move selected bags to dispatch
+            const assignInvoiceAndMoveToDispatch = async () => {
+              if (!dispatchInvoiceNumber.trim()) {
+                setEditMsg('Invoice number is required');
+                return;
+              }
+              if (selectedDispatchBagIds.length === 0) {
+                setEditMsg('Select at least one bag to dispatch');
+                return;
+              }
+              setDispatchAssignLoading(true);
+              setEditMsg('');
+              try {
+                // Assign invoice and move each selected bag to dispatch
+                await Promise.all(selectedDispatchBagIds.map(async (bagId) => {
+                  await api.addBagToDispatchList(bagId, { invoice_number: dispatchInvoiceNumber });
+                }));
+                setEditMsg('✅ Invoice assigned and bags moved to dispatch');
+                setDispatchInvoiceNumber('');
+                setSelectedDispatchBagIds([]);
+                await loadBags();
+              } catch (e) {
+                setEditMsg(e.message || 'Failed to assign invoice and move to dispatch');
+              } finally {
+                setDispatchAssignLoading(false);
+              }
+            };
+          // Handler functions for deleted history table
+          const toggleSelectAllDeleted = () => {
+            if (allDeletedSelected) {
+              setSelectedDeletedKeys([]);
+            } else {
+              setSelectedDeletedKeys([...deletedHistoryKeys]);
+            }
+          };
+          const toggleSelectDeletedRow = (key) => {
+            setSelectedDeletedKeys((prev) => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+          };
+          const handleRestoreDeleted = async (keys) => {
+            setRestoreDeletedLoading(true);
+            try {
+              // Only restore bags with status 'Delete in-progress'
+              const toRestore = sortedDeletedHistory.filter(row => (keys || selectedDeletedKeys).includes(row.deleted_key || row.id) && row.status === 'Delete in-progress');
+              if (toRestore.length === 0) {
+                setEditMsg('Select at least one bag with status Delete in-progress to restore.');
+                setRestoreDeletedLoading(false);
+                return;
+              }
+              // Call API to restore
+              await api.restoreDeletedBags(toRestore.map(row => row.id));
+              // Update status to 'Available' in local state
+              setDeletedHistory(prev => prev.map(row =>
+                (keys || selectedDeletedKeys).includes(row.deleted_key || row.id) && row.status === 'Delete in-progress'
+                  ? { ...row, status: 'Available' }
+                  : row
+              ));
+              setEditMsg('✅ Bag(s) restored and status set to Available.');
+              setSelectedDeletedKeys([]);
+              await loadBags();
+            } catch (e) {
+              setEditMsg(e.message || 'Failed to restore deleted bag(s)');
+            } finally {
+              setRestoreDeletedLoading(false);
+            }
+          };
+          // Permanently delete: remove from deleted_bags, bags, and unassign QR code
+          const handlePermanentDeleteDeleted = async (keys) => {
+            console.log('[DEBUG] handlePermanentDeleteDeleted called with keys:', keys);
+            setPurgeDeletedLoading(true);
+            try {
+              // Ensure keys is always an array
+              const keyArr = Array.isArray(keys) ? keys : selectedDeletedKeys;
+              const toDelete = sortedDeletedHistory.filter(row => keyArr.includes(row.deleted_key || row.id));
+              console.log('[DEBUG] toDelete rows:', toDelete);
+              if (toDelete.length === 0) {
+                setEditMsg('Select at least one bag to delete permanently.');
+                setPurgeDeletedLoading(false);
+                return;
+              }
+              // Delete from deleted_bags, bags, and unassign QR code
+              await Promise.all(toDelete.map(async (row) => {
+                if (row.id) {
+                  console.log('[DEBUG] Deleting from deleted_bags, id:', row.id);
+                  await api.deleteDeletedBag(row.id);
+                }
+                // Delete bag by unique_code (QR code)
+                if (row.unique_code) {
+                  console.log('[DEBUG] UI: Deleting bag by unique_code:', row.unique_code, typeof row.unique_code, JSON.stringify(row.unique_code));
+                  await api.deleteBagByCode(row.unique_code);
+                  // Set QR code to available (unassign)
+                  console.log('[DEBUG] UI: Unassigning QR code:', row.unique_code, typeof row.unique_code, JSON.stringify(row.unique_code));
+                  await api.unassignQRCode(row.unique_code);
+                }
+              }));
+              setEditMsg('✅ Bag(s) permanently deleted and QR code unassigned.');
+              setSelectedDeletedKeys([]);
+              await loadBags();
+            } catch (e) {
+              setEditMsg(e.message || 'Failed to permanently delete bag(s)');
+              console.error('[DEBUG] Error in handlePermanentDeleteDeleted:', e);
+            } finally {
+              setPurgeDeletedLoading(false);
+            }
+          };
+
+          // Confirm delete: add entry to deleted-bags, set bag status to Deleted, update local state
+          const handleConfirmDelete = async (keys) => {
+            setPurgeDeletedLoading(true);
+            try {
+              // Find the bags to delete
+              const toDelete = sortedDeletedHistory.filter(row => (keys || selectedDeletedKeys).includes(row.deleted_key || row.id) && row.status === 'Delete in-progress');
+              if (toDelete.length === 0) {
+                setEditMsg('Select at least one bag with status Delete in-progress to delete.');
+                setPurgeDeletedLoading(false);
+                return;
+              }
+              // For each, add entry to deleted-bags and set bag status to Deleted
+              await Promise.all(toDelete.map(async (row) => {
+                // Add entry to deleted-bags
+                await api.addDeletedBag({
+                  bag_id: row.id,
+                  buyer_id: user.id,
+                  unique_code: row.unique_code,
+                  deleted_at: new Date().toISOString(),
+                  bag_data: {
+                    ...row,
+                    id: row.id,
+                    unique_code: row.unique_code,
+                    buyer_id: user.id,
+                    status: 'Deleted',
+                  },
+                  status: 'Deleted',
+                });
+                // Update only the status field in the bag table
+                await api.updateBag(row.id, { status: 'Deleted' });
+              }));
+              // Update local deletedHistory state
+              setDeletedHistory(prev => prev.map(row =>
+                (keys || selectedDeletedKeys).includes(row.deleted_key || row.id) && row.status === 'Delete in-progress'
+                  ? { ...row, status: 'Deleted' }
+                  : row
+              ));
+              setEditMsg('✅ Bag(s) permanently deleted.');
+              setSelectedDeletedKeys([]);
+              await loadBags();
+            } catch (e) {
+              setEditMsg(e.message || 'Failed to permanently delete bag(s)');
+            } finally {
+              setPurgeDeletedLoading(false);
+            }
+          };
+        // State for edit messages
+        const [editMsg, setEditMsg] = useState('');
+        // Grouped state for grades
+        const [grades, setGrades] = useState({ tobaccoBoard: [], buyer: [] });
+        // Extract grades for use throughout the component (after grades is initialized)
+        const tobaccoBoardGrades = grades.tobaccoBoard;
+        const buyerGrades = grades.buyer;
+        // Grouped state for bags and related
+        const [bags, setBags] = useState([]);
+        const [editing, setEditing] = useState({ id: null, form: null });
+        // Grouped state for types and locations
+        const [meta, setMeta] = useState({ tobaccoTypes: [], purchaseLocations: [] });
+        // General loading state
+        const [loading, setLoad] = useState(false);
+        // For per-row delete confirmation
+        const [confirmDeleteRow, setConfirmDeleteRow] = useState(null);
+        // Debug
+        console.log('[DEBUG] BuyerDashboard rendered. user:', user);
+  // Add missing qrCodes state for QR code data
+  const [qrCodes, setQR] = useState([]);
+  // Add missing view state for tab switching
+  const [view, setView] = useState('bags');
+  // Consistent color for buyer button text
+  const buyerButtonTextColor = '#fff';
+  // Consistent color for buyer title
+  const buyerTitleColor = '#2780e3';
+  // Add missing apfNumbers state
+  const [apfNumbers, setApfNumbers] = useState([]);
   // Column selection state
   const [visibleColumns, setVisibleColumns] = useState(() => {
     try {
@@ -70,31 +256,10 @@ function BuyerDashboard({ user, onLogout }) {
       } else {
         next = [...prev, key];
       }
-      try { localStorage.setItem('bales_visible_columns', JSON.stringify(next)); } catch {}
+      localStorage.setItem('bales_visible_columns', JSON.stringify(next));
       return next;
     });
   };
-  const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState(null);
-  const [editMsg, setEditMsg] = useState('');
-
-
-  // Add bags state if missing
-  const [bags, setBags] = useState([]);
-
-  // Add missing grades state
-  const [tobaccoBoardGrades, setTobaccoBoardGrades] = useState([]);
-  const [buyerGrades, setBuyerGrades] = useState([]);
-
-  useEffect(() => {
-    const closeMenu = () => setColumnMenu(m => m.open ? { ...m, open: false } : m);
-    if (columnMenu.open) {
-      window.addEventListener('click', closeMenu);
-      return () => window.removeEventListener('click', closeMenu);
-    }
-  }, [columnMenu.open]);
-
-const buyerGradient = 'linear-gradient(135deg, #20c997 0%, #2780e3 100%)';
 
 const S = {
   ..._S,
@@ -170,7 +335,7 @@ const S = {
   const [purgeDeletedLoading, setPurgeDeletedLoading] = useState(false);
   const dispatchScanInputRef = useRef(null);
 
-  const deletedHistoryKey = `buyer_deleted_history_${Number(user?.id || 0)}`;
+  const deletedHistoryKey = `buyer_deleted_history_${Number(user?.id || 0)}`; // Key for deleted history
 
   const buildDeletedRowKey = (row, index = 0) => {
     const idPart = row?.id ?? 'na';
@@ -239,44 +404,69 @@ const S = {
 
   const loadBags = async () => {
     setLoad(true);
-    try { setBags(await api.getBags(user.id)); } finally { setLoad(false); }
+    try {
+      const bagsData = await api.getBags(user.id);
+      setBags(bagsData);
+      console.log('[DEBUG] Loaded bags:', bagsData);
+    } finally {
+      setLoad(false);
+    }
   };
   const loadQR = async () => {
     const all = await api.getQRCodes();
-    setQR(all.filter(q => q.buyer_id === user.id));
+    const userQRCodes = all.filter(q => q.buyer_id === user.id);
+    setQR(userQRCodes);
+    console.log('[DEBUG] Loaded QR codes:', userQRCodes);
   };
-  const loadGrades = async () => {
+  const loadGrades = useCallback(async () => {
     const [tbGrades, byGrades] = await Promise.all([
       api.getGrades('tobacco_board'),
       api.getGrades('buyer'),
     ]);
-    setTobaccoBoardGrades(tbGrades);
-    setBuyerGrades(byGrades);
-  };
+    setGrades({ tobaccoBoard: tbGrades, buyer: byGrades });
+    console.log('[DEBUG] Loaded grades:', { tobaccoBoard: tbGrades, buyer: byGrades });
+  }, []);
 
   const loadApfNumbers = async () => {
-    setApfNumbers(await api.getApfNumbers());
+    const apfData = await api.getApfNumbers();
+    setApfNumbers(apfData);
+    console.log('[DEBUG] Loaded APF numbers:', apfData);
   };
 
-  const loadTobaccoTypes = async () => {
-    setTobaccoTypes(await api.getTobaccoTypes());
-  };
+  const loadTobaccoTypes = useCallback(async () => {
+    const types = await api.getTobaccoTypes();
+    setMeta((prev) => ({ ...prev, tobaccoTypes: types }));
+    console.log('[DEBUG] Loaded tobacco types:', types);
+  }, []);
 
-  const loadPurchaseLocations = async () => {
-    setPurchaseLocations(await api.getPurchaseLocations());
-  };
+  const loadPurchaseLocations = useCallback(async () => {
+    const locations = await api.getPurchaseLocations();
+    setMeta((prev) => ({ ...prev, purchaseLocations: locations }));
+    console.log('[DEBUG] Loaded purchase locations:', locations);
+  }, []);
 
   const loadBuyerBagActionSetting = async () => {
     try {
       const res = await api.getBuyerBagActionSetting();
       const ids = Array.isArray(res?.enabled_buyer_ids) ? res.enabled_buyer_ids : [];
       setEnabledBuyerActionIds(ids.map(Number));
+      console.log('[DEBUG] Loaded enabledBuyerActionIds:', ids);
     } catch {
       setEnabledBuyerActionIds([]);
+      console.log('[DEBUG] Failed to load enabledBuyerActionIds');
     }
   };
 
-  useEffect(() => { loadBags(); loadQR(); loadGrades(); loadApfNumbers(); loadTobaccoTypes(); loadPurchaseLocations(); loadBuyerBagActionSetting(); }, []);
+  useEffect(() => {
+    loadBags();
+    loadQR();
+    loadGrades();
+    loadApfNumbers();
+    loadTobaccoTypes();
+    loadPurchaseLocations();
+    loadBuyerBagActionSetting();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60000);
@@ -289,25 +479,23 @@ const S = {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  // Load deleted history from backend
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(deletedHistoryKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const normalized = Array.isArray(parsed)
-          ? parsed.map((item, index) => ({
-              ...item,
-              deleted_key: item?.deleted_key || buildDeletedRowKey(item, index),
-            }))
-          : [];
-        setDeletedHistory(normalized);
+    if (!user?.id) return;
+    (async () => {
+      try {
+        const rows = await api.getDeletedBags(user.id);
+        setDeletedHistory(rows.map((row, idx) => ({
+          ...row.bag_data,
+          deleted_at: row.deleted_at,
+          deleted_key: row.id,
+          db_id: row.db_id || row.id,
+        })));
+      } catch (e) {
+        setDeletedHistory([]);
       }
-      // If no key, do not update state at all (never clear on relogin)
-    } catch {
-      // Do not clear state on error
-    }
-    // eslint-disable-next-line
-  }, [deletedHistoryKey]);
+    })();
+  }, [user?.id]);
 
   useEffect(() => {
     try {
@@ -317,30 +505,28 @@ const S = {
     }
   }, [deletedHistory, deletedHistoryKey]);
 
-  const switchView = (v) => {
+  const switchView = useCallback((v) => {
     setView(v);
     setEditMsg('');
     if (v !== 'bags') {
-      setEditingId(null);
-      setEditForm(null);
+      setEditing({ id: null, form: null });
     }
     if (v === 'bags') loadBags();
     if (v === 'qr')   loadQR();
     if (v === 'tb-grades' || v === 'buyer-grades') loadGrades();
     if (v === 'form' || v === 'bags') { loadApfNumbers(); loadTobaccoTypes(); loadPurchaseLocations(); }
     if (v === 'bags') loadBuyerBagActionSetting();
-  };
+  }, [loadBags, loadQR, loadGrades, loadApfNumbers, loadTobaccoTypes, loadPurchaseLocations, loadBuyerBagActionSetting]);
 
   const isAfter6pm = now.getHours() >= 18;
   const canManageBagActions = !isAfter6pm || enabledBuyerActionIds.includes(Number(user.id));
 
   useEffect(() => {
-    if (!canManageBagActions && editingId !== null) {
-      setEditingId(null);
-      setEditForm(null);
+    if (!canManageBagActions && editing.id !== null) {
+      setEditing({ id: null, form: null });
       setEditMsg('Action access is disabled after 6 PM. Contact admin to enable it.');
     }
-  }, [canManageBagActions, editingId]);
+  }, [canManageBagActions, editing.id]);
 
   const formatUpdatedAt = (value) => formatDateTime(value);
   const toggleSort = (sortState, setSortState, key) => {
@@ -472,9 +658,24 @@ const S = {
   // Calculate totals from all bags, not just filtered rows, for always-visible totals
   const totalBaleValue = bags.reduce((sum, row) => sum + (Number.isFinite(Number(row.bale_value)) ? Number(row.bale_value) : (Number(row.weight) * Number(row.rate) || 0)), 0);
   const totalWeight = bags.reduce((sum, row) => sum + (Number(row.weight) || 0), 0);
-  const sortedBags = [...bags].sort((a, b) => compareBy(a?.[bagsSort.key], b?.[bagsSort.key], bagsSort.direction));
+  // Exclude deleted bags from Not Dispatched section
+  // Exclude bags with status 'Delete in-progress' from Not Dispatched
+  const visibleBags = bags.filter(bag => bag.status !== 'Delete in-progress');
+  // Exclude bags with status 'Deleted' from Not Dispatched
+  const sortedBags = [...visibleBags.filter(bag => bag.status !== 'Deleted')].sort((a, b) => compareBy(a?.[bagsSort.key], b?.[bagsSort.key], bagsSort.direction));
   const sortedReportRows = [...filteredReportRows].sort((a, b) => compareBy(a?.[reportSort.key], b?.[reportSort.key], reportSort.direction));
-  const sortedDeletedHistory = [...deletedHistory].sort((a, b) => compareBy(a?.deleted_at, b?.deleted_at, 'desc'));
+  // Show only Delete in-progress and Deleted
+  const sortedDeletedHistory = useMemo(() =>
+    [...deletedHistory]
+      .filter(row => row.status === 'Delete in-progress' || row.status === 'Deleted')
+      .sort((a, b) => {
+        // Show 'Delete in-progress' first, then 'Deleted', both sorted by deleted_at desc
+        if (a.status === b.status) {
+          return compareBy(a?.deleted_at, b?.deleted_at, 'desc');
+        }
+        return a.status === 'Delete in-progress' ? -1 : 1;
+      })
+  , [deletedHistory]);
   const deletedHistoryKeys = sortedDeletedHistory.map((row, index) => getDeletedRowKey(row, index));
   const allDeletedSelected = deletedHistoryKeys.length > 0
     && deletedHistoryKeys.every((key) => selectedDeletedKeys.includes(key));
@@ -517,24 +718,26 @@ const S = {
 
   const startEdit = (bag) => {
     setEditMsg('');
-    setEditingId(bag.id);
     const rateValue = bag.rate ?? '';
     const weightValue = bag.weight ?? '';
     const computedBaleValue = Number.isFinite(Number(weightValue)) && Number.isFinite(Number(rateValue))
       ? Number((Number(weightValue) * Number(rateValue)).toFixed(2))
       : (bag.bale_value ?? '');
-    setEditForm({
-      fcv: bag.fcv || '',
-      apf_number: bag.apf_number || '',
-      tobacco_grade: bag.tobacco_grade || '',
-      type_of_tobacco: bag.type_of_tobacco || '',
-      purchase_location: bag.purchase_location || '',
-      purchase_date: bag.purchase_date || '',
-      weight: weightValue,
-      rate: rateValue,
-      bale_value: computedBaleValue,
-      buyer_grade: bag.buyer_grade || '',
-      date_of_purchase: toInputDateTime(bag.date_of_purchase) || nowInputDateTime(),
+    setEditing({
+      id: bag.id,
+      form: {
+        fcv: bag.fcv || '',
+        apf_number: bag.apf_number || '',
+        tobacco_grade: bag.tobacco_grade || '',
+        type_of_tobacco: bag.type_of_tobacco || '',
+        purchase_location: bag.purchase_location || '',
+        purchase_date: bag.purchase_date || '',
+        weight: weightValue,
+        rate: rateValue,
+        bale_value: computedBaleValue,
+        buyer_grade: bag.buyer_grade || '',
+        date_of_purchase: toInputDateTime(bag.date_of_purchase) || nowInputDateTime(),
+      }
     });
   };
 
@@ -553,37 +756,37 @@ const S = {
     }));
 
   const saveEdit = async () => {
-    if (!editingId || !editForm) return;
-    const isFCV = editForm.fcv === 'FCV';
-    const isNonFCV = editForm.fcv === 'NON-FCV';
-    if (!editForm.weight || !editForm.buyer_grade) {
+    if (!editing.id || !editing.form) return;
+    const { form } = editing;
+    const isFCV = form.fcv === 'FCV';
+    const isNonFCV = form.fcv === 'NON-FCV';
+    if (!form.weight || !form.buyer_grade) {
       setEditMsg('Weight and Buyer Grade are required');
       return;
     }
-    if (isFCV && (!editForm.apf_number || !editForm.tobacco_grade)) {
+    if (isFCV && (!form.apf_number || !form.tobacco_grade)) {
       setEditMsg('For FCV, APF Number and Tobacco Grade are required');
       return;
     }
-    if (isNonFCV && (!editForm.type_of_tobacco || !editForm.purchase_location)) {
+    if (isNonFCV && (!form.type_of_tobacco || !form.purchase_location)) {
       setEditMsg('For NON-FCV, Type of Tobacco and Location are required');
       return;
     }
     try {
-      const numericWeight = parseFloat(editForm.weight);
-      const numericRate = parseFloat(editForm.rate);
+      const numericWeight = parseFloat(form.weight);
+      const numericRate = parseFloat(form.rate);
       const baleValue = Number.isFinite(numericWeight) && Number.isFinite(numericRate)
         ? Number((numericWeight * numericRate).toFixed(2))
-        : (editForm.bale_value ?? null);
-      await api.updateBag(editingId, {
-        ...editForm,
+        : (form.bale_value ?? null);
+      await api.updateBag(editing.id, {
+        ...form,
         weight: numericWeight,
         rate: Number.isFinite(numericRate) ? numericRate : null,
         bale_value: baleValue,
-        date_of_purchase: fromInputDateTime(editForm.date_of_purchase),
+        date_of_purchase: fromInputDateTime(form.date_of_purchase),
       });
       setEditMsg('✅ Bag updated successfully');
-      setEditingId(null);
-      setEditForm(null);
+      setEditing({ id: null, form: null });
       await loadBags();
     } catch (e) {
       setEditMsg(e.message);
@@ -591,8 +794,7 @@ const S = {
   };
 
   const cancelEdit = () => {
-    setEditingId(null);
-    setEditForm(null);
+    setEditing({ id: null, form: null });
     setEditMsg('');
   };
 
@@ -603,336 +805,66 @@ const S = {
       setEditMsg('Scan QR code to select a purchase');
       return;
     }
-
-    // Normalize helper: collapse all whitespace, uppercase
-    const norm = (s) => String(s || '').replace(/\s+/g, '').toUpperCase();
-    const scannedNorm = norm(scannedCode);
-
-    // 1. Exact normalized match
-    let matchedBag = bags.find((bag) => norm(bag.unique_code) === scannedNorm);
-
-    // 2. Fallback: contains match (handles partial scans or extra prefix/suffix)
-    if (!matchedBag) {
-      matchedBag = bags.find((bag) => {
-        const bagNorm = norm(bag.unique_code);
-        return bagNorm.includes(scannedNorm) || scannedNorm.includes(bagNorm);
-      });
-    }
-
-    if (!matchedBag) {
-      setEditMsg(`No purchase found for code "${scannedCode}". Check the code and try again.`);
-      return;
-    }
-    const { alreadyMoved, alreadyDispatched } = getDispatchState(matchedBag);
-    if (alreadyMoved) {
-      setEditMsg('This purchase is already moved to vehicle dispatch');
-      return;
-    }
-    if (alreadyDispatched) {
-      setEditMsg('This purchase is already dispatched');
-      return;
-    }
-
-    try {
-      setDispatchScanLoading(true);
-      const matchedBagId = Number(matchedBag.id);
-      setSelectedDispatchBagIds((prev) => {
-        if (prev.includes(matchedBagId)) return prev;
-        return [...prev, matchedBagId];
-      });
-      setQrScanDeleteId(Number(matchedBag.id));
-      setEditMsg(`✅ ${matchedBag.unique_code} selected. Assign invoice to dispatch, or click 🗑️ Delete to remove this purchase.`);
-      setDispatchScanCode('');
-    } catch (e) {
-      setEditMsg(e.message);
-    } finally {
-      setDispatchScanLoading(false);
-      setTimeout(() => dispatchScanInputRef.current?.focus(), 0);
-    }
-  };
-
-  const toggleDispatchSelection = (bagId) => {
-    const normalizedBagId = Number(bagId);
-    setSelectedDispatchBagIds((prev) => (prev.includes(normalizedBagId)
-      ? prev.filter((id) => id !== normalizedBagId)
-      : [...prev, normalizedBagId]));
-  };
-
-  const toggleSelectAllDispatchBags = () => {
-    if (allSelectableSelected) {
-      setSelectedDispatchBagIds([]);
-      return;
-    }
-    setSelectedDispatchBagIds([...selectableBagIds]);
-  };
-
-  const removeSelectedDispatchBag = (bagId) => {
-    const bag = bags.find((item) => Number(item.id) === Number(bagId));
-    setSelectedDispatchBagIds((prev) => prev.filter((id) => Number(id) !== Number(bagId)));
-    if (bag?.unique_code) {
-      setEditMsg(`Removed ${bag.unique_code} from selected list`);
-    }
   };
 
   const handleDeleteScannedBag = async (bagId) => {
-    const bagToDelete = bags.find((item) => Number(item.id) === Number(bagId));
-    try {
       setDeleteLoading(true);
-      await api.deleteBag(bagId);
-      if (bagToDelete) {
-        const deletedAt = new Date().toISOString();
-        setDeletedHistory((prev) => ([
-          {
-            ...bagToDelete,
-            deleted_at: deletedAt,
-            deleted_key: buildDeletedRowKey({ ...bagToDelete, deleted_at: deletedAt }),
-          },
-          ...prev,
-        ]));
-      }
-      setQrScanDeleteId(null);
-      setSelectedDispatchBagIds((prev) => prev.filter((id) => Number(id) !== Number(bagId)));
-      setEditMsg('✅ Purchase deleted successfully');
-      await loadBags();
-    } catch (e) {
-      setEditMsg(e.message || 'Failed to delete purchase');
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
-
-  const toggleDeletedSelection = (key) => {
-    setSelectedDeletedKeys((prev) => (prev.includes(key)
-      ? prev.filter((item) => item !== key)
-      : [...prev, key]));
-  };
-
-  const toggleSelectAllDeleted = () => {
-    if (allDeletedSelected) {
-      setSelectedDeletedKeys([]);
-      return;
-    }
-    setSelectedDeletedKeys([...deletedHistoryKeys]);
-  };
-
-  const mapDeletedRowToSaveBody = (row) => {
-    const isFCV = String(row?.fcv || '').toUpperCase() === 'FCV';
-    const numericWeight = Number(row?.weight);
-    const numericRate = Number(row?.rate);
-    const weightValue = Number.isFinite(numericWeight) ? numericWeight : 0;
-    const rateValue = Number.isFinite(numericRate) ? numericRate : 0;
-    const computedBaleValue = Number.isFinite(Number(row?.bale_value))
-      ? Number(row.bale_value)
-      : Number((weightValue * rateValue).toFixed(2));
-    const purchaseDate = String(row?.purchase_date || '').trim();
-
-    return {
-      unique_code: String(row?.unique_code || '').trim(),
-      buyer_id: user.id,
-      buyer_code: user.code,
-      buyer_name: user.name,
-      fcv: row?.fcv || '',
-      apf_number: isFCV ? (row?.apf_number || '') : '',
-      tobacco_grade: isFCV ? (row?.tobacco_grade || '') : '',
-      type_of_tobacco: isFCV ? '' : (row?.type_of_tobacco || ''),
-      purchase_location: row?.purchase_location || '',
-      weight: weightValue,
-      rate: rateValue,
-      bale_value: computedBaleValue,
-      buyer_grade: row?.buyer_grade || '',
-      lot_number: row?.lot_number || '',
-      purchase_date: purchaseDate,
-      date_of_purchase: row?.date_of_purchase || fromInputDateTime(nowInputDateTime()),
-    };
-  };
-
-  const moveDeletedRowsToMainList = async (keysToMove) => {
-    if (!keysToMove.length) {
-      setEditMsg('Select deleted rows to move to list');
-      return;
-    }
-
-    const selectedSet = new Set(keysToMove);
-    const rowsToMove = sortedDeletedHistory
-      .map((row, index) => ({ row, key: getDeletedRowKey(row, index) }))
-      .filter(({ key }) => selectedSet.has(key));
-
-    if (!rowsToMove.length) {
-      setEditMsg('No deleted rows found for restore');
-      return;
-    }
-
-    const existingCodes = new Set(
-      bags.map((bag) => String(bag?.unique_code || '').replace(/\s+/g, '').toUpperCase()).filter(Boolean),
-    );
-
-    const restoredKeys = [];
-    const failures = [];
-
-    try {
-      setRestoreDeletedLoading(true);
-      for (const { row, key } of rowsToMove) {
-        const normalizedCode = String(row?.unique_code || '').replace(/\s+/g, '').toUpperCase();
-        if (!normalizedCode) {
-          failures.push('Missing code');
-          continue;
-        }
-        if (existingCodes.has(normalizedCode)) {
-          failures.push(`${row.unique_code}: already exists in list`);
-          continue;
-        }
-
-        try {
-          await api.saveBag(mapDeletedRowToSaveBody(row));
-          restoredKeys.push(key);
-          existingCodes.add(normalizedCode);
-        } catch (e) {
-          failures.push(`${row.unique_code}: ${e.message || 'restore failed'}`);
-        }
-      }
-
-      if (restoredKeys.length > 0) {
-        const restoredSet = new Set(restoredKeys);
-        setDeletedHistory((prev) => prev.filter((row, index) => !restoredSet.has(getDeletedRowKey(row, index))));
-        setSelectedDeletedKeys((prev) => prev.filter((key) => !restoredSet.has(key)));
-        await loadBags();
-      }
-
-      if (restoredKeys.length > 0 && failures.length === 0) {
-        setEditMsg(`✅ ${restoredKeys.length} deleted row(s) moved to list`);
-      } else if (restoredKeys.length > 0) {
-        setEditMsg(`✅ ${restoredKeys.length} moved. ⚠️ ${failures.length} failed.`);
-      } else {
-        setEditMsg(`⚠️ Could not move rows: ${failures.slice(0, 2).join(' | ') || 'unknown error'}`);
-      }
-    } finally {
-      setRestoreDeletedLoading(false);
-    }
-  };
-
-  const deleteDeletedRowsPermanently = async (keysToDelete) => {
-    if (!keysToDelete.length) {
-      setEditMsg('Select deleted rows to remove permanently');
-      return;
-    }
-
-    const toDeleteSet = new Set(keysToDelete);
-    const rowsToDelete = sortedDeletedHistory
-      .map((row, index) => ({ row, key: getDeletedRowKey(row, index) }))
-      .filter(({ key }) => toDeleteSet.has(key));
-
-    setPurgeDeletedLoading(true);
-    try {
-      // Re-mark the freed QR codes as used so they show red in My QR Codes
-      await Promise.allSettled(
-        rowsToDelete
-          .map(({ row }) => String(row?.unique_code || '').trim())
-          .filter(Boolean)
-          .map((code) => api.markQRCodeUsed(code, user.id)),
-      );
-
-      setDeletedHistory((prev) => prev.filter((row, index) => !toDeleteSet.has(getDeletedRowKey(row, index))));
-      setSelectedDeletedKeys((prev) => prev.filter((key) => !toDeleteSet.has(key)));
-      setEditMsg(`🗑️ ${keysToDelete.length} row(s) permanently deleted from history`);
-      await loadQR();
-    } catch (e) {
-      setEditMsg(e.message || 'Failed to permanently delete rows');
-    } finally {
-      setPurgeDeletedLoading(false);
-    }
-  };
-
-  const assignInvoiceAndMoveToDispatch = async () => {
-    if (selectedDispatchBagIds.length === 0) {
-      setEditMsg('Select at least one purchase to move');
-      return;
-    }
-    if (!dispatchInvoiceNumber.trim()) {
-      setEditMsg('Please enter an invoice number');
-      return;
-    }
-    const invoiceNumber = dispatchInvoiceNumber.trim();
-    const eligibleBags = selectedDispatchBagIds
-      .map((id) => bags.find((bag) => Number(bag.id) === Number(id)))
-      .filter((bag) => bag && getDispatchState(bag).selectable);
-    if (eligibleBags.length === 0) {
-      setEditMsg('No eligible purchases found in selected list');
-      return;
-    }
-    try {
-      setDispatchAssignLoading(true);
-      await Promise.all(eligibleBags.map((bag) => api.addBagToDispatchList(bag.id, { invoice_number: invoiceNumber })));
-      setEditMsg(`✅ ${eligibleBags.length} purchase(s) moved to vehicle dispatch with invoice ${invoiceNumber}`);
-      setSelectedDispatchBagIds([]);
-      setDispatchInvoiceNumber('');
-      await loadBags();
-    } catch (e) {
-      setEditMsg(e.message);
-    } finally {
-      setDispatchAssignLoading(false);
-    }
   };
 
   return (
-    <div style={S.app}>
-      {/* Top bar */}
-      <div style={S.topBar}>
-        {isMobileView ? (
-          <div style={{ width: '100%' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 8 }}>
-              <BrandLogo
-                size={38}
-                titleStyle={{ ...S.topBarTitle, color: buyerTitleColor }}
-              />
-              <button style={{ ...S.btnIcon, color: buyerButtonTextColor }} onClick={onLogout}>Logout</button>
-            </div>
-            <div style={{ ...S.buyerInfo, justifyContent: 'flex-start', width: '100%' }}>
-              <span style={S.buyerBadge}>👤 {user.name} ({user.code})</span>
-              <span style={S.bagsBadge}>🛍️ {bags.length} Bales</span>
-            </div>
-          </div>
-        ) : (
-          <>
-            <BrandLogo
-              size={38}
-              titleStyle={{ ...S.topBarTitle, color: buyerTitleColor }}
-            />
-            <div style={S.buyerInfo}>
-              <span style={S.buyerBadge}>👤 {user.name} ({user.code})</span>
-                <span style={S.bagsBadge}>🛍️ {bags.length} Bales</span>
-              <button style={{ ...S.btnIcon, color: buyerButtonTextColor }} onClick={onLogout}>Logout</button>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div style={S.page}>
-        <div style={{ ...S.tabs, justifyContent: 'center' }}>
-          <button style={{ ...S.tab(view === 'form'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('form')}>📝 New Purchase Entry</button>
-          <button style={{ ...S.tab(view === 'bags'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('bags')}>📦 My Bales <span style={{ fontWeight: 900, marginLeft: 4 }}>({bags.length})</span></button>
-          <button style={{ ...S.tab(view === 'vehicle-dispatch'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('vehicle-dispatch')}>🚚 Vehicle Dispatch</button>
-          {/* <button style={{ ...S.tab(view === 'bale-report'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('bale-report')}>📊 Purchase Report</button> */}
-          <button style={{ ...S.tab(view === 'qr'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => switchView('qr')}>🔲 My QR Codes ({qrCodes.length})</button>
-        </div>
-
-        {view === 'form' && (
-          <BuyingForm
-            buyer={user}
-            grades={{ tobaccoBoard: tobaccoBoardGrades, buyer: buyerGrades }}
-            apfNumbers={apfNumbers}
-            tobaccoTypes={tobaccoTypes}
-            purchaseLocations={purchaseLocations}
-            assignedQRCodes={qrCodes}
-            onSaveExit={() => switchView('bags')}
+        <div style={S.app}>
+          <TopBar
+            user={user}
+            onLogout={onLogout}
+            bagsLength={bags.length}
+            isMobileView={isMobileView}
+            buyerButtonTextColor={buyerButtonTextColor}
+            buyerTitleColor={buyerTitleColor}
+            S={S}
           />
-        )}
+          <div style={S.page}>
+            <TabsNav
+              view={view}
+              setView={switchView}
+              bagsLength={bags.length}
+              qrCodesLength={qrCodes.length}
+              S={S}
+              buyerTitleColor={buyerTitleColor}
+            />
 
-        {view === 'bags' && (
-          <div style={S.card}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ ...S.subheading, color: buyerTitleColor }}>All Bales ({bags.length})</div>
-            </div>
-            {editMsg && <div style={editMsg.startsWith('✅') ? S.success : S.error}>{editMsg}</div>}
+
+            {view === 'form-fcv' && (
+              <BuyingForm
+                buyer={user}
+                grades={grades}
+                apfNumbers={apfNumbers}
+                tobaccoTypes={meta.tobaccoTypes}
+                purchaseLocations={meta.purchaseLocations}
+                assignedQRCodes={qrCodes}
+                onSaveExit={() => switchView('bags')}
+                forceFcvType="FCV"
+              />
+            )}
+            {view === 'form-nonfcv' && (
+              <BuyingForm
+                buyer={user}
+                grades={grades}
+                apfNumbers={apfNumbers}
+                tobaccoTypes={meta.tobaccoTypes}
+                purchaseLocations={meta.purchaseLocations}
+                assignedQRCodes={qrCodes}
+                onSaveExit={() => switchView('bags')}
+                forceFcvType="NON-FCV"
+              />
+            )}
+
+            {view === 'bags' && (
+              <div style={S.card}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <div style={{ ...S.subheading, color: buyerTitleColor }}>All Bales ({bags.length})</div>
+                </div>
+                {editMsg && <div style={editMsg.startsWith('✅') ? S.success : S.error}>{editMsg}</div>}
+           
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
               <input
                 ref={dispatchScanInputRef}
@@ -941,8 +873,7 @@ const S = {
                 value={dispatchScanCode}
                 onChange={(e) => {
                   const val = e.target.value;
-                  // QR scanners often append Enter/Tab chars — auto-trigger immediately
-                  if (/[\r\n\t]$/.test(val)) {
+                  if (/([\r\n\t])$/.test(val)) {
                     const code = val.replace(/[\r\n\t]/g, '').trim();
                     setDispatchScanCode(code);
                     scanBagToDispatch(code);
@@ -953,7 +884,6 @@ const S = {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === 'Tab') {
                     e.preventDefault();
-                    // Pass live DOM value directly to avoid stale React state
                     scanBagToDispatch(e.target.value.trim());
                   }
                 }}
@@ -965,7 +895,6 @@ const S = {
               >
                 {dispatchScanLoading ? 'Selecting...' : 'Scan QR'}
               </button>
-              {/* Invoice number input restored for buyer entry */}
               <input
                 style={{ ...S.input, minWidth: 180, marginBottom: 0 }}
                 placeholder="Invoice number"
@@ -982,487 +911,41 @@ const S = {
                 {dispatchAssignLoading ? 'Moving...' : `Assign Invoice + Move to Dispatch (${selectedDispatchBagIds.length})`}
               </button>
             </div>
-            {selectedDispatchBags.length > 0 && (
-              <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, border: '1px solid #e8b1b1', background: '#fff7f7' }}>
-                <div style={{ fontWeight: 700, marginBottom: 8 }}>Selected QR codes ({selectedDispatchBags.length})</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {selectedDispatchBags.map((bag) => (
-                    <span key={bag.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 999, background: '#f1f5f9', border: '1px solid #cbd5e1', fontSize: 12, fontWeight: 700 }}>
-                      {bag.unique_code}
-                      <button
-                        type="button"
-                        style={{ ...S.btnSecondary, flex: 'none', padding: '2px 8px', fontSize: 11 }}
-                        disabled={deleteLoading}
-                        onClick={() => handleDeleteScannedBag(bag.id)}
-                      >
-                        {deleteLoading ? 'Deleting...' : 'Delete'}
-                      </button>
-                      <button
-                        type="button"
-                        style={{ ...S.btnSecondary, flex: 'none', padding: '2px 8px', fontSize: 11 }}
-                        onClick={() => removeSelectedDispatchBag(bag.id)}
-                      >
-                        Remove
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Split tables: Not Dispatched and Dispatched */}
-            {(() => {
-              const notDispatchedBags = sortedBags.filter(b => Number(b.vehicle_dispatch_id) === 0);
-              // Only show dispatched bags for the logged-in buyer
-              const dispatchedBags = sortedBags.filter(b => Number(b.vehicle_dispatch_id) > 0 && Number(b.buyer_id) === Number(user.id));
-              return (
-                <>
-                  {/* Not Dispatched Table */}
-                  <div style={{ marginBottom: 32 }}>
-                    <div style={{ fontWeight: 700, color: buyerTitleColor, marginBottom: 8 }}>Not Dispatched ({notDispatchedBags.length})</div>
-                    {loading ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>Loading…</p>
-                    : notDispatchedBags.length === 0 ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>No available bales.</p>
-                    : (
-                      <div style={{ overflowX: 'auto', position: 'relative' }}>
-                        <table style={{ ...S.table, minWidth: 'max-content', width: 'max-content' }}>
-                          <thead>
-                            <tr onContextMenu={handleHeaderRightClick} style={{ cursor: 'context-menu' }}>
-                              <th style={S.th}>
-                                <input
-                                  type="checkbox"
-                                  checked={allSelectableSelected}
-                                  onChange={toggleSelectAllDispatchBags}
-                                  title="Select all"
-                                />
-                              </th>
-                              {BALES_COLUMNS.filter(col => visibleColumns.includes(col.key)).map(col => (
-                                <SortableTh
-                                  key={col.key}
-                                  label={col.label}
-                                  sortKey={col.key}
-                                  sortState={bagsSort}
-                                  onSort={(key) => toggleSort(bagsSort, setBagsSort, key)}
-                                  minWidth={col.key === 'purchase_date' ? 110 : col.key === 'dispatch_status' ? 110 : undefined}
-                                />
-                              ))}
-                              {canManageBagActions && <th style={S.th}>Action</th>}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {notDispatchedBags.map((b, i) => (
-                              editingId === b.id ? (
-                                <tr key={b.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
-                                  <td style={S.td}>—</td>
-                                  {/* ...existing code for edit row... */}
-                                  <td style={S.td}><input style={{ ...S.input, minWidth: 100 }} value={editForm?.lot_number ?? ''} onChange={e => setEditForm(f => ({ ...f, lot_number: e.target.value }))} /></td>
-                                  {/* Add more editable cells as needed for edit mode */}
-                                </tr>
-                              ) : (
-                                <tr
-                                  key={b.id}
-                                  style={{
-                                    background: qrScanDeleteId === Number(b.id) ? '#ffe0e0' : (selectedDispatchBagIds.includes(Number(b.id)) ? '#fff2b8' : (i % 2 === 0 ? '#fffafa' : '#fff')),
-                                    outline: qrScanDeleteId === Number(b.id) ? '2px solid #ef4444' : 'none',
-                                    opacity: (Number(b.dispatch_list_added) === 1) ? 0.55 : 1,
-                                  }}
-                                >
-                                  <td style={S.td}>
-                                    {getDispatchState(b).selectable ? (
-                                      <input
-                                        type="checkbox"
-                                        checked={selectedDispatchBagIds.includes(Number(b.id))}
-                                        onChange={() => toggleDispatchSelection(b.id)}
-                                      />
-                                    ) : '—'}
-                                  </td>
-                                  {BALES_COLUMNS.filter(col => visibleColumns.includes(col.key)).map(col => {
-                                    let value = b[col.key];
-                                    if (col.key === 'purchase_date') value = formatPurchaseDateDash(b.purchase_date || b.date_of_purchase);
-                                    if (col.key === 'weight') value = b.weight ? `${b.weight} kg` : '—';
-                                    if (col.key === 'bale_value') value = Number.isFinite(Number(b.bale_value)) ? `₹${Number(b.bale_value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
-                                    if (col.key === 'fcv') value = <span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span>;
-                                    if (col.key === 'lot_number') value = b.lot_number || '—';
-                                    if (col.key === 'updated_at') value = formatUpdatedAt(b.updated_at);
-                                    if (col.key === 'dispatch_invoice_number') value = b.dispatch_invoice_number || '—';
-                                    if (col.key === 'dispatch_status') value = (
-                                      <>
-                                        {Number(b.dispatch_list_added) === 1
-                                          ? <span style={S.badge('green')}>Moved to vehicle dispatch</span>
-                                          : <span style={S.badge()}>Available</span>}
-                                        {b.vehicle_dispatch_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Dispatch: {b.vehicle_dispatch_number}</div> : null}
-                                        {/* Invoice number now has its own column */}
-                                      </>
-                                    );
-                                    return <td key={col.key} style={{ ...S.td, fontWeight: 800 }}>{value}</td>;
-                                  })}
-                                  {canManageBagActions && (
-                                    <td style={S.td}>
-                                      <div style={{ display: 'flex', gap: 6 }}>
-                                        <button style={{ ...S.btnSecondary, color: buyerButtonTextColor, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: (Number(b.dispatch_list_added) === 1) ? 0.6 : 1 }} onClick={() => startEdit(b)} disabled={Number(b.dispatch_list_added) === 1}>
-                                          Edit
-                                        </button>
-                                        {selectedDispatchBagIds.includes(Number(b.id)) && getDispatchState(b).selectable && (
-                                          <button
-                                            type="button"
-                                            style={{ ...S.btnSecondary, color: '#fff', borderColor: '#1f67b9', background: '#2780e3', flex: 'none', padding: '6px 10px', fontSize: 12 }}
-                                            onClick={() => removeSelectedDispatchBag(b.id)}
-                                          >
-                                            Remove
-                                          </button>
-                                        )}
-                                        {qrScanDeleteId === Number(b.id) && getDispatchState(b).selectable && (
-                                          <button
-                                            type="button"
-                                            style={{ ...S.btnSecondary, color: '#fff', borderColor: '#1f67b9', background: '#2780e3', fontWeight: 700, flex: 'none', padding: '6px 10px', fontSize: 12 }}
-                                            disabled={deleteLoading}
-                                            onClick={() => handleDeleteScannedBag(b.id)}
-                                          >
-                                            {deleteLoading ? 'Deleting...' : '🗑️ Delete'}
-                                          </button>
-                                        )}
-                                        {selectedDispatchBagIds.includes(Number(b.id)) && getDispatchState(b).selectable && qrScanDeleteId !== Number(b.id) && (
-                                          <button
-                                            type="button"
-                                            style={{ ...S.btnSecondary, color: '#fff', borderColor: '#1f67b9', background: '#2780e3', fontWeight: 700, flex: 'none', padding: '6px 10px', fontSize: 12 }}
-                                            disabled={deleteLoading}
-                                            onClick={() => handleDeleteScannedBag(b.id)}
-                                          >
-                                            {deleteLoading ? 'Deleting...' : '🗑️ Delete'}
-                                          </button>
-                                        )}
-                                      </div>
-                                    </td>
-                                  )}
-                                </tr>
-                              )
-                            ))}
-                          </tbody>
-                        </table>
-                        {/* Column selection menu */}
-                        {columnMenu.open && (
-                          <div style={{
-                            position: 'fixed',
-                            top: columnMenu.y,
-                            left: columnMenu.x,
-                            background: '#fff',
-                            border: '1px solid #b7d9f8',
-                            borderRadius: 8,
-                            boxShadow: '0 4px 16px rgba(39,128,227,0.16)',
-                            zIndex: 1000,
-                            padding: 12,
-                          }}>
-                            <div style={{ fontWeight: 700, marginBottom: 8, color: '#2780e3' }}>Select Columns</div>
-                            {BALES_COLUMNS.map(col => (
-                              <label key={col.key} style={{ display: 'block', marginBottom: 4, fontSize: 14 }}>
-                                <input
-                                  type="checkbox"
-                                  checked={visibleColumns.includes(col.key)}
-                                  onChange={() => handleColumnToggle(col.key)}
-                                  style={{ marginRight: 8 }}
-                                />
-                                {col.label}
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                        {!canManageBagActions && (
-                          <div style={{ marginTop: 10, color: '#9c640c', fontSize: 12 }}>
-                            Action access is hidden automatically after 6:00 PM. Contact admin to enable it again.
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  {/* Dispatched Table */}
-                  <div>
-                    <div style={{ fontWeight: 700, color: buyerTitleColor, marginBottom: 8 }}>Dispatched ({dispatchedBags.length})</div>
-                    {dispatchedBags.length === 0 ? <p style={{ color: '#aaa', textAlign: 'center', padding: 40 }}>No dispatched bales.</p>
-                    : (
-                      <div style={{ overflowX: 'auto', position: 'relative' }}>
-                        <table style={{ ...S.table, minWidth: 'max-content', width: 'max-content' }}>
-                          <thead>
-                            <tr>
-                              {BALES_COLUMNS.filter(col => visibleColumns.includes(col.key)).map(col => (
-                                <SortableTh
-                                  key={col.key}
-                                  label={col.label}
-                                  sortKey={col.key}
-                                  sortState={bagsSort}
-                                  onSort={(key) => toggleSort(bagsSort, setBagsSort, key)}
-                                  minWidth={col.key === 'purchase_date' ? 170 : undefined}
-                                />
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {dispatchedBags.map((b, i) => (
-                              <tr key={b.id} style={{ background: i % 2 === 0 ? '#f3f4f6' : '#fff' }}>
-                                {BALES_COLUMNS.filter(col => visibleColumns.includes(col.key)).map(col => {
-                                  let value = b[col.key];
-                                  if (col.key === 'purchase_date') value = formatPurchaseDateDash(b.purchase_date || b.date_of_purchase);
-                                  if (col.key === 'weight') value = b.weight ? `${b.weight} kg` : '—';
-                                  if (col.key === 'bale_value') value = Number.isFinite(Number(b.bale_value)) ? `₹${Number(b.bale_value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
-                                  if (col.key === 'fcv') value = <span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv}</span>;
-                                  if (col.key === 'updated_at') value = formatUpdatedAt(b.updated_at);
-                                  if (col.key === 'dispatch_status') value = (
-                                    <>
-                                      <span style={S.badge('red')}>Dispatched</span>
-                                      {b.vehicle_dispatch_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Dispatch: {b.vehicle_dispatch_number}</div> : null}
-                                      {b.dispatch_invoice_number ? <div style={{ marginTop: 4, fontSize: 12 }}>Invoice: {b.dispatch_invoice_number}</div> : null}
-                                    </>
-                                  );
-                                  return <td key={col.key} style={{ ...S.td, fontWeight: 800 }}>{value}</td>;
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </>
-              );
-            })()}
-
-            <div style={{ marginTop: 22 }}>
-              <div style={{ ...S.subheading, color: buyerTitleColor }}>Deleted Purchase History ({deletedHistory.length})</div>
-              {sortedDeletedHistory.length === 0 ? (
-                <p style={{ color: '#7b8ca6', padding: '8px 0 4px 0' }}>No deleted purchases yet.</p>
-              ) : (
-                <>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-                    <button
-                      type="button"
-                      style={{ ...S.btnPrimary, flex: 'none', padding: '6px 14px', fontSize: 12, opacity: restoreDeletedLoading ? 0.65 : 1 }}
-                      disabled={restoreDeletedLoading || purgeDeletedLoading || selectedDeletedKeys.length === 0}
-                      onClick={() => moveDeletedRowsToMainList(selectedDeletedKeys)}
-                    >
-                      {restoreDeletedLoading ? 'Moving...' : `Move to List (${selectedDeletedKeys.length})`}
-                    </button>
-                    <button
-                      type="button"
-                      style={{ ...S.btnSecondary, flex: 'none', padding: '6px 14px', fontSize: 12, opacity: purgeDeletedLoading ? 0.65 : 1 }}
-                      disabled={restoreDeletedLoading || purgeDeletedLoading || selectedDeletedKeys.length === 0}
-                      onClick={() => deleteDeletedRowsPermanently(selectedDeletedKeys)}
-                    >
-                      {purgeDeletedLoading ? 'Deleting...' : `Delete (${selectedDeletedKeys.length})`}
-                    </button>
-                  </div>
-                  <div style={{ overflowX: 'auto' }}>
-                  <table style={{ ...S.table, minWidth: 'max-content', width: 'max-content' }}>
-                    <thead>
-                      <tr>
-                        <th style={S.th}>
-                          <input
-                            type="checkbox"
-                            checked={allDeletedSelected}
-                            onChange={toggleSelectAllDeleted}
-                            title="Select all deleted rows"
-                          />
-                        </th>
-                        <th style={S.th}>Code</th>
-                        <th style={S.th}>APF</th>
-                        <th style={S.th}>TB Grade</th>
-                        <th style={S.th}>Type</th>
-                        <th style={S.th}>Location</th>
-                        <th style={S.th}>Purchase Date</th>
-                        <th style={S.th}>Weight</th>
-                        <th style={S.th}>Rate</th>
-                        <th style={S.th}>Bale Value</th>
-                        <th style={S.th}>B.Grade</th>
-                        <th style={S.th}>FCV</th>
-                        <th style={S.th}>Deleted At</th>
-                        <th style={S.th}>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sortedDeletedHistory.map((b, i) => {
-                        const deletedKey = getDeletedRowKey(b, i);
-                        return (
-                        <tr key={deletedKey} style={{ background: i % 2 === 0 ? '#fff9ef' : '#fffdf8' }}>
-                          <td style={S.td}>
-                            <input
-                              type="checkbox"
-                              checked={selectedDeletedKeys.includes(deletedKey)}
-                              onChange={() => toggleDeletedSelection(deletedKey)}
-                            />
-                          </td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.unique_code || '—'}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.apf_number || '—'}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.tobacco_grade || '—'}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.type_of_tobacco || '—'}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.purchase_location || '—'}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{formatPurchaseDateDash(b.purchase_date || b.date_of_purchase)}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.weight ? `${b.weight} kg` : '—'}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.rate ?? '—'}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{Number.isFinite(Number(b.bale_value)) ? `₹${Number(b.bale_value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{b.buyer_grade || '—'}</td>
-                          <td style={{ ...S.td, fontWeight: 800 }}><span style={S.badge(b.fcv === 'FCV' ? 'green' : 'red')}>{b.fcv || '—'}</span></td>
-                          <td style={{ ...S.td, fontWeight: 800 }}>{formatUpdatedAt(b.deleted_at)}</td>
-                          <td style={S.td}>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button
-                                type="button"
-                                style={{ ...S.btnPrimary, color: buyerButtonTextColor, flex: 'none', padding: '6px 10px', fontSize: 12 }}
-                                disabled={restoreDeletedLoading || purgeDeletedLoading}
-                                onClick={() => moveDeletedRowsToMainList([deletedKey])}
-                              >
-                                Move to List
-                              </button>
-                              <button
-                                type="button"
-                                style={{ ...S.btnSecondary, color: buyerButtonTextColor, flex: 'none', padding: '6px 10px', fontSize: 12 }}
-                                disabled={restoreDeletedLoading || purgeDeletedLoading}
-                                onClick={() => deleteDeletedRowsPermanently([deletedKey])}
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );})}
-                    </tbody>
-                  </table>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {view === 'bale-report' && (
-          <div style={S.card}>
-            <div style={{ background: '#f0f7ff', border: '1.5px solid #b7d9f8', borderRadius: 10, padding: 16, marginBottom: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
-              <div>
-                <div style={{ ...S.subheading, color: buyerTitleColor, marginBottom: 14 }}>Purchase Report ({sortedReportRows.length})</div>
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: 150 }}>
-                    <label style={S.label}>From Date</label>
-                    <input
-                      style={{ ...S.input, marginBottom: 0, fontWeight: 400 }}
-                      type="date"
-                      value={selectedReportDateFrom}
-                      onChange={(e) => setSelectedReportDateFrom(e.target.value)}
-                    />
-                    {!!selectedReportDateFrom && (
-                      <div style={{ marginTop: 6, fontSize: 12, color: '#5b6f86' }}>
-                        Selected: {formatPurchaseDateDash(selectedReportDateFrom)}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 150 }}>
-                    <label style={S.label}>To Date</label>
-                    <input
-                      style={{ ...S.input, marginBottom: 0, fontWeight: 400 }}
-                      type="date"
-                      value={selectedReportDateTo}
-                      onChange={(e) => setSelectedReportDateTo(e.target.value)}
-                    />
-                    {!!selectedReportDateTo && (
-                      <div style={{ marginTop: 6, fontSize: 12, color: '#5b6f86' }}>
-                        Selected: {formatPurchaseDateDash(selectedReportDateTo)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'flex-start', alignItems: 'flex-end' }}>
-                <div style={{ width: '100%', textAlign: 'right' }}>
-                  <div style={{ ...S.label, marginBottom: 4 }}>Total Purchase Value</div>
-                  <span style={{ ...S.badge('green'), fontSize: 15, fontWeight: 800, padding: '8px 14px', display: 'inline-block' }}>₹ {totalBaleValue.toFixed(2)}</span>
-                </div>
-                <div style={{ width: '100%', textAlign: 'right' }}>
-                  <div style={{ ...S.label, marginBottom: 4 }}>Total Weight</div>
-                  <span style={{ ...S.badge(), fontSize: 15, fontWeight: 800, padding: '8px 14px', display: 'inline-block' }}>{totalWeight.toFixed(2)} kg</span>
-                </div>
-              </div>
-            </div>
-            {sortedReportRows.length === 0 ? <p style={{ color: '#aaa', textAlign: 'center', padding: 32 }}>No purchases available for selected date.</p>
-            : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={S.table}>
-                  <thead><tr>
-                    <SortableTh label="Code" sortKey="unique_code" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
-                    <SortableTh label="Purchase Date" sortKey="purchaseDateRaw" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
-                    <SortableTh label="Dispatch" sortKey="vehicle_dispatch_number" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
-                    <SortableTh label="Invoice" sortKey="dispatch_invoice_number" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
-                    <SortableTh label="Weight" sortKey="weightValue" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
-                    <SortableTh label="Rate" sortKey="rateValue" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
-                    <SortableTh label="Bale Value" sortKey="baleValue" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
-                    <SortableTh label="FCV" sortKey="fcv" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
-                  </tr></thead>
-                  <tbody>
-                    {(() => {
-                      // Find the min and max invoice numbers in the report rows
-                      const invoiceNumbers = sortedReportRows
-                        .map(row => Number(row.dispatch_invoice_number))
-                        .filter(n => Number.isFinite(n));
-                      let minInvoice = Math.min(...invoiceNumbers);
-                      let maxInvoice = Math.max(...invoiceNumbers);
-                      // If no invoice numbers, just render as before
-                      if (!Number.isFinite(minInvoice) || !Number.isFinite(maxInvoice)) {
-                        return sortedReportRows.map((row, i) => (
-                          <tr key={row.id} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
-                            <td style={S.td}><b>{row.unique_code}</b></td>
-                            <td style={S.td}>{formatPurchaseDateDash(row.purchase_date || row.date_of_purchase)}</td>
-                            <td style={S.td}>{row.vehicle_dispatch_number || '—'}</td>
-                            <td style={S.td}>{row.dispatch_invoice_number || (row.unique_code ? (bags.find(b => b.unique_code === row.unique_code)?.dispatch_invoice_number || '—') : '—')}</td>
-                            <td style={S.td}>{Number.isFinite(Number(row.weight)) ? Number(row.weight).toFixed(2) + ' kg' : '—'}</td>
-                            <td style={S.td}>{Number.isFinite(Number(row.rate)) ? Number(row.rate).toFixed(2) : '—'}</td>
-                            <td style={{ ...S.td, fontWeight: 700, color: '#166534' }}>{Number.isFinite(Number(row.bale_value)) ? Number(row.bale_value).toFixed(2) : '—'}</td>
-                            <td style={S.td}><span style={S.badge(row.fcv === 'FCV' ? 'green' : 'red')}>{row.fcv}</span></td>
-                          </tr>
-                        ));
-                      }
-                      // Build a map from invoice number to row(s)
-                      const invoiceMap = {};
-                      sortedReportRows.forEach(row => {
-                        const inv = Number(row.dispatch_invoice_number);
-                        if (Number.isFinite(inv)) {
-                          if (!invoiceMap[inv]) invoiceMap[inv] = [];
-                          invoiceMap[inv].push(row);
-                        }
-                      });
-                      // Render rows for every invoice number in the range
-                      const rows = [];
-                      for (let inv = minInvoice; inv <= maxInvoice; inv++) {
-                        if (invoiceMap[inv]) {
-                          invoiceMap[inv].forEach((row, i) => {
-                            rows.push(
-                              <tr key={row.id} style={{ background: rows.length % 2 === 0 ? '#fffafa' : '#fff' }}>
-                                <td style={S.td}><b>{row.unique_code}</b></td>
-                                <td style={S.td}>{formatPurchaseDateDash(row.purchase_date || row.date_of_purchase)}</td>
-                                <td style={S.td}>{row.vehicle_dispatch_number || '—'}</td>
-                                <td style={S.td}>{row.dispatch_invoice_number || '—'}</td>
-                                <td style={S.td}>{Number.isFinite(Number(row.weight)) ? Number(row.weight).toFixed(2) + ' kg' : '—'}</td>
-                                <td style={S.td}>{Number.isFinite(Number(row.rate)) ? Number(row.rate).toFixed(2) : '—'}</td>
-                                <td style={{ ...S.td, fontWeight: 700, color: '#166534' }}>{Number.isFinite(Number(row.bale_value)) ? Number(row.bale_value).toFixed(2) : '—'}</td>
-                                <td style={S.td}><span style={S.badge(row.fcv === 'FCV' ? 'green' : 'red')}>{row.fcv}</span></td>
-                              </tr>
-                            );
-                          });
-                        } else {
-                          // No row for this invoice number, show a placeholder row
-                          rows.push(
-                            <tr key={`missing-invoice-${inv}`} style={{ background: rows.length % 2 === 0 ? '#fffafa' : '#fff', opacity: 0.5 }}>
-                              <td style={S.td}>—</td>
-                              <td style={S.td}>—</td>
-                              <td style={S.td}>—</td>
-                              <td style={S.td}>{inv}</td>
-                              <td style={S.td}>—</td>
-                              <td style={S.td}>—</td>
-                              <td style={S.td}>—</td>
-                              <td style={S.td}>—</td>
-                            </tr>
-                          );
-                        }
-                      }
-                      return rows;
-                    })()}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <SelectedDispatchList
+              selectedDispatchBags={selectedDispatchBags}
+              S={S}
+              removeSelectedDispatchBag={removeSelectedDispatchBag}
+              setEditMsg={setEditMsg}
+              bags={bags}
+              api={api}
+              user={user}
+              setBags={setBags}
+              setDeletedHistory={setDeletedHistory}
+              setSelectedDispatchBagIds={setSelectedDispatchBagIds}
+            />
+            <BalesTable
+              notDispatchedBags={sortedBags.filter(b => Number(b.vehicle_dispatch_id) === 0)}
+              editingId={editing.id}
+              editForm={editing.form}
+              S={S}
+              BALES_COLUMNS={BALES_COLUMNS}
+              visibleColumns={visibleColumns}
+              bagsSort={bagsSort}
+              toggleSort={toggleSort}
+              setBagsSort={setBagsSort}
+              canManageBagActions={canManageBagActions}
+              startEdit={startEdit}
+              selectedDispatchBagIds={selectedDispatchBagIds}
+              getDispatchState={getDispatchState}
+              toggleDispatchSelection={toggleDispatchSelection}
+              removeSelectedDispatchBag={removeSelectedDispatchBag}
+              qrScanDeleteId={qrScanDeleteId}
+              deleteLoading={deleteLoading}
+              handleDeleteScannedBag={handleDeleteScannedBag}
+              formatPurchaseDateDash={formatPurchaseDateDash}
+              formatUpdatedAt={formatUpdatedAt}
+              buyerButtonTextColor={buyerButtonTextColor}
+            />
           </div>
         )}
 
@@ -1497,6 +980,18 @@ const S = {
           </div>
         )}
 
+        {/* Deleted History Table - moved to last section */}
+        <DeletedHistoryTable
+          deletedHistory={sortedDeletedHistory}
+          selectedDeletedKeys={selectedDeletedKeys}
+          allDeletedSelected={allDeletedSelected}
+          toggleSelectAll={toggleSelectAllDeleted}
+          toggleSelectRow={toggleSelectDeletedRow}
+          handleRestore={handleRestoreDeleted}
+          handleConfirmDelete={handleConfirmDelete}
+          loading={restoreDeletedLoading || purgeDeletedLoading}
+          S={S}
+        />
       </div>
     </div>
   );

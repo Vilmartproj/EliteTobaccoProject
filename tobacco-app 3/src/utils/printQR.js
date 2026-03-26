@@ -37,10 +37,10 @@ export function printQRCodes(qrList, buyerMap) {
         <div class="card ${it.used ? 'used' : ''}">
           ${it.img
             ? `<img src="${it.img}" />`
-            : `<div style="width:110px;height:110px;border:1px solid #ccc;line-height:110px;margin:auto;color:#aaa;font-size:11px;">No preview</div>`}
+            : `<div style=\"width:110px;height:110px;border:1px solid #ccc;line-height:110px;margin:auto;color:#aaa;font-size:11px;\">No preview</div>`}
           <div class="code">${it.code}</div>
-          <div class="buyer">${it.buyerCode ? `${it.buyerCode} – ${it.buyerName}` : 'Unassigned'}</div>
-          <div class="${it.used ? 'usedlbl' : 'avail'}">${it.used ? '● Used' : '● Available'}</div>
+          <!-- <div class="buyer">${it.buyerCode ? `${it.buyerCode} – ${it.buyerName}` : 'Unassigned'}</div> -->
+          <!-- <div class="${it.used ? 'usedlbl' : 'avail'}">${it.used ? '● Used' : '● Available'}</div> -->
         </div>`).join('')}
     </div>
     <script>window.onload = () => window.print();<\/script>
