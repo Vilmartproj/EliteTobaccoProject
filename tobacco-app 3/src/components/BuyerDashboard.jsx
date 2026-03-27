@@ -946,6 +946,18 @@ const S = {
               formatUpdatedAt={formatUpdatedAt}
               buyerButtonTextColor={buyerButtonTextColor}
             />
+
+            <DeletedHistoryTable
+              deletedHistory={sortedDeletedHistory}
+              selectedDeletedKeys={selectedDeletedKeys}
+              allDeletedSelected={allDeletedSelected}
+              toggleSelectAll={toggleSelectAllDeleted}
+              toggleSelectRow={toggleSelectDeletedRow}
+              handleRestore={handleRestoreDeleted}
+              handleConfirmDelete={handleConfirmDelete}
+              loading={restoreDeletedLoading || purgeDeletedLoading}
+              S={S}
+            />
           </div>
         )}
 
@@ -980,18 +992,6 @@ const S = {
           </div>
         )}
 
-        {/* Deleted History Table - moved to last section */}
-        <DeletedHistoryTable
-          deletedHistory={sortedDeletedHistory}
-          selectedDeletedKeys={selectedDeletedKeys}
-          allDeletedSelected={allDeletedSelected}
-          toggleSelectAll={toggleSelectAllDeleted}
-          toggleSelectRow={toggleSelectDeletedRow}
-          handleRestore={handleRestoreDeleted}
-          handleConfirmDelete={handleConfirmDelete}
-          loading={restoreDeletedLoading || purgeDeletedLoading}
-          S={S}
-        />
       </div>
     </div>
   );
