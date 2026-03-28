@@ -855,6 +855,50 @@ const S = {
       setEditMsg('Scan QR code to select a purchase');
       return;
     }
+
+    const norm = (s) => String(s || '').replace(/\s+/g, '').toUpperCase();
+    const scannedNorm = norm(scannedCode);
+
+    let matchedBag = bags.find((bag) => norm(bag.unique_code) === scannedNorm);
+
+    if (!matchedBag) {
+      matchedBag = bags.find((bag) => {
+        const bagNorm = norm(bag.unique_code);
+        return bagNorm.includes(scannedNorm) || scannedNorm.includes(bagNorm);
+      });
+    }
+
+    if (!matchedBag) {
+      setEditMsg(`No purchase found for code "${scannedCode}". Check the code and try again.`);
+      return;
+    }
+
+    const { alreadyMoved, alreadyDispatched } = getDispatchState(matchedBag);
+    if (alreadyMoved) {
+      setEditMsg('This purchase is already moved to vehicle dispatch');
+      return;
+    }
+    if (alreadyDispatched) {
+      setEditMsg('This purchase is already dispatched');
+      return;
+    }
+
+    try {
+      setDispatchScanLoading(true);
+      const matchedBagId = Number(matchedBag.id);
+      setSelectedDispatchBagIds((prev) => {
+        if (prev.includes(matchedBagId)) return prev;
+        return [...prev, matchedBagId];
+      });
+      setQrScanDeleteId(matchedBagId);
+      setEditMsg(`✅ ${matchedBag.unique_code} selected. Assign invoice to dispatch, or click Delete to remove this purchase.`);
+      setDispatchScanCode('');
+    } catch (e) {
+      setEditMsg(e.message || 'Failed to select scanned purchase');
+    } finally {
+      setDispatchScanLoading(false);
+      setTimeout(() => dispatchScanInputRef.current?.focus(), 0);
+    }
   };
 
   const handleDeleteScannedBag = async (bagId) => {
