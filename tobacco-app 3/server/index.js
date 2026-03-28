@@ -1487,10 +1487,10 @@ app.get('/api/bags', withAsync(async (req, res) => {
       `SELECT bag.*, vd.id AS vehicle_dispatch_id, vd.dispatch_number AS vehicle_dispatch_number, vd.status AS vehicle_dispatch_status
        FROM bags bag
        LEFT JOIN (
-         SELECT vdi.bag_id, MAX(vdi.dispatch_id) AS latest_dispatch_id
+         SELECT vdi.bag_id, vdi.unique_code, MAX(vdi.dispatch_id) AS latest_dispatch_id
          FROM vehicle_dispatch_items vdi
-         GROUP BY vdi.bag_id
-       ) latest ON latest.bag_id = bag.id
+         GROUP BY vdi.bag_id, vdi.unique_code
+       ) latest ON latest.bag_id = bag.id AND latest.unique_code = bag.unique_code
        LEFT JOIN vehicle_dispatches vd ON vd.id = latest.latest_dispatch_id
        WHERE bag.buyer_id = ?
        ORDER BY bag.id DESC`,
@@ -1500,10 +1500,10 @@ app.get('/api/bags', withAsync(async (req, res) => {
       `SELECT bag.*, vd.id AS vehicle_dispatch_id, vd.dispatch_number AS vehicle_dispatch_number, vd.status AS vehicle_dispatch_status
        FROM bags bag
        LEFT JOIN (
-         SELECT vdi.bag_id, MAX(vdi.dispatch_id) AS latest_dispatch_id
+         SELECT vdi.bag_id, vdi.unique_code, MAX(vdi.dispatch_id) AS latest_dispatch_id
          FROM vehicle_dispatch_items vdi
-         GROUP BY vdi.bag_id
-       ) latest ON latest.bag_id = bag.id
+         GROUP BY vdi.bag_id, vdi.unique_code
+       ) latest ON latest.bag_id = bag.id AND latest.unique_code = bag.unique_code
        LEFT JOIN vehicle_dispatches vd ON vd.id = latest.latest_dispatch_id
        ORDER BY bag.id DESC`
     );

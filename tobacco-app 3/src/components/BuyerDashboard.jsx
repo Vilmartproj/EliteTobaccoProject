@@ -168,6 +168,7 @@ function BuyerDashboard({ user, onLogout }) {
               setDeletedHistory((prev) => prev.filter((row, index) => !keySet.has(String(getDeletedRowKey(row, index)))));
               setEditMsg('✅ Bag(s) permanently deleted and QR code unassigned.');
               setSelectedDeletedKeys([]);
+              await loadQR();
               await loadBags();
             } catch (e) {
               setEditMsg(e.message || 'Failed to permanently delete bag(s)');
@@ -188,7 +189,7 @@ function BuyerDashboard({ user, onLogout }) {
                 setPurgeDeletedLoading(false);
                 return;
               }
-              // For each, add entry to deleted-bags and set bag status to Deleted
+              // For each, add entry to deleted-bags, set bag status to Deleted, and unassign QR
               await Promise.all(toDelete.map(async (row) => {
                 // Add entry to deleted-bags
                 await api.addDeletedBag({
@@ -207,6 +208,14 @@ function BuyerDashboard({ user, onLogout }) {
                 });
                 // Update only the status field in the bag table
                 await api.updateBag(row.id, { status: 'Deleted' });
+                // Unassign QR code so it becomes available again
+                if (row.unique_code) {
+                  try {
+                    await api.unassignQRCode(row.unique_code);
+                  } catch (_e) {
+                    // ignore if QR code already unassigned/not found
+                  }
+                }
               }));
               // Update local deletedHistory state
               setDeletedHistory(prev => prev.map(row =>
@@ -842,7 +851,18 @@ const S = {
   };
 
   const handleDeleteScannedBag = async (bagId) => {
-      setDeleteLoading(true);
+    setDeleteLoading(true);
+    try {
+      const bag = bags.find((b) => Number(b.id) === Number(bagId));
+      await api.deleteBag(bagId);
+      setQrScanDeleteId(null);
+      setEditMsg(`✅ Bag${bag ? ` ${bag.unique_code}` : ''} deleted and QR code is now available.`);
+      await loadBags();
+    } catch (e) {
+      setEditMsg(e.message || 'Failed to delete bag');
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   return (
