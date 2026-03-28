@@ -7,6 +7,17 @@ const { DateTime } = require('luxon');
 
 const app = express();
 
+app.get('/api/bags/by-code/:unique_code', withAsync(async (req, res) => {
+  const rawParam = String(req.params.unique_code || '').trim();
+  const uniqueCode = decodeURIComponent(rawParam);
+  if (!uniqueCode) return res.status(400).json({ error: 'unique_code required' });
+  const rows = await q('SELECT * FROM bags WHERE unique_code = ? LIMIT 1', [uniqueCode]);
+  if (rows.length === 0) {
+    return res.status(404).json({ error: 'Bag not found' });
+  }
+  res.json(rows[0]);
+}));
+
 // Delete bag by unique_code (QR code)
 
 app.delete('/api/bags/by-code/:unique_code', withAsync(async (req, res) => {

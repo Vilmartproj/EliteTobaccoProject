@@ -1,6 +1,9 @@
 import React from 'react';
 
-function DeletedHistoryTable({ deletedHistory, selectedDeletedKeys, allDeletedSelected, toggleSelectAll, toggleSelectRow, handleRestore, handlePermanentDelete, loading, S }) {
+function DeletedHistoryTable({ deletedHistory, selectedDeletedKeys, allDeletedSelected, toggleSelectAll, toggleSelectRow, handleRestore, handleConfirmDelete, handlePermanentDelete, loading, S }) {
+  const onConfirmDelete = handleConfirmDelete || handlePermanentDelete;
+  const onPermanentDelete = handlePermanentDelete || handleConfirmDelete;
+
   return (
     <div style={S.card}>
       <div style={{ ...S.subheading, marginBottom: 10 }}>Deleted History ({deletedHistory.length})</div>
@@ -15,7 +18,7 @@ function DeletedHistoryTable({ deletedHistory, selectedDeletedKeys, allDeletedSe
         >
           Restore Selected
         </button>
-        <button style={S.btnSecondary} onClick={handlePermanentDelete} disabled={loading || selectedDeletedKeys.length === 0}>
+        <button style={S.btnSecondary} onClick={onPermanentDelete} disabled={loading || !onPermanentDelete || selectedDeletedKeys.length === 0}>
           Delete Permanently
         </button>
       </div>
@@ -61,8 +64,8 @@ function DeletedHistoryTable({ deletedHistory, selectedDeletedKeys, allDeletedSe
                     style={row.status === 'Deleted'
                       ? { ...S.btnIcon, background: '#f0f0f0', color: '#bbb', border: '1px solid #eee', cursor: 'not-allowed' }
                       : S.btnIcon}
-                    onClick={() => handlePermanentDelete([row.deleted_key || row.id])}
-                    disabled={loading || row.status === 'Deleted'}
+                    onClick={() => onConfirmDelete([row.deleted_key || row.id])}
+                    disabled={loading || !onConfirmDelete || row.status === 'Deleted'}
                   >
                     Confirm Delete
                   </button>

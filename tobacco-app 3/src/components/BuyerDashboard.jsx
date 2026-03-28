@@ -126,28 +126,46 @@ function BuyerDashboard({ user, onLogout }) {
             try {
               // Ensure keys is always an array
               const keyArr = Array.isArray(keys) ? keys : selectedDeletedKeys;
-              const toDelete = sortedDeletedHistory.filter(row => keyArr.includes(row.deleted_key || row.id));
+              const keySet = new Set((keyArr || []).map((k) => String(k)));
+              const toDelete = sortedDeletedHistory.filter((row, index) => keySet.has(String(getDeletedRowKey(row, index))));
               console.log('[DEBUG] toDelete rows:', toDelete);
               if (toDelete.length === 0) {
                 setEditMsg('Select at least one bag to delete permanently.');
                 setPurgeDeletedLoading(false);
                 return;
               }
+              const isNotFoundError = (error, label) => {
+                const message = String(error?.message || '');
+                return message.includes(label);
+              };
               // Delete from deleted_bags, bags, and unassign QR code
               await Promise.all(toDelete.map(async (row) => {
-                if (row.id) {
-                  console.log('[DEBUG] Deleting from deleted_bags, id:', row.id);
-                  await api.deleteDeletedBag(row.id);
+                if (row.deleted_key) {
+                  console.log('[DEBUG] Deleting from deleted_bags, deleted_key:', row.deleted_key);
+                  await api.deleteDeletedBag(row.deleted_key);
                 }
                 // Delete bag by unique_code (QR code)
                 if (row.unique_code) {
                   console.log('[DEBUG] UI: Deleting bag by unique_code:', row.unique_code, typeof row.unique_code, JSON.stringify(row.unique_code));
-                  await api.deleteBagByCode(row.unique_code);
+                  try {
+                    await api.deleteBagByCode(row.unique_code);
+                  } catch (error) {
+                    if (!isNotFoundError(error, 'Bag not found')) {
+                      throw error;
+                    }
+                  }
                   // Set QR code to available (unassign)
                   console.log('[DEBUG] UI: Unassigning QR code:', row.unique_code, typeof row.unique_code, JSON.stringify(row.unique_code));
-                  await api.unassignQRCode(row.unique_code);
+                  try {
+                    await api.unassignQRCode(row.unique_code);
+                  } catch (error) {
+                    if (!isNotFoundError(error, 'QR code not found')) {
+                      throw error;
+                    }
+                  }
                 }
               }));
+              setDeletedHistory((prev) => prev.filter((row, index) => !keySet.has(String(getDeletedRowKey(row, index)))));
               setEditMsg('✅ Bag(s) permanently deleted and QR code unassigned.');
               setSelectedDeletedKeys([]);
               await loadBags();
@@ -1011,6 +1029,7 @@ const S = {
               toggleSelectRow={toggleSelectDeletedRow}
               handleRestore={handleRestoreDeleted}
               handleConfirmDelete={handleConfirmDelete}
+              handlePermanentDelete={handlePermanentDeleteDeleted}
               loading={restoreDeletedLoading || purgeDeletedLoading}
               S={S}
             />
