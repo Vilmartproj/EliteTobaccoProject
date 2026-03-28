@@ -1,4 +1,5 @@
 import DeletedHistoryTable from './BuyerDashboard/DeletedHistoryTable';
+import PurchaseReport from './BuyerDashboard/PurchaseReport';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { api } from '../api';
 import { S as _S } from '../styles';
@@ -544,7 +545,7 @@ const S = {
     if (v !== 'bags') {
       setEditing({ id: null, form: null });
     }
-    if (v === 'bags') loadBags();
+    if (v === 'bags' || v === 'bale-report') loadBags();
     if (v === 'qr')   loadQR();
     if (v === 'tb-grades' || v === 'buyer-grades') loadGrades();
     if (v === 'form' || v === 'bags') { loadApfNumbers(); loadTobaccoTypes(); loadPurchaseLocations(); }
@@ -1063,6 +1064,15 @@ const S = {
               S={S}
             />
           </div>
+        )}
+
+        {view === 'bale-report' && (
+          <PurchaseReport
+            bags={bags}
+            S={S}
+            buyerTitleColor={buyerTitleColor}
+            formatPurchaseDateDash={formatPurchaseDateDash}
+          />
         )}
 
         {view === 'vehicle-dispatch' && (

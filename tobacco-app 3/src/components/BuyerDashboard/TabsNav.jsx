@@ -8,6 +8,7 @@ export default function TabsNav({ view, setView, bagsLength, qrCodesLength, S, b
       <button style={{ ...S.tab(view === 'bags'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => setView('bags')}>📦 My Bales <span style={{ fontWeight: 900, marginLeft: 4 }}>({bagsLength})</span></button>
       <button style={{ ...S.tab(view === 'vehicle-dispatch'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => setView('vehicle-dispatch')}>🚚 Vehicle Dispatch</button>
       <button style={{ ...S.tab(view === 'qr'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => setView('qr')}>🔲 My QR Codes ({qrCodesLength})</button>
+      <button style={{ ...S.tab(view === 'bale-report'), flex: '1 1 140px', minWidth: 0, margin: 0, textAlign: 'center' }} onClick={() => setView('bale-report')}>📈 Purchase Report</button>
     </div>
   );
 }
