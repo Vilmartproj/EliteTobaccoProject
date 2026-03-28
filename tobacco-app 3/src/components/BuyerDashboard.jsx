@@ -974,6 +974,7 @@ const S = {
            
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
               <input
+                className="mybales-scan-input"
                 ref={dispatchScanInputRef}
                 style={{ ...S.input, minWidth: 220, marginBottom: 0 }}
                 placeholder="Scan QR code or type code manually"
@@ -1003,6 +1004,7 @@ const S = {
                 {dispatchScanLoading ? 'Selecting...' : 'Scan QR'}
               </button>
               <input
+                className="mybales-invoice-input"
                 style={{ ...S.input, minWidth: 180, marginBottom: 0 }}
                 placeholder="Invoice number"
                 value={dispatchInvoiceNumber}

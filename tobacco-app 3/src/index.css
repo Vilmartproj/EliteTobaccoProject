@@ -1,3 +1,10 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-weight: 700; background: linear-gradient(135deg, #fff1f3 0%, #ffe5d9 100%); color: #1a1a1a; }
 input, select, button, textarea { font-family: inherit; font-weight: 700; }
+
+.mybales-scan-input::placeholder,
+.mybales-invoice-input::placeholder {
+	color: #7a8ca5;
+	font-weight: 400;
+	opacity: 1;
+}
