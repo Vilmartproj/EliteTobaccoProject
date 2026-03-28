@@ -27,7 +27,7 @@ const getRowDateForRange = (row) => {
 };
 
 export default function PurchaseReport({ bags, S, buyerTitleColor, formatPurchaseDateDash }) {
-  const [reportSort, setReportSort] = useState({ key: 'purchase_date', direction: 'desc' });
+  const [reportSort, setReportSort] = useState({ key: 'purchaseDateRaw', direction: 'desc' });
   const [selectedReportDateFrom, setSelectedReportDateFrom] = useState('');
   const [selectedReportDateTo, setSelectedReportDateTo] = useState('');
 
@@ -53,15 +53,34 @@ export default function PurchaseReport({ bags, S, buyerTitleColor, formatPurchas
     return true;
   });
 
-  const totalBaleValue = filteredReportRows.reduce(
+  const mappedReportRows = filteredReportRows.map((row) => {
+    const purchaseDateRaw = row.purchase_date || row.date_of_purchase || '';
+    const weightValue = Number.isFinite(Number(row.weight)) ? Number(row.weight) : null;
+    const rateValue = Number.isFinite(Number(row.rate)) ? Number(row.rate) : null;
+    const baleValue = Number.isFinite(Number(row.bale_value))
+      ? Number(row.bale_value)
+      : (weightValue !== null && rateValue !== null ? Number((weightValue * rateValue).toFixed(2)) : null);
+    return {
+      ...row,
+      purchaseDateRaw,
+      weightValue,
+      rateValue,
+      baleValue,
+      invoiceDisplay: row.dispatch_invoice_number ? String(row.dispatch_invoice_number) : '—',
+      dispatchDisplay: row.vehicle_dispatch_number || '—',
+      fcvDisplay: row.fcv || '—',
+    };
+  });
+
+  const totalBaleValue = mappedReportRows.reduce(
     (sum, row) => sum + (Number.isFinite(Number(row.bale_value))
       ? Number(row.bale_value)
       : (Number(row.weight) * Number(row.rate) || 0)),
     0
   );
-  const totalWeight = filteredReportRows.reduce((sum, row) => sum + (Number(row.weight) || 0), 0);
+  const totalWeight = mappedReportRows.reduce((sum, row) => sum + (Number(row.weight) || 0), 0);
 
-  const sortedReportRows = [...filteredReportRows].sort((a, b) =>
+  const sortedReportRows = [...mappedReportRows].sort((a, b) =>
     compareBy(a?.[reportSort.key], b?.[reportSort.key], reportSort.direction)
   );
 
@@ -144,86 +163,28 @@ export default function PurchaseReport({ bags, S, buyerTitleColor, formatPurchas
             <thead>
               <tr>
                 <SortableTh label="Code" sortKey="unique_code" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
-                <SortableTh label="Purchase Date" sortKey="purchase_date" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
+                <SortableTh label="Purchase Date" sortKey="purchaseDateRaw" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
                 <SortableTh label="Dispatch" sortKey="vehicle_dispatch_number" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
-                <SortableTh label="Invoice" sortKey="dispatch_invoice_number" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
-                <SortableTh label="Weight" sortKey="weight" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
-                <SortableTh label="Rate" sortKey="rate" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
-                <SortableTh label="Bale Value" sortKey="bale_value" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
+                <SortableTh label="Invoice" sortKey="invoiceDisplay" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
+                <SortableTh label="Weight" sortKey="weightValue" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
+                <SortableTh label="Rate" sortKey="rateValue" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
+                <SortableTh label="Bale Value" sortKey="baleValue" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
                 <SortableTh label="FCV" sortKey="fcv" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
               </tr>
             </thead>
             <tbody>
-              {(() => {
-                // Build invoice number range to show gaps as placeholder rows
-                const invoiceNumbers = sortedReportRows
-                  .map(row => Number(row.dispatch_invoice_number))
-                  .filter(n => Number.isFinite(n));
-                const minInvoice = Math.min(...invoiceNumbers);
-                const maxInvoice = Math.max(...invoiceNumbers);
-
-                // If no numeric invoice numbers, render rows directly
-                if (!Number.isFinite(minInvoice) || !Number.isFinite(maxInvoice)) {
-                  return sortedReportRows.map((row, i) => (
-                    <tr key={row.id || i} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
-                      <td style={S.td}><b>{row.unique_code}</b></td>
-                      <td style={S.td}>{formatPurchaseDateDash(row.purchase_date || row.date_of_purchase)}</td>
-                      <td style={S.td}>{row.vehicle_dispatch_number || '—'}</td>
-                      <td style={S.td}>{row.dispatch_invoice_number || '—'}</td>
-                      <td style={S.td}>{Number.isFinite(Number(row.weight)) ? Number(row.weight).toFixed(2) + ' kg' : '—'}</td>
-                      <td style={S.td}>{Number.isFinite(Number(row.rate)) ? Number(row.rate).toFixed(2) : '—'}</td>
-                      <td style={{ ...S.td, fontWeight: 700, color: '#166534' }}>{Number.isFinite(Number(row.bale_value)) ? Number(row.bale_value).toFixed(2) : '—'}</td>
-                      <td style={S.td}><span style={S.badge(row.fcv === 'FCV' ? 'green' : 'red')}>{row.fcv}</span></td>
-                    </tr>
-                  ));
-                }
-
-                // Build invoice → rows map
-                const invoiceMap = {};
-                sortedReportRows.forEach(row => {
-                  const inv = Number(row.dispatch_invoice_number);
-                  if (Number.isFinite(inv)) {
-                    if (!invoiceMap[inv]) invoiceMap[inv] = [];
-                    invoiceMap[inv].push(row);
-                  }
-                });
-
-                // Render every invoice in range, filling gaps with placeholders
-                const rows = [];
-                for (let inv = minInvoice; inv <= maxInvoice; inv++) {
-                  if (invoiceMap[inv]) {
-                    invoiceMap[inv].forEach((row) => {
-                      rows.push(
-                        <tr key={row.id || `inv-${inv}`} style={{ background: rows.length % 2 === 0 ? '#fffafa' : '#fff' }}>
-                          <td style={S.td}><b>{row.unique_code}</b></td>
-                          <td style={S.td}>{formatPurchaseDateDash(row.purchase_date || row.date_of_purchase)}</td>
-                          <td style={S.td}>{row.vehicle_dispatch_number || '—'}</td>
-                          <td style={S.td}>{row.dispatch_invoice_number || '—'}</td>
-                          <td style={S.td}>{Number.isFinite(Number(row.weight)) ? Number(row.weight).toFixed(2) + ' kg' : '—'}</td>
-                          <td style={S.td}>{Number.isFinite(Number(row.rate)) ? Number(row.rate).toFixed(2) : '—'}</td>
-                          <td style={{ ...S.td, fontWeight: 700, color: '#166534' }}>{Number.isFinite(Number(row.bale_value)) ? Number(row.bale_value).toFixed(2) : '—'}</td>
-                          <td style={S.td}><span style={S.badge(row.fcv === 'FCV' ? 'green' : 'red')}>{row.fcv}</span></td>
-                        </tr>
-                      );
-                    });
-                  } else {
-                    // Gap: show placeholder row for missing invoice number
-                    rows.push(
-                      <tr key={`missing-invoice-${inv}`} style={{ background: rows.length % 2 === 0 ? '#fffafa' : '#fff', opacity: 0.5 }}>
-                        <td style={S.td}>—</td>
-                        <td style={S.td}>—</td>
-                        <td style={S.td}>—</td>
-                        <td style={S.td}>{inv}</td>
-                        <td style={S.td}>—</td>
-                        <td style={S.td}>—</td>
-                        <td style={S.td}>—</td>
-                        <td style={S.td}>—</td>
-                      </tr>
-                    );
-                  }
-                }
-                return rows;
-              })()}
+              {sortedReportRows.map((row, i) => (
+                <tr key={`${row.id || row.unique_code || 'row'}_${i}`} style={{ background: i % 2 === 0 ? '#fffafa' : '#fff' }}>
+                  <td style={S.td}><b>{row.unique_code || '—'}</b></td>
+                  <td style={S.td}>{formatPurchaseDateDash(row.purchaseDateRaw)}</td>
+                  <td style={S.td}>{row.dispatchDisplay}</td>
+                  <td style={S.td}>{row.invoiceDisplay}</td>
+                  <td style={S.td}>{row.weightValue !== null ? `${row.weightValue.toFixed(2)} kg` : '—'}</td>
+                  <td style={S.td}>{row.rateValue !== null ? row.rateValue.toFixed(2) : '—'}</td>
+                  <td style={{ ...S.td, fontWeight: 700, color: '#166534' }}>{row.baleValue !== null ? row.baleValue.toFixed(2) : '—'}</td>
+                  <td style={S.td}><span style={S.badge(row.fcvDisplay === 'FCV' ? 'green' : 'red')}>{row.fcvDisplay}</span></td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
