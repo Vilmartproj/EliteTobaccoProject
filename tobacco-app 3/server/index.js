@@ -345,6 +345,28 @@ async function q(sql, params = []) {
   return rows;
 }
 
+function normalizeVehicleDispatchStatus(status) {
+  const value = String(status || '').trim();
+  if (value === 'confirmed_match') return 'warehouse_received';
+  if (value === 'confirmed_mismatch') return 'unmatched_bags';
+  return value;
+}
+
+function normalizeVehicleDispatchRow(row) {
+  if (!row) return row;
+  const normalized = { ...row };
+  if (Object.prototype.hasOwnProperty.call(normalized, 'status')) {
+    normalized.status = normalizeVehicleDispatchStatus(normalized.status);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, 'vehicle_dispatch_status')) {
+    normalized.vehicle_dispatch_status = normalizeVehicleDispatchStatus(normalized.vehicle_dispatch_status);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, 'dispatch_status')) {
+    normalized.dispatch_status = normalizeVehicleDispatchStatus(normalized.dispatch_status);
+  }
+  return normalized;
+}
+
 async function ensureColumnExists(tableName, columnName, columnDefinitionSql) {
   const rows = await q(
     `SELECT COUNT(*) AS total
@@ -670,6 +692,7 @@ async function initDatabase() {
   await ensureColumnExists('vehicle_dispatches', 'invoice_number', 'invoice_number VARCHAR(120) NULL');
   await ensureColumnExists('buyers', 'is_active', 'is_active TINYINT(1) NOT NULL DEFAULT 1');
   await ensureColumnExists('warehouse_employees', 'is_active', 'is_active TINYINT(1) NOT NULL DEFAULT 1');
+  await ensureColumnExists('bags', 'status', 'status VARCHAR(40) NULL DEFAULT NULL');
   await ensureColumnExists('bags', 'dispatch_list_added', 'dispatch_list_added TINYINT(1) NOT NULL DEFAULT 0');
   await ensureColumnExists('bags', 'dispatch_invoice_number', 'dispatch_invoice_number VARCHAR(120) NULL');
   await ensureColumnExists('bags', 'dispatch_list_buyer_id', 'dispatch_list_buyer_id INT NULL');
@@ -678,6 +701,8 @@ async function initDatabase() {
   await ensureColumnExists('vehicle_dispatch_items', 'scanned_at', 'scanned_at DATETIME NULL');
   await ensureColumnExists('vehicle_dispatch_items', 'scanned_by_employee_id', 'scanned_by_employee_id INT NULL');
   await ensureColumnExists('vehicle_dispatch_items', 'dispatch_invoice_number', 'dispatch_invoice_number VARCHAR(120) NULL');
+  await q("UPDATE vehicle_dispatches SET status = 'warehouse_received' WHERE status = 'confirmed_match'");
+  await q("UPDATE vehicle_dispatches SET status = 'unmatched_bags' WHERE status = 'confirmed_mismatch'");
 
   await q(
     'INSERT IGNORE INTO settings (id, buyer_actions_after_6pm_enabled, buyer_actions_after_6pm_buyer_ids, updated_at) VALUES (1, 0, JSON_ARRAY(), NOW())'
@@ -1427,7 +1452,7 @@ app.get('/api/qrcodes/track/:code', withAsync(async (req, res) => {
     status,
     qr,
     bag,
-    dispatch,
+    dispatch: normalizeVehicleDispatchRow(dispatch),
     tracked_at: new Date().toISOString(),
   });
 }));
@@ -1472,7 +1497,7 @@ app.get('/api/bags', withAsync(async (req, res) => {
        ORDER BY bag.id DESC`
     );
 
-  res.json(rows);
+  res.json(rows.map(normalizeVehicleDispatchRow));
 }));
 
 app.post('/api/bags', withAsync(async (req, res) => {
@@ -1866,7 +1891,7 @@ app.get('/api/vehicle-dispatches', withAsync(async (req, res) => {
     params
   );
 
-  res.json(rows);
+  res.json(rows.map(normalizeVehicleDispatchRow));
 }));
 
 app.get('/api/vehicle-dispatches/:id', withAsync(async (req, res) => {
@@ -1905,7 +1930,7 @@ app.get('/api/vehicle-dispatches/:id', withAsync(async (req, res) => {
     [dispatchId]
   );
 
-  res.json({ ...rows[0], items, scan_events: scanEvents });
+  res.json({ ...normalizeVehicleDispatchRow(rows[0]), items, scan_events: scanEvents });
 }));
 
 app.get('/api/vehicle-dispatches/eligible-qrcodes/:buyerId', withAsync(async (req, res) => {

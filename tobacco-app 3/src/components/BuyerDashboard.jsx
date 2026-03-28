@@ -663,6 +663,11 @@ const S = {
   const visibleBags = bags.filter(bag => bag.status !== 'Delete in-progress');
   // Exclude bags with status 'Deleted' from Not Dispatched
   const sortedBags = [...visibleBags.filter(bag => bag.status !== 'Deleted')].sort((a, b) => compareBy(a?.[bagsSort.key], b?.[bagsSort.key], bagsSort.direction));
+  const hasVehicleDispatchHistory = (bag) => Number(bag.vehicle_dispatch_id) > 0;
+  const isActiveVehicleDispatchBag = (bag) => ['sent_to_admin', 'sent_to_warehouse'].includes(String(bag.vehicle_dispatch_status || '').trim());
+  const isDispatchSectionBag = (bag) => Number(bag.dispatch_list_added) === 1 || hasVehicleDispatchHistory(bag);
+  const notDispatchedBags = sortedBags.filter((bag) => !isDispatchSectionBag(bag));
+  const dispatchedBags = sortedBags.filter(isDispatchSectionBag);
   const sortedReportRows = [...filteredReportRows].sort((a, b) => compareBy(a?.[reportSort.key], b?.[reportSort.key], reportSort.direction));
   // Show only Delete in-progress and Deleted
   const sortedDeletedHistory = useMemo(() =>
@@ -681,7 +686,7 @@ const S = {
     && deletedHistoryKeys.every((key) => selectedDeletedKeys.includes(key));
   const getDispatchState = (bag) => {
     const alreadyMoved = Number(bag.dispatch_list_added) === 1;
-    const alreadyDispatched = Number(bag.vehicle_dispatch_id) > 0;
+    const alreadyDispatched = hasVehicleDispatchHistory(bag);
     return { alreadyMoved, alreadyDispatched, selectable: !alreadyMoved && !alreadyDispatched };
   };
 
@@ -727,6 +732,7 @@ const S = {
       id: bag.id,
       form: {
         fcv: bag.fcv || '',
+        lot_number: bag.lot_number || '',
         apf_number: bag.apf_number || '',
         tobacco_grade: bag.tobacco_grade || '',
         type_of_tobacco: bag.type_of_tobacco || '',
@@ -796,6 +802,16 @@ const S = {
   const cancelEdit = () => {
     setEditing({ id: null, form: null });
     setEditMsg('');
+  };
+
+  const onEditFieldChange = (key, value) => {
+    setEditing((prev) => ({
+      ...prev,
+      form: {
+        ...(prev.form || {}),
+        [key]: value,
+      },
+    }));
   };
 
   const scanBagToDispatch = async (inputCode) => {
@@ -924,7 +940,9 @@ const S = {
               setSelectedDispatchBagIds={setSelectedDispatchBagIds}
             />
             <BalesTable
-              notDispatchedBags={sortedBags.filter(b => Number(b.vehicle_dispatch_id) === 0)}
+              notDispatchedBags={notDispatchedBags}
+              sectionTitle="Not Dispatched"
+              emptyMessage="No available bales."
               editingId={editing.id}
               editForm={editing.form}
               S={S}
@@ -945,6 +963,44 @@ const S = {
               formatPurchaseDateDash={formatPurchaseDateDash}
               formatUpdatedAt={formatUpdatedAt}
               buyerButtonTextColor={buyerButtonTextColor}
+              onEditFieldChange={onEditFieldChange}
+              onSaveEdit={saveEdit}
+              onCancelEdit={cancelEdit}
+              apfNumberOptions={apfNumberOptions}
+              tobaccoBoardGradeOptions={tobaccoBoardGradeOptions}
+              buyerGradeOptions={buyerGradeOptions}
+            />
+            <BalesTable
+              notDispatchedBags={dispatchedBags}
+              sectionTitle="Dispatched"
+              emptyMessage="No dispatched bales."
+              editingId={editing.id}
+              editForm={editing.form}
+              S={S}
+              BALES_COLUMNS={BALES_COLUMNS}
+              visibleColumns={visibleColumns}
+              bagsSort={bagsSort}
+              toggleSort={toggleSort}
+              setBagsSort={setBagsSort}
+              canManageBagActions={false}
+              startEdit={startEdit}
+              selectedDispatchBagIds={selectedDispatchBagIds}
+              getDispatchState={getDispatchState}
+              toggleDispatchSelection={toggleDispatchSelection}
+              removeSelectedDispatchBag={removeSelectedDispatchBag}
+              qrScanDeleteId={qrScanDeleteId}
+              deleteLoading={deleteLoading}
+              handleDeleteScannedBag={handleDeleteScannedBag}
+              formatPurchaseDateDash={formatPurchaseDateDash}
+              formatUpdatedAt={formatUpdatedAt}
+              buyerButtonTextColor={buyerButtonTextColor}
+              showSelectionColumn={false}
+              onEditFieldChange={onEditFieldChange}
+              onSaveEdit={saveEdit}
+              onCancelEdit={cancelEdit}
+              apfNumberOptions={apfNumberOptions}
+              tobaccoBoardGradeOptions={tobaccoBoardGradeOptions}
+              buyerGradeOptions={buyerGradeOptions}
             />
 
             <DeletedHistoryTable
