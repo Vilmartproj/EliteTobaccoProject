@@ -1484,31 +1484,38 @@ app.get('/api/bags', withAsync(async (req, res) => {
   const buyerId = normalizeBuyerId(req.query.buyer_id);
   const rows = buyerId
     ? await q(
-      `SELECT bag.*, vd.id AS vehicle_dispatch_id, vd.dispatch_number AS vehicle_dispatch_number, vd.status AS vehicle_dispatch_status
+      `SELECT bag.*, COALESCE(latest_item.dispatch_invoice_number, bag.dispatch_invoice_number) AS effective_dispatch_invoice_number,
+              vd.id AS vehicle_dispatch_id, vd.dispatch_number AS vehicle_dispatch_number, vd.status AS vehicle_dispatch_status
        FROM bags bag
        LEFT JOIN (
-         SELECT vdi.bag_id, vdi.unique_code, MAX(vdi.dispatch_id) AS latest_dispatch_id
+         SELECT vdi.bag_id, vdi.unique_code, MAX(vdi.id) AS latest_item_id, MAX(vdi.dispatch_id) AS latest_dispatch_id
          FROM vehicle_dispatch_items vdi
          GROUP BY vdi.bag_id, vdi.unique_code
        ) latest ON latest.bag_id = bag.id AND latest.unique_code = bag.unique_code
+       LEFT JOIN vehicle_dispatch_items latest_item ON latest_item.id = latest.latest_item_id
        LEFT JOIN vehicle_dispatches vd ON vd.id = latest.latest_dispatch_id
        WHERE bag.buyer_id = ?
        ORDER BY bag.id DESC`,
       [buyerId]
     )
     : await q(
-      `SELECT bag.*, vd.id AS vehicle_dispatch_id, vd.dispatch_number AS vehicle_dispatch_number, vd.status AS vehicle_dispatch_status
+      `SELECT bag.*, COALESCE(latest_item.dispatch_invoice_number, bag.dispatch_invoice_number) AS effective_dispatch_invoice_number,
+              vd.id AS vehicle_dispatch_id, vd.dispatch_number AS vehicle_dispatch_number, vd.status AS vehicle_dispatch_status
        FROM bags bag
        LEFT JOIN (
-         SELECT vdi.bag_id, vdi.unique_code, MAX(vdi.dispatch_id) AS latest_dispatch_id
+         SELECT vdi.bag_id, vdi.unique_code, MAX(vdi.id) AS latest_item_id, MAX(vdi.dispatch_id) AS latest_dispatch_id
          FROM vehicle_dispatch_items vdi
          GROUP BY vdi.bag_id, vdi.unique_code
        ) latest ON latest.bag_id = bag.id AND latest.unique_code = bag.unique_code
+       LEFT JOIN vehicle_dispatch_items latest_item ON latest_item.id = latest.latest_item_id
        LEFT JOIN vehicle_dispatches vd ON vd.id = latest.latest_dispatch_id
        ORDER BY bag.id DESC`
     );
 
-  res.json(rows.map(normalizeVehicleDispatchRow));
+  res.json(rows.map((row) => normalizeVehicleDispatchRow({
+    ...row,
+    dispatch_invoice_number: row.effective_dispatch_invoice_number ?? row.dispatch_invoice_number,
+  })));
 }));
 
 app.post('/api/bags', withAsync(async (req, res) => {
@@ -2094,7 +2101,6 @@ app.post('/api/vehicle-dispatches', withAsync(async (req, res) => {
       await conn.query(
         `UPDATE bags
          SET dispatch_list_added = 0,
-             dispatch_invoice_number = NULL,
              dispatch_list_buyer_id = NULL,
              dispatch_list_added_at = NULL,
              updated_at = NOW()
