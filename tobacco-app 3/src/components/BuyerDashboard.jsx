@@ -92,11 +92,17 @@ function BuyerDashboard({ user, onLogout }) {
           const toggleSelectDeletedRow = (key) => {
             setSelectedDeletedKeys((prev) => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
           };
+          const isDeletedRowSelected = (keys, row, index) => {
+            const selectedKeySet = new Set((keys || selectedDeletedKeys).map((key) => String(key)));
+            const computedKey = String(getDeletedRowKey(row, index));
+            const legacyKey = String(row.deleted_key || row.id);
+            return selectedKeySet.has(computedKey) || selectedKeySet.has(legacyKey);
+          };
           const handleRestoreDeleted = async (keys) => {
             setRestoreDeletedLoading(true);
             try {
               // Only restore bags with status 'Delete in-progress'
-              const toRestore = sortedDeletedHistory.filter(row => (keys || selectedDeletedKeys).includes(row.deleted_key || row.id) && row.status === 'Delete in-progress');
+              const toRestore = sortedDeletedHistory.filter((row, index) => isDeletedRowSelected(keys, row, index) && row.status === 'Delete in-progress');
               if (toRestore.length === 0) {
                 setEditMsg('Select at least one bag with status Delete in-progress to restore.');
                 setRestoreDeletedLoading(false);
@@ -105,8 +111,8 @@ function BuyerDashboard({ user, onLogout }) {
               // Call API to restore
               await api.restoreDeletedBags(toRestore.map(row => row.id));
               // Update status to 'Available' in local state
-              setDeletedHistory(prev => prev.map(row =>
-                (keys || selectedDeletedKeys).includes(row.deleted_key || row.id) && row.status === 'Delete in-progress'
+              setDeletedHistory(prev => prev.map((row, index) =>
+                isDeletedRowSelected(keys, row, index) && row.status === 'Delete in-progress'
                   ? { ...row, status: 'Available' }
                   : row
               ));
@@ -183,7 +189,7 @@ function BuyerDashboard({ user, onLogout }) {
             setPurgeDeletedLoading(true);
             try {
               // Find the bags to delete
-              const toDelete = sortedDeletedHistory.filter(row => (keys || selectedDeletedKeys).includes(row.deleted_key || row.id) && row.status === 'Delete in-progress');
+              const toDelete = sortedDeletedHistory.filter((row, index) => isDeletedRowSelected(keys, row, index) && row.status === 'Delete in-progress');
               if (toDelete.length === 0) {
                 setEditMsg('Select at least one bag with status Delete in-progress to delete.');
                 setPurgeDeletedLoading(false);
@@ -218,8 +224,8 @@ function BuyerDashboard({ user, onLogout }) {
                 }
               }));
               // Update local deletedHistory state
-              setDeletedHistory(prev => prev.map(row =>
-                (keys || selectedDeletedKeys).includes(row.deleted_key || row.id) && row.status === 'Delete in-progress'
+              setDeletedHistory(prev => prev.map((row, index) =>
+                isDeletedRowSelected(keys, row, index) && row.status === 'Delete in-progress'
                   ? { ...row, status: 'Deleted' }
                   : row
               ));
@@ -1052,6 +1058,7 @@ const S = {
               handleRestore={handleRestoreDeleted}
               handleConfirmDelete={handleConfirmDelete}
               handlePermanentDelete={handlePermanentDeleteDeleted}
+              getRowKey={getDeletedRowKey}
               loading={restoreDeletedLoading || purgeDeletedLoading}
               S={S}
             />

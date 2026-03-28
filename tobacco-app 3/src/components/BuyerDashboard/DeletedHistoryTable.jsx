@@ -1,8 +1,14 @@
 import React from 'react';
 
-function DeletedHistoryTable({ deletedHistory, selectedDeletedKeys, allDeletedSelected, toggleSelectAll, toggleSelectRow, handleRestore, handleConfirmDelete, handlePermanentDelete, loading, S }) {
+function DeletedHistoryTable({ deletedHistory, selectedDeletedKeys, allDeletedSelected, toggleSelectAll, toggleSelectRow, handleRestore, handleConfirmDelete, handlePermanentDelete, getRowKey, loading, S }) {
   const onConfirmDelete = handleConfirmDelete || handlePermanentDelete;
   const onPermanentDelete = handlePermanentDelete || handleConfirmDelete;
+  const getSelectionKey = (row, idx) => (getRowKey ? getRowKey(row, idx) : (row.deleted_key || row.id));
+  const isSelected = (row, idx) => {
+    const selectionKey = String(getSelectionKey(row, idx));
+    const legacyKey = String(row.deleted_key || row.id);
+    return selectedDeletedKeys.some((key) => String(key) === selectionKey || String(key) === legacyKey);
+  };
 
   return (
     <div style={S.card}>
@@ -14,7 +20,7 @@ function DeletedHistoryTable({ deletedHistory, selectedDeletedKeys, allDeletedSe
         <button
           style={S.btnSecondary}
           onClick={handleRestore}
-          disabled={loading || selectedDeletedKeys.length === 0 || !deletedHistory.some(row => selectedDeletedKeys.includes(row.deleted_key || row.id) && row.status === 'Delete in-progress')}
+          disabled={loading || selectedDeletedKeys.length === 0 || !deletedHistory.some((row, idx) => isSelected(row, idx) && row.status === 'Delete in-progress')}
         >
           Restore Selected
         </button>
@@ -40,12 +46,12 @@ function DeletedHistoryTable({ deletedHistory, selectedDeletedKeys, allDeletedSe
             <tr><td colSpan={8} style={{ textAlign: 'center', color: '#aaa', padding: 24 }}>No deleted history.</td></tr>
           ) : (
             deletedHistory.map((row, idx) => (
-              <tr key={row.deleted_key || row.id}>
+              <tr key={getSelectionKey(row, idx)}>
                 <td style={S.td}>
                   <input
                     type="checkbox"
-                    checked={selectedDeletedKeys.includes(row.deleted_key || row.id)}
-                    onChange={() => toggleSelectRow(row.deleted_key || row.id)}
+                    checked={isSelected(row, idx)}
+                    onChange={() => toggleSelectRow(getSelectionKey(row, idx))}
                   />
                 </td>
                 <td style={S.td}>{row.unique_code}</td>
@@ -56,7 +62,7 @@ function DeletedHistoryTable({ deletedHistory, selectedDeletedKeys, allDeletedSe
                 <td style={S.td}>{row.status}</td>
                 <td style={S.td}>
                   {row.status === 'Delete in-progress' ? (
-                    <button style={S.btnIcon} onClick={() => handleRestore([row.deleted_key || row.id])} disabled={loading}>Restore</button>
+                    <button style={S.btnIcon} onClick={() => handleRestore([getSelectionKey(row, idx)])} disabled={loading}>Restore</button>
                   ) : (
                     <button style={{ ...S.btnIcon, background: '#f0f0f0', color: '#bbb', border: '1px solid #eee', cursor: 'not-allowed' }} disabled>Restore</button>
                   )}
@@ -64,7 +70,7 @@ function DeletedHistoryTable({ deletedHistory, selectedDeletedKeys, allDeletedSe
                     style={row.status === 'Deleted'
                       ? { ...S.btnIcon, background: '#f0f0f0', color: '#bbb', border: '1px solid #eee', cursor: 'not-allowed' }
                       : S.btnIcon}
-                    onClick={() => onConfirmDelete([row.deleted_key || row.id])}
+                    onClick={() => onConfirmDelete([getSelectionKey(row, idx)])}
                     disabled={loading || !onConfirmDelete || row.status === 'Deleted'}
                   >
                     Confirm Delete
