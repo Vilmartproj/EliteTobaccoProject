@@ -895,6 +895,7 @@ const S = {
                 tobaccoTypes={meta.tobaccoTypes}
                 purchaseLocations={meta.purchaseLocations}
                 assignedQRCodes={qrCodes}
+                onBagSaved={loadQR}
                 onSaveExit={() => switchView('bags')}
                 forceFcvType="FCV"
               />
@@ -907,6 +908,7 @@ const S = {
                 tobaccoTypes={meta.tobaccoTypes}
                 purchaseLocations={meta.purchaseLocations}
                 assignedQRCodes={qrCodes}
+                onBagSaved={loadQR}
                 onSaveExit={() => switchView('bags')}
                 forceFcvType="NON-FCV"
               />

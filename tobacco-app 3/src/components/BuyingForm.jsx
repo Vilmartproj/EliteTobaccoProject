@@ -35,7 +35,7 @@ const S = {
   },
 };
 
-export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: [] }, apfNumbers = [], tobaccoTypes = [], purchaseLocations = [], assignedQRCodes = [], onSaveExit, forceFcvType }) {
+export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: [] }, apfNumbers = [], tobaccoTypes = [], purchaseLocations = [], assignedQRCodes = [], onSaveExit, forceFcvType, onBagSaved }) {
   // Support deletedHistory and setDeletedHistory if passed as props (for deletedCodes logic)
   const buyerTitleColor = '#2780e3';
   const buyerButtonTextColor = '#fff';
@@ -439,6 +439,9 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
       };
       console.log('DEBUG: API payload for saveBag:', payload);
       await api.saveBag(payload);
+      if (typeof onBagSaved === 'function') {
+        await onBagSaved();
+      }
       // Remove from deletedHistory if present
       if (deletedCodes.includes(uniqueCode.trim()) && typeof setDeletedHistory === 'function') {
         setDeletedHistory((prev) => prev.filter(row => String(row.unique_code) !== uniqueCode.trim()));
