@@ -1889,6 +1889,7 @@ app.get('/api/vehicle-dispatches', withAsync(async (req, res) => {
     `SELECT vd.*, b.code AS buyer_code, b.name AS buyer_name,
             we.code AS warehouse_employee_code, we.name AS warehouse_employee_name,
             COUNT(vdi.id) AS item_count,
+            GROUP_CONCAT(vdi.unique_code ORDER BY vdi.id ASC SEPARATOR ', ') AS qr_codes,
             COALESCE(SUM(vdi.weight), 0) AS total_weight,
             COALESCE(SUM(vdi.bale_value), 0) AS total_bale_value,
             COALESCE(SUM(CASE WHEN vdi.warehouse_scan_status = 'matched' THEN 1 ELSE 0 END), 0) AS matched_count,
