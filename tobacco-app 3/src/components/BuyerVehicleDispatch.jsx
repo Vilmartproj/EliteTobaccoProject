@@ -463,7 +463,7 @@ export default function BuyerVehicleDispatch({ buyer }) {
                   <SortableTh label="QR Count" sortKey="item_count" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
                   <SortableTh label="Total Weight" sortKey="total_weight" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
                   <SortableTh label="Total Bale Value" sortKey="total_bale_value" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
-                  <SortableTh label="Warehouse Note" sortKey="warehouse_note" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Buyer Note" sortKey="buyer_note" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
                   <SortableTh label="Updated" sortKey="updated_at" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
                 </tr>
               </thead>
@@ -490,7 +490,7 @@ export default function BuyerVehicleDispatch({ buyer }) {
                     <td style={S.td}>{row.item_count}</td>
                     <td style={S.td}>{Number(row.total_weight || 0).toFixed(2)} kg</td>
                     <td style={S.td}>₹{formatInr(row.total_bale_value)}</td>
-                    <td style={S.td}>{row.warehouse_note || '—'}</td>
+                    <td style={S.td}>{row.buyer_note || '—'}</td>
                     <td style={S.td}>{formatDateTime(row.updated_at)}</td>
                   </tr>
                 );})}
