@@ -67,6 +67,7 @@ export default function PurchaseReport({ bags, S, buyerTitleColor, formatPurchas
       rateValue,
       baleValue,
       invoiceDisplay: row.dispatch_invoice_number ? String(row.dispatch_invoice_number) : '—',
+      lotNumberDisplay: row.lot_number ? String(row.lot_number) : '—',
       dispatchDisplay: row.vehicle_dispatch_number || '—',
       fcvDisplay: row.fcv || '—',
     };
@@ -166,6 +167,7 @@ export default function PurchaseReport({ bags, S, buyerTitleColor, formatPurchas
                 <SortableTh label="Purchase Date" sortKey="purchaseDateRaw" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
                 <SortableTh label="Dispatch" sortKey="vehicle_dispatch_number" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
                 <SortableTh label="Invoice" sortKey="invoiceDisplay" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
+                <SortableTh label="Lot Number" sortKey="lotNumberDisplay" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
                 <SortableTh label="Weight" sortKey="weightValue" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
                 <SortableTh label="Rate" sortKey="rateValue" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
                 <SortableTh label="Bale Value" sortKey="baleValue" sortState={reportSort} onSort={(key) => toggleSort(reportSort, setReportSort, key)} />
@@ -179,6 +181,7 @@ export default function PurchaseReport({ bags, S, buyerTitleColor, formatPurchas
                   <td style={S.td}>{formatPurchaseDateDash(row.purchaseDateRaw)}</td>
                   <td style={S.td}>{row.dispatchDisplay}</td>
                   <td style={S.td}>{row.invoiceDisplay}</td>
+                  <td style={S.td}>{row.lotNumberDisplay}</td>
                   <td style={S.td}>{row.weightValue !== null ? `${row.weightValue.toFixed(2)} kg` : '—'}</td>
                   <td style={S.td}>{row.rateValue !== null ? row.rateValue.toFixed(2) : '—'}</td>
                   <td style={{ ...S.td, fontWeight: 700, color: '#166534' }}>{row.baleValue !== null ? row.baleValue.toFixed(2) : '—'}</td>
