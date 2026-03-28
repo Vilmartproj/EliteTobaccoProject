@@ -36,7 +36,7 @@ app.delete('/api/bags/by-code/:unique_code', withAsync(async (req, res) => {
   try {
     await conn.beginTransaction();
     await conn.query('DELETE FROM bags WHERE unique_code = ?', [uniqueCode]);
-    await conn.query('UPDATE qr_codes SET used = 0, buyer_id = NULL WHERE unique_code = ?', [uniqueCode]);
+    await conn.query('UPDATE qr_codes SET used = 0 WHERE unique_code = ?', [uniqueCode]);
     await conn.commit();
     res.json({ success: true, bag });
   } catch (error) {
@@ -54,7 +54,7 @@ app.put('/api/qrcodes/unassign/:unique_code', withAsync(async (req, res) => {
   if (!uniqueCode) return res.status(400).json({ error: 'unique_code required' });
   const qrRows = await q('SELECT * FROM qr_codes WHERE unique_code = ? LIMIT 1', [uniqueCode]);
   if (qrRows.length === 0) return res.status(404).json({ error: 'QR code not found' });
-  await q('UPDATE qr_codes SET used = 0, buyer_id = NULL WHERE unique_code = ?', [uniqueCode]);
+  await q('UPDATE qr_codes SET used = 0 WHERE unique_code = ?', [uniqueCode]);
   res.json({ success: true });
 }));
 app.use(express.json());
@@ -1717,7 +1717,7 @@ app.delete('/api/bags/:id', withAsync(async (req, res) => {
     await conn.beginTransaction();
 
     await conn.query('DELETE FROM bags WHERE id = ?', [bagId]);
-    const [qrResult] = await conn.query('UPDATE qr_codes SET used = 0, buyer_id = NULL WHERE unique_code = ?', [bag.unique_code]);
+    const [qrResult] = await conn.query('UPDATE qr_codes SET used = 0 WHERE unique_code = ?', [bag.unique_code]);
 
     await conn.commit();
     res.json({ success: true, bag, qrReset: qrResult.affectedRows > 0 });
