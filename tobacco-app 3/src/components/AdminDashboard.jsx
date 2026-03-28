@@ -2204,6 +2204,8 @@ export default function AdminDashboard({ user, onLogout }) {
                       <SortableTh label="Buyer" sortKey="buyer_code" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={60} />
                       <SortableTh label="Name" sortKey="buyer_name" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={90} />
                       <SortableTh label="Code" sortKey="unique_code" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={65} />
+                      <SortableTh label="Invoice Number" sortKey="dispatch_invoice_number" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={110} />
+                      <SortableTh label="Lot Number" sortKey="lot_number" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={95} />
                       <SortableTh label="APF" sortKey="apf_number" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={70} />
                       <SortableTh label="TB Grade" sortKey="tobacco_grade" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={80} />
                       <SortableTh label="Type" sortKey="type_of_tobacco" sortState={bagsSort} onSort={(key) => toggleSort(bagsSort, setBagsSort, key)} minWidth={75} />
@@ -2244,6 +2246,8 @@ export default function AdminDashboard({ user, onLogout }) {
                           ))}
                         </select>
                       </th>
+                      <th style={S.th}></th>
+                      <th style={S.th}></th>
                       <th style={S.th}>
                         <select
                           style={{ ...S.input, minWidth: 65, marginBottom: 0, fontWeight: 700, fontSize: 11 }}
@@ -2305,7 +2309,7 @@ export default function AdminDashboard({ user, onLogout }) {
                     <tbody>
                       {filteredDisplayedBags.length === 0 ? (
                         <tr>
-                          <td style={{ ...totalPurchaseTd, textAlign: 'center', color: '#888', padding: 24 }} colSpan={16}>
+                          <td style={{ ...totalPurchaseTd, textAlign: 'center', color: '#888', padding: 24 }} colSpan={18}>
                             {displayedBags.length === 0
                               ? (displayedBuyer
                                 ? `No records for ${displayedBuyer.name}. Select another buyer from the dropdown.`
@@ -2319,6 +2323,8 @@ export default function AdminDashboard({ user, onLogout }) {
                             <td style={totalPurchaseTd}>{b.buyer_code}</td>
                             <td style={totalPurchaseTd}>{b.buyer_name}</td>
                             <td style={totalPurchaseTd}>{b.unique_code}</td>
+                            <td style={totalPurchaseTd}>{b.dispatch_invoice_number || '—'}</td>
+                            <td style={totalPurchaseTd}><input style={{ ...S.input, minWidth: 100 }} value={editBagForm?.lot_number ?? ''} onChange={e => setEditBagForm(f => ({ ...f, lot_number: e.target.value }))} /></td>
                             <td style={totalPurchaseTd}>
                               <SearchableSelect
                                 options={apfNumberOptions}
@@ -2372,6 +2378,8 @@ export default function AdminDashboard({ user, onLogout }) {
                             <td style={totalPurchaseTd}>{b.buyer_code}</td>
                             <td style={totalPurchaseTd}>{b.buyer_name}</td>
                             <td style={totalPurchaseTd}>{b.unique_code}</td>
+                            <td style={totalPurchaseTd}>{b.dispatch_invoice_number || '—'}</td>
+                            <td style={totalPurchaseTd}>{b.lot_number || '—'}</td>
                             <td style={totalPurchaseTd}>{b.apf_number}</td>
                             <td style={totalPurchaseTd}>{b.tobacco_grade}</td>
                             <td style={totalPurchaseTd}>{b.type_of_tobacco || '—'}</td>
