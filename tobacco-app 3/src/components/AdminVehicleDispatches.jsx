@@ -6,6 +6,7 @@ import { api } from '../api';
 import { S as _S } from '../styles';
 import { formatDateTime } from '../utils/dateFormat';
 import { generateInvoice } from '../utils/generateInvoice';
+import QRCameraScanner from './QRCameraScanner';
 
 
 // Sorting logic for admin vehicle dispatches
@@ -148,6 +149,8 @@ export default function AdminVehicleDispatches() {
   const [warehouseNotes, setWarehouseNotes] = useState({});
   const [assignedEmployeeByDispatch, setAssignedEmployeeByDispatch] = useState({});
   const [qrTooltip, setQrTooltip] = useState({ visible: false, dispatchId: null, rect: null });
+  const [scanCode, setScanCode] = useState('');
+  const [searchQrCode, setSearchQrCode] = useState('');
 
   const load = async (selectedBuyerId = buyerFilter) => {
     const parsedBuyerId = selectedBuyerId ? Number(selectedBuyerId) : null;
@@ -254,6 +257,16 @@ export default function AdminVehicleDispatches() {
   };
 
   const handleQrLeave = () => setQrTooltip((prev) => ({ ...prev, visible: false }));
+
+  const handleQrCodeDetected = (detectedCode) => {
+    setScanCode(detectedCode);
+    setSearchQrCode(detectedCode);
+  };
+
+  const clearScanCode = () => {
+    setScanCode('');
+    setSearchQrCode('');
+  };
 
   return (
     <div style={S.card}>
@@ -410,29 +423,74 @@ export default function AdminVehicleDispatches() {
 
       {qrTooltip.visible && qrTooltip.rect && (() => {
         const items = detailsById[qrTooltip.dispatchId]?.items;
+        const filteredItems = items && searchQrCode.trim() 
+          ? items.filter(item => item.unique_code.toLowerCase().includes(searchQrCode.toLowerCase()))
+          : items;
+        
         return (
           <div style={{
             position: 'fixed',
-            top: Math.min(qrTooltip.rect.bottom + 4, window.innerHeight - 300),
-            left: Math.min(qrTooltip.rect.left, window.innerWidth - 260),
+            top: Math.min(qrTooltip.rect.bottom + 4, window.innerHeight - 420),
+            left: Math.min(qrTooltip.rect.left, window.innerWidth - 320),
             background: '#fff',
             border: '1.5px solid #b7d9f8',
             borderRadius: 10,
-            padding: '10px 14px',
+            padding: '12px',
             boxShadow: '0 6px 20px rgba(39,128,227,0.22)',
             zIndex: 9999,
-            minWidth: 220,
-            maxWidth: 260,
-            maxHeight: 280,
+            minWidth: 280,
+            maxWidth: 320,
+            maxHeight: 400,
             overflowY: 'auto',
-            pointerEvents: 'none',
+            pointerEvents: 'auto',
           }}>
-            <div style={{ fontWeight: 800, fontSize: 12, color: '#2780e3', marginBottom: 6, borderBottom: '1px solid #dbeafe', paddingBottom: 4 }}>
+            <div style={{ fontWeight: 800, fontSize: 12, color: '#2780e3', marginBottom: 8, borderBottom: '1px solid #dbeafe', paddingBottom: 6 }}>
               QR Codes ({items ? items.length : '…'})
             </div>
-            {!items && <div style={{ fontSize: 12, color: '#888' }}>Loading…</div>}
-            {items && items.map((item, i) => (
-              <div key={i} style={{ fontSize: 12, color: '#1b3555', padding: '3px 0', borderBottom: '1px solid #f0f6ff', fontWeight: 700 }}>
+            
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+              <input
+                style={{ ...S.input, flex: 1, marginBottom: 0, minWidth: 140, padding: '6px 8px', fontSize: 12 }}
+                placeholder="Search/Scan QR"
+                value={searchQrCode}
+                onChange={(e) => setSearchQrCode(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    clearScanCode();
+                  }
+                }}
+              />
+              <QRCameraScanner
+                buttonLabel="📷"
+                onDetected={handleQrCodeDetected}
+              />
+              {searchQrCode && (
+                <button
+                  style={{ flex: 'none', padding: '4px 8px', fontSize: 11, background: '#f0f0f0', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}
+                  onClick={clearScanCode}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            
+            {!items && <div style={{ fontSize: 12, color: '#888', textAlign: 'center', padding: 8 }}>Loading…</div>}
+            {items && filteredItems && filteredItems.length === 0 && searchQrCode && (
+              <div style={{ fontSize: 12, color: '#c0392b', textAlign: 'center', padding: 8 }}>No matching QR codes found</div>
+            )}
+            {filteredItems && filteredItems.map((item, i) => (
+              <div 
+                key={i} 
+                style={{ 
+                  fontSize: 11, 
+                  color: searchQrCode && item.unique_code.toLowerCase().includes(searchQrCode.toLowerCase()) ? '#1b3555' : '#1b3555',
+                  padding: '6px 4px', 
+                  borderBottom: '1px solid #f0f6ff', 
+                  fontFamily: 'monospace',
+                  background: searchQrCode && item.unique_code.toLowerCase().includes(searchQrCode.toLowerCase()) ? '#e3f2fd' : 'transparent',
+                  borderLeft: searchQrCode && item.unique_code.toLowerCase().includes(searchQrCode.toLowerCase()) ? '2px solid #2780e3' : '2px solid transparent'
+                }}
+              >
                 {item.unique_code}
               </div>
             ))}

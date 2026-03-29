@@ -9,6 +9,7 @@ import BalesTable from './BuyerDashboard/BalesTable';
 import SelectedDispatchList from './BuyerDashboard/SelectedDispatchList';
 import BuyingForm from './BuyingForm';
 import QRCode from './QRCode';
+import QRCameraScanner from './QRCameraScanner';
 import SearchableSelect from './SearchableSelect';
 import BuyerVehicleDispatch from './BuyerVehicleDispatch';
 import { printQRCodes } from '../utils/printQR';
@@ -358,6 +359,8 @@ const S = {
   const [selectedReportDateTo, setSelectedReportDateTo] = useState('');
   const [dispatchScanCode, setDispatchScanCode] = useState('');
   const [dispatchScanLoading, setDispatchScanLoading] = useState(false);
+  const [dispatchScanStatus, setDispatchScanStatus] = useState(null); // null | ok | error
+  const [dispatchScanStatusMsg, setDispatchScanStatusMsg] = useState('');
   // Removed dispatchInvoiceNumber state, invoice number will be auto-generated
   const [selectedDispatchBagIds, setSelectedDispatchBagIds] = useState([]);
   const [dispatchAssignLoading, setDispatchAssignLoading] = useState(false);
@@ -852,6 +855,8 @@ const S = {
     const raw = String((inputCode ?? dispatchScanCode) || '');
     const scannedCode = raw.replace(/[\r\n\t]/g, '').trim();
     if (!scannedCode) {
+      setDispatchScanStatus(null);
+      setDispatchScanStatusMsg('');
       setEditMsg('Scan QR code to select a purchase');
       return;
     }
@@ -869,16 +874,22 @@ const S = {
     }
 
     if (!matchedBag) {
+      setDispatchScanStatus('error');
+      setDispatchScanStatusMsg('Invalid QR for this buyer');
       setEditMsg(`No purchase found for code "${scannedCode}". Check the code and try again.`);
       return;
     }
 
     const { alreadyMoved, alreadyDispatched } = getDispatchState(matchedBag);
     if (alreadyMoved) {
+      setDispatchScanStatus('error');
+      setDispatchScanStatusMsg('QR already moved to dispatch');
       setEditMsg('This purchase is already moved to vehicle dispatch');
       return;
     }
     if (alreadyDispatched) {
+      setDispatchScanStatus('error');
+      setDispatchScanStatusMsg('QR already dispatched');
       setEditMsg('This purchase is already dispatched');
       return;
     }
@@ -891,9 +902,13 @@ const S = {
         return [...prev, matchedBagId];
       });
       setQrScanDeleteId(matchedBagId);
+      setDispatchScanStatus('ok');
+      setDispatchScanStatusMsg('Valid QR for this buyer');
+      setDispatchScanCode(matchedBag.unique_code);
       setEditMsg(`✅ ${matchedBag.unique_code} selected. Assign invoice to dispatch, or click Delete to remove this purchase.`);
-      setDispatchScanCode('');
     } catch (e) {
+      setDispatchScanStatus('error');
+      setDispatchScanStatusMsg('Scan failed');
       setEditMsg(e.message || 'Failed to select scanned purchase');
     } finally {
       setDispatchScanLoading(false);
@@ -973,36 +988,73 @@ const S = {
                 {editMsg && <div style={editMsg.startsWith('✅') ? S.success : S.error}>{editMsg}</div>}
            
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-              <input
-                className="mybales-scan-input"
-                ref={dispatchScanInputRef}
-                style={{ ...S.input, minWidth: 220, marginBottom: 0 }}
-                placeholder="Scan QR code or type code manually"
-                value={dispatchScanCode}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (/([\r\n\t])$/.test(val)) {
-                    const code = val.replace(/[\r\n\t]/g, '').trim();
-                    setDispatchScanCode(code);
-                    scanBagToDispatch(code);
-                  } else {
-                    setDispatchScanCode(val);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === 'Tab') {
-                    e.preventDefault();
-                    scanBagToDispatch(e.target.value.trim());
-                  }
+              <div style={{ minWidth: 260, flex: '1 1 260px' }}>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    className="mybales-scan-input"
+                    ref={dispatchScanInputRef}
+                    style={{
+                      ...S.input,
+                      minWidth: 220,
+                      marginBottom: 0,
+                      paddingLeft: 36,
+                      borderColor: dispatchScanStatus === 'ok' ? '#2e7d32' : dispatchScanStatus === 'error' ? '#c0392b' : undefined,
+                    }}
+                    placeholder="Scan QR code or type code manually"
+                    value={dispatchScanCode}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setDispatchScanStatus(null);
+                      setDispatchScanStatusMsg('');
+                      if (/([\r\n\t])$/.test(val)) {
+                        const code = val.replace(/[\r\n\t]/g, '').trim();
+                        setDispatchScanCode(code);
+                        scanBagToDispatch(code);
+                      } else {
+                        setDispatchScanCode(val);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === 'Tab') {
+                        e.preventDefault();
+                        scanBagToDispatch(e.target.value.trim());
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const val = e.target.value.trim();
+                      if (val) scanBagToDispatch(val);
+                    }}
+                  />
+                  {dispatchScanStatus && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        left: 12,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        fontSize: 16,
+                        color: dispatchScanStatus === 'ok' ? '#2e7d32' : '#c0392b',
+                        pointerEvents: 'none',
+                      }}
+                      aria-hidden="true"
+                    >
+                      {dispatchScanStatus === 'ok' ? '✓' : '✕'}
+                    </span>
+                  )}
+                </div>
+                {dispatchScanStatusMsg && (
+                  <div style={{ fontSize: 12, marginTop: 5, color: dispatchScanStatus === 'ok' ? '#2e7d32' : '#c0392b', fontWeight: dispatchScanStatus === 'ok' ? 700 : 800 }}>
+                    {dispatchScanStatusMsg}
+                  </div>
+                )}
+              </div>
+              <QRCameraScanner
+                buttonLabel="Scan QR"
+                onDetected={(value) => {
+                  setDispatchScanCode(value);
+                  scanBagToDispatch(value);
                 }}
               />
-              <button
-                style={{ ...S.btnPrimary, flex: 'none', padding: '6px 14px', opacity: dispatchScanLoading ? 0.65 : 1 }}
-                disabled={dispatchScanLoading}
-                onClick={scanBagToDispatch}
-              >
-                {dispatchScanLoading ? 'Selecting...' : 'Scan QR'}
-              </button>
               <input
                 className="mybales-invoice-input"
                 style={{ ...S.input, minWidth: 180, marginBottom: 0 }}

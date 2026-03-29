@@ -176,6 +176,7 @@ tobacco-app/
 | `npm run cap:sync` | Sync `dist` assets to Android project |
 | `npm run cap:open` | Open Android Studio project |
 | `npm run android:build` | Build mobile assets + sync Android |
+| `npm run android:debug` | Windows helper: build mobile assets, sync Android, and assemble the debug APK with Android Studio JDK |
 
 ---
 

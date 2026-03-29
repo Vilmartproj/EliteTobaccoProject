@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { S as _S } from '../styles';
 import { formatDateTime } from '../utils/dateFormat';
+import QRCameraScanner from './QRCameraScanner';
 
 // Sorting logic for dispatch history
 // (moved after imports)
@@ -118,6 +119,8 @@ export default function BuyerVehicleDispatch({ buyer }) {
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [scanCode, setScanCode] = useState('');
+  const [scanStatus, setScanStatus] = useState(null);
+  const [scanStatusMsg, setScanStatusMsg] = useState('');
   const [scanLoading, setScanLoading] = useState(false);
   const [matchedCodes, setMatchedCodes] = useState([]);
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -175,12 +178,16 @@ export default function BuyerVehicleDispatch({ buyer }) {
   const scanAndMatchQRCode = async (inputCode) => {
     const scanned = String((inputCode ?? scanCode) || '').trim();
     if (!scanned) {
+      setScanStatus(null);
+      setScanStatusMsg('');
       setMsg('Enter or scan a QR code');
       return;
     }
 
     const match = eligibleRows.find((row) => String(row.unique_code || '').trim().toUpperCase() === scanned.toUpperCase());
     if (!match) {
+      setScanStatus('error');
+      setScanStatusMsg('Invalid QR for this dispatch list');
       setMsg('Scanned QR code is not in this vehicle dispatch list');
       return;
     }
@@ -191,6 +198,8 @@ export default function BuyerVehicleDispatch({ buyer }) {
         if (prev.includes(match.unique_code)) return prev;
         return [...prev, match.unique_code];
       });
+      setScanStatus('ok');
+      setScanStatusMsg('Valid QR matched');
       setMsg(`✅ ${match.unique_code} matched`);
       setScanCode('');
     } finally {
@@ -307,20 +316,71 @@ export default function BuyerVehicleDispatch({ buyer }) {
         {msg && <div style={msg.startsWith('✅') ? S.success : S.error}>{msg}</div>}
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-          <input
-            style={{ ...inputWithMissing(S.input, isMissingField('matchedCodes')), minWidth: 260, marginBottom: 0 }}
-            placeholder="Scan QR code to match with list"
-            value={scanCode}
-            onChange={(e) => setScanCode(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && scanAndMatchQRCode()}
+          <div style={{ minWidth: 260, flex: '1 1 260px' }}>
+            <div style={{ position: 'relative' }}>
+              <input
+                style={{
+                  ...inputWithMissing(S.input, isMissingField('matchedCodes')),
+                  minWidth: 260,
+                  marginBottom: 0,
+                  paddingLeft: 36,
+                  borderColor: scanStatus === 'ok' ? '#2e7d32' : scanStatus === 'error' ? '#c0392b' : undefined,
+                }}
+                placeholder="Scan QR code to match with list"
+                value={scanCode}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setScanStatus(null);
+                  setScanStatusMsg('');
+                  if (/([\r\n\t])$/.test(val)) {
+                    const code = val.replace(/[\r\n\t]/g, '').trim();
+                    setScanCode(code);
+                    scanAndMatchQRCode(code);
+                  } else {
+                    setScanCode(val);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === 'Tab') {
+                    e.preventDefault();
+                    scanAndMatchQRCode(e.currentTarget.value);
+                  }
+                }}
+                onBlur={(e) => {
+                  const val = e.target.value.trim();
+                  if (val) scanAndMatchQRCode(val);
+                }}
+              />
+              {scanStatus && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    left: 12,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    fontSize: 16,
+                    color: scanStatus === 'ok' ? '#2e7d32' : '#c0392b',
+                    pointerEvents: 'none',
+                  }}
+                  aria-hidden="true"
+                >
+                  {scanStatus === 'ok' ? '✓' : '✕'}
+                </span>
+              )}
+            </div>
+            {scanStatusMsg && (
+              <div style={{ fontSize: 12, marginTop: 5, color: scanStatus === 'ok' ? '#2e7d32' : '#c0392b', fontWeight: scanStatus === 'ok' ? 700 : 800 }}>
+                {scanStatusMsg}
+              </div>
+            )}
+          </div>
+          <QRCameraScanner
+            buttonLabel="Scan QR"
+            onDetected={(value) => {
+              setScanCode(value);
+              scanAndMatchQRCode(value);
+            }}
           />
-          <button
-            style={{ ...S.btnPrimary, flex: 'none', padding: '6px 14px', opacity: scanLoading ? 0.65 : 1 }}
-            disabled={scanLoading}
-            onClick={() => scanAndMatchQRCode()}
-          >
-            {scanLoading ? 'Scanning...' : 'Scan QR'}
-          </button>
           <span style={{ ...S.badge('green'), fontSize: 13 }}>Matched: {matchedCodes.length}</span>
         </div>
 

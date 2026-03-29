@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { S as _S } from '../styles';
 import { fromInputDateTime, nowInputDateTime, formatDateTime } from '../utils/dateFormat';
+import QRCameraScanner from './QRCameraScanner';
 import SearchableSelect from './SearchableSelect';
 
 const S = {
@@ -92,13 +93,8 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
   const [loading, setLoading]           = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [fcvFieldsLocked, setFcvFieldsLocked] = useState(false);
-  const [scannerActive, setScannerActive] = useState(false);
-  const [scannerError, setScannerError] = useState('');
   const debounceRef = useRef(null);
-  const videoRef = useRef(null);
   const uniqueCodeInputRef = useRef(null);
-  const scannerStreamRef = useRef(null);
-  const scannerTimerRef = useRef(null);
   const errorRef = useRef(null);
   const latestCodeRef = useRef('');
   const validateRequestRef = useRef(0);
@@ -136,11 +132,6 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     .filter((q) => !q.used)
     .map((q) => String(q.unique_code));
   const qrListId = `assigned-qr-codes-${buyer?.id || 'buyer'}`;
-  const isMobileDevice = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
-  const scannerSupported = typeof window !== 'undefined'
-    && 'mediaDevices' in navigator
-    && typeof navigator.mediaDevices.getUserMedia === 'function'
-    && 'BarcodeDetector' in window;
 
   const requiredLabel = (text, isRequired = true) => (
     <>
@@ -148,20 +139,6 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
       {isRequired ? <span style={{ color: '#2780e3' }}> *</span> : ''}
     </>
   );
-
-  const stopScanner = () => {
-    if (scannerTimerRef.current) {
-      clearInterval(scannerTimerRef.current);
-      scannerTimerRef.current = null;
-    }
-    if (scannerStreamRef.current) {
-      scannerStreamRef.current.getTracks().forEach((track) => track.stop());
-      scannerStreamRef.current = null;
-    }
-    setScannerActive(false);
-  };
-
-  useEffect(() => () => stopScanner(), []);
 
   useEffect(() => {
     if (!error || !errorRef.current) return;
@@ -275,54 +252,20 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     setTimeout(() => uniqueCodeInputRef.current?.focus(), 0);
   };
 
-  const startScanner = async () => {
-    setScannerError('');
-    if (!scannerSupported) {
-      setScannerError('Scanner not supported on this device/browser.');
+  const handleDetectedCode = (value) => {
+    const nextValue = String(value || '').trim();
+    setUniqueCode(nextValue);
+    setCodeStatus(null);
+    setCodeMsg('');
+    latestCodeRef.current = nextValue;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!nextValue) {
+      validateRequestRef.current += 1;
+      setTimeout(() => uniqueCodeInputRef.current?.focus(), 0);
       return;
     }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
-        audio: false,
-      });
-      scannerStreamRef.current = stream;
-      setScannerActive(true);
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-
-      const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-      scannerTimerRef.current = setInterval(async () => {
-        if (!videoRef.current || videoRef.current.readyState < 2) return;
-        try {
-          const codes = await detector.detect(videoRef.current);
-          if (codes.length > 0) {
-            const scannedValue = String(codes[0].rawValue || '').trim();
-            if (scannedValue) {
-              handleCodeChange(scannedValue);
-              stopScanner();
-            }
-          }
-        } catch {
-          // keep scanner alive on transient detect errors
-        }
-      }, 400);
-    } catch (error) {
-      stopScanner();
-      const name = String(error?.name || '').toLowerCase();
-      if (name.includes('notallowed') || name.includes('permission')) {
-        setScannerError('Camera permission denied. Please allow camera permission in app settings.');
-      } else if (name.includes('notfound') || name.includes('overconstrained')) {
-        setScannerError('No usable camera found on this device.');
-      } else if (name.includes('notreadable')) {
-        setScannerError('Camera is busy or unavailable. Close other camera apps and try again.');
-      } else {
-        setScannerError('Unable to access camera. Please allow camera permission.');
-      }
-    }
+    checkCode(nextValue);
+    setTimeout(() => uniqueCodeInputRef.current?.focus(), 0);
   };
 
   const handleFcvSelect = (nextValue) => {
@@ -555,78 +498,84 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
       {/* Unique Code */}
       <div style={S.row}>
         <label style={labelWithMissing(isMissingField('uniqueCode'))}>{requiredLabel('Unique Code')}</label>
-        <div style={{ position: 'relative' }}>
-
-          {isMobileDevice ? (
-            <select
-              ref={uniqueCodeInputRef}
-              style={inputWithMissing({ ...S.input, borderColor, paddingRight: 38, appearance: 'none' }, isMissingField('uniqueCode'))}
-              value={uniqueCode}
-              onChange={e => handleCodeChange(e.target.value)}
-              onBlur={handleCodeBlur}
-              autoFocus
-            >
-              <option value="">Select Unique Code</option>
-              {assignedAvailableCodes.map((code) => (
-                <option key={code} value={code}>{code}</option>
-              ))}
-            </select>
-          ) : (
-            <>
+        <div>
+          <>
+            <div style={{ position: 'relative' }}>
               <input
                 ref={uniqueCodeInputRef}
-                style={inputWithMissing({ ...S.input, borderColor, paddingRight: 38 }, isMissingField('uniqueCode'))}
-                placeholder="📷 Scan QR or enter code manually"
+                style={inputWithMissing({ ...S.input, borderColor, paddingLeft: codeStatus ? 34 : undefined, paddingRight: 38 }, isMissingField('uniqueCode'))}
+                placeholder="Scan QR or enter code manually"
                 value={uniqueCode}
                 list={qrListId}
                 onChange={e => handleCodeChange(e.target.value)}
                 onBlur={handleCodeBlur}
                 autoFocus
               />
-              <datalist id={qrListId}>
-                {assignedAvailableCodes.map((code) => (
-                  <option key={code} value={code} />
-                ))}
-              </datalist>
-              {/* Move Scan QR button below input */}
-              <div
-                style={{
-                  marginTop: 8,
-                  display: 'flex',
-                  alignItems: 'center',
-                  flexDirection: window.innerWidth <= 600 ? 'column' : 'row',
-                  gap: window.innerWidth <= 600 ? 8 : 0,
-                  width: '100%',
-                }}
-              >
+              {codeStatus && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    left: 12,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    fontSize: 16,
+                    pointerEvents: 'none',
+                    color: codeStatus === 'ok' ? '#2e7d32' : '#c0392b',
+                  }}
+                  aria-hidden="true"
+                >
+                  {codeStatus === 'ok' ? '✓' : '✕'}
+                </span>
+              )}
+              {uniqueCode ? (
                 <button
                   type="button"
+                  aria-label="Clear code"
+                  title="Clear"
+                  onClick={clearUniqueCode}
                   style={{
-                    padding: window.innerWidth <= 600 ? '12px 0' : '6px 16px',
-                    fontSize: 15,
-                    borderRadius: 8,
-                    border: '1px solid #2780e3',
-                    background: scannerActive ? '#e0f2fe' : '#fff',
-                    color: '#2780e3',
+                    position: 'absolute',
+                    right: 8,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    width: 24,
+                    height: 24,
+                    borderRadius: 999,
+                    border: 'none',
                     cursor: 'pointer',
-                    zIndex: 2,
-                    width: window.innerWidth <= 600 ? '100%' : 'auto',
-                    minWidth: window.innerWidth <= 600 ? 0 : 120,
+                    background: '#eef4fb',
+                    color: '#335b87',
+                    fontWeight: 700,
+                    lineHeight: 1,
                   }}
-                  onClick={scannerActive ? stopScanner : startScanner}
                 >
-                  {scannerActive ? 'Stop Scanner' : 'Scan QR'}
+                  ×
                 </button>
-                {scannerError && <span style={{ fontSize: 12, color: '#c0392b', marginLeft: window.innerWidth <= 600 ? 0 : 12, marginTop: window.innerWidth <= 600 ? 8 : 0 }}>{scannerError}</span>}
+              ) : null}
+            </div>
+            <datalist id={qrListId}>
+              {assignedAvailableCodes.map((code) => (
+                <option key={code} value={code} />
+              ))}
+            </datalist>
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, width: '100%' }}>
+              <QRCameraScanner onDetected={handleDetectedCode} buttonLabel="Scan QR" />
+              <div style={{ fontSize: 12, color: '#5b708b' }}>Use the camera on Android or type the code manually.</div>
+            </div>
+            {codeStatus && codeMsg && (
+              <div
+                style={{
+                  fontSize: 12,
+                  marginTop: 5,
+                  fontWeight: codeStatus !== 'ok' ? 'bold' : 'normal',
+                  color: codeStatus === 'ok' ? '#2e7d32' : codeStatus === 'duplicate' ? '#e67e22' : '#c0392b',
+                }}
+              >
+                {codeMsg}
               </div>
-            </>
-          )}
+            )}
+          </>
         </div>
-      {scannerActive && (
-        <div style={{ marginTop: 10, border: '1px solid #ffd0d6', borderRadius: 10, overflow: 'hidden' }}>
-          <video ref={videoRef} style={{ width: '100%', maxHeight: 260, objectFit: 'cover', background: '#000' }} playsInline muted />
-        </div>
-      )}
     </div>
 
       {/* Duplicate warning banner */}

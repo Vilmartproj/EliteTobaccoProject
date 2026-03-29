@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import { S as _S } from '../styles';
 import BrandLogo from './BrandLogo';
+import QRCameraScanner from './QRCameraScanner';
 import { formatDateTime } from '../utils/dateFormat';
 
 // ── Warehouse colour theme: teal → blue gradient (matching buyer dashboard) ──
@@ -267,9 +268,18 @@ export default function WarehouseDashboard({ user, onLogout }) {
                   }}
                 />
               </div>
-              <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px', opacity: loading ? 0.65 : 1 }} disabled={loading} onClick={() => submitScan()}>
-                {loading ? 'Updating...' : 'Scan QR'}
-              </button>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <QRCameraScanner
+                  buttonLabel="Camera Scan"
+                  onDetected={(value) => {
+                    setScanCode(value);
+                    submitScan(value);
+                  }}
+                />
+                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px', opacity: loading ? 0.65 : 1 }} disabled={loading} onClick={() => submitScan()}>
+                  {loading ? 'Updating...' : 'Scan QR'}
+                </button>
+              </div>
             </div>
 
             <div style={{ marginBottom: 14 }}>

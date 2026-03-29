@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from '../api';
 import { S as _S } from '../styles';
 import QRCode from './QRCode';
+import QRCameraScanner from './QRCameraScanner';
 import AdminUserReview from './AdminUserReview';
 
 
@@ -291,8 +292,8 @@ export default function AdminDashboard({ user, onLogout }) {
     }
   };
 
-  const handleTrackQRCode = async () => {
-    const code = String(qrTrackCode || '').trim();
+  const handleTrackQRCode = async (inputCode) => {
+    const code = String(inputCode ?? qrTrackCode ?? '').trim();
     if (!code) {
       setQrTrackMsg('Enter QR code to track');
       setQrTrackResult(null);
@@ -1113,6 +1114,32 @@ export default function AdminDashboard({ user, onLogout }) {
     </div>
   );
 
+  const isCompactLoginView = typeof window !== 'undefined' && window.innerWidth <= 900;
+
+  const saveBuyerEdit = async (buyer) => {
+    try {
+      await api.updateBuyer(buyer.id, { name: editBuyerForm.name, password: editBuyerForm.password });
+      setBuyerMsg('✅ Buyer updated');
+      setEditingBuyerId(null);
+      setEditBuyerForm(null);
+      setBuyers(await api.getBuyers());
+    } catch (e) {
+      setBuyerMsg(e.message);
+    }
+  };
+
+  const saveWarehouseEdit = async (employee) => {
+    try {
+      await api.updateWarehouseEmployee(employee.id, { name: editWarehouseForm.name, password: editWarehouseForm.password });
+      setBuyerMsg('✅ Warehouse employee updated');
+      setEditingWarehouseId(null);
+      setEditWarehouseForm(null);
+      setWarehouseEmployees(await api.getWarehouseEmployees());
+    } catch (e) {
+      setBuyerMsg(e.message);
+    }
+  };
+
   return (
     <div style={S.app}>
       <div style={S.topBar}>
@@ -1368,7 +1395,7 @@ export default function AdminDashboard({ user, onLogout }) {
 
             <div style={S.card}>
               <div style={S.subheading}>Add New Admin Login</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'end' }}>
                 <div><label style={S.label}>Username / Code</label><input style={S.input} placeholder="e.g. admin2" value={newAdminCode} onChange={e => setNewAdminCode(e.target.value)} /></div>
                 <div><label style={S.label}>Display Name</label><input style={S.input} placeholder="e.g. Site Admin" value={newAdminName} onChange={e => setNewAdminName(e.target.value)} /></div>
                 <div><label style={S.label}>Password</label><input style={S.input} type="password" placeholder="Enter password" value={newAdminPassword} onChange={e => setNewAdminPassword(e.target.value)} /></div>
@@ -1402,142 +1429,193 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={S.card}>
               <div style={S.subheading}>Buyer Login Users ({buyers.length})</div>
               {buyerMsg && <div style={buyerMsg.startsWith('✅') ? S.success : S.error}>{buyerMsg}</div>}
-              <table style={S.table}>
-                <thead><tr>{['Code','Name','Password','Status','QR Assigned','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {buyers.map(b => (
-                    editingBuyerId === b.id ? (
-                      <tr key={b.id} style={{ background: '#fffbea' }}>
-                        <td style={{ ...S.td, fontWeight: 800 }}>{b.code}</td>
-                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editBuyerForm?.name ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, name: e.target.value }))} /></td>
-                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editBuyerForm?.password ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, password: e.target.value }))} /></td>
-                        <td style={S.td}><span style={{ fontWeight: 800, color: Number(b.is_active ?? 1) === 1 ? '#15803d' : '#b91c1c' }}>{Number(b.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span></td>
-                        <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
-                        <td style={S.td}>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={async () => {
-                              try {
-                                await api.updateBuyer(b.id, { name: editBuyerForm.name, password: editBuyerForm.password });
-                                setBuyerMsg('✅ Buyer updated');
-                                setEditingBuyerId(null);
-                                setEditBuyerForm(null);
-                                setBuyers(await api.getBuyers());
-                              } catch (e) { setBuyerMsg(e.message); }
-                            }}>Save</button>
+              {isCompactLoginView ? (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {buyers.map((b) => (
+                    <div key={b.id} style={{ border: '1px solid #d9ebfb', borderRadius: 10, padding: 10 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                        <div style={{ fontSize: 12 }}><b>Code:</b> {b.code}</div>
+                        <div style={{ fontSize: 12 }}><b>QR Assigned:</b> {qrCodes.filter(q => q.buyer_id === b.id).length}</div>
+                        <div style={{ fontSize: 12 }}><b>Name:</b> {b.name}</div>
+                        <div style={{ fontSize: 12 }}><b>Status:</b> {Number(b.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</div>
+                      </div>
+                      <div style={{ fontSize: 12, marginBottom: 8, wordBreak: 'break-all' }}><b>Password:</b> {b.password}</div>
+
+                      {editingBuyerId === b.id ? (
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          <input style={{ ...S.input, marginBottom: 0 }} value={editBuyerForm?.name ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, name: e.target.value }))} />
+                          <input style={{ ...S.input, marginBottom: 0 }} type="password" placeholder="New password" value={editBuyerForm?.password ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, password: e.target.value }))} />
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => saveBuyerEdit(b)}>Save</button>
                             <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingBuyerId(null); setEditBuyerForm(null); }}>Cancel</button>
                           </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      <tr key={b.id}>
-                        <td style={S.td}><b>{b.code}</b></td>
-                        <td style={S.td}>{b.name}</td>
-                        <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{b.password}</td>
-                        <td style={S.td}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '3px 8px',
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 800,
-                            color: Number(b.is_active ?? 1) === 1 ? '#166534' : '#b91c1c',
-                            background: Number(b.is_active ?? 1) === 1 ? '#dcfce7' : '#fee2e2',
-                            border: Number(b.is_active ?? 1) === 1 ? '1px solid #86efac' : '1px solid #fca5a5'
-                          }}>{Number(b.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span>
-                        </td>
-                        <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
-                        <td style={S.td}>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button
-                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(b.is_active ?? 1) === 1 ? 1 : 0.55 }}
-                              onClick={() => handleSetBuyerActive(b, true)}
-                            >
-                              Active
-                            </button>
-                            <button
-                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(b.is_active ?? 1) === 0 ? 1 : 0.55 }}
-                              onClick={() => handleSetBuyerActive(b, false)}
-                            >
-                              Inactive
-                            </button>
-                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingBuyerId(b.id); setEditBuyerForm({ name: b.name, password: '' }); setBuyerMsg(''); }}>✏️ Edit</button>
-                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteBuyer(b)}>🗑 Delete</button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <button
+                            style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }}
+                            onClick={() => handleSetBuyerActive(b, Number(b.is_active ?? 1) !== 1)}
+                          >
+                            {Number(b.is_active ?? 1) === 1 ? 'Set Inactive' : 'Set Active'}
+                          </button>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingBuyerId(b.id); setEditBuyerForm({ name: b.name, password: '' }); setBuyerMsg(''); }}>Edit</button>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteBuyer(b)}>Delete</button>
+                        </div>
+                      )}
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={S.table}>
+                    <thead><tr>{['Code','Name','Password','Status','QR Assigned','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {buyers.map(b => (
+                        editingBuyerId === b.id ? (
+                          <tr key={b.id} style={{ background: '#fffbea' }}>
+                            <td style={{ ...S.td, fontWeight: 800 }}>{b.code}</td>
+                            <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editBuyerForm?.name ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, name: e.target.value }))} /></td>
+                            <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editBuyerForm?.password ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, password: e.target.value }))} /></td>
+                            <td style={S.td}><span style={{ fontWeight: 800, color: Number(b.is_active ?? 1) === 1 ? '#15803d' : '#b91c1c' }}>{Number(b.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span></td>
+                            <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
+                            <td style={S.td}>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => saveBuyerEdit(b)}>Save</button>
+                                <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingBuyerId(null); setEditBuyerForm(null); }}>Cancel</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          <tr key={b.id}>
+                            <td style={S.td}><b>{b.code}</b></td>
+                            <td style={S.td}>{b.name}</td>
+                            <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{b.password}</td>
+                            <td style={S.td}>
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '3px 8px',
+                                borderRadius: 999,
+                                fontSize: 11,
+                                fontWeight: 800,
+                                color: Number(b.is_active ?? 1) === 1 ? '#166534' : '#b91c1c',
+                                background: Number(b.is_active ?? 1) === 1 ? '#dcfce7' : '#fee2e2',
+                                border: Number(b.is_active ?? 1) === 1 ? '1px solid #86efac' : '1px solid #fca5a5'
+                              }}>{Number(b.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span>
+                            </td>
+                            <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
+                            <td style={S.td}>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                <button
+                                  style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }}
+                                  onClick={() => handleSetBuyerActive(b, Number(b.is_active ?? 1) !== 1)}
+                                >
+                                  {Number(b.is_active ?? 1) === 1 ? 'Set Inactive' : 'Set Active'}
+                                </button>
+                                <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingBuyerId(b.id); setEditBuyerForm({ name: b.name, password: '' }); setBuyerMsg(''); }}>✏️ Edit</button>
+                                <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteBuyer(b)}>🗑 Delete</button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             <div style={S.card}>
               <div style={S.subheading}>Warehouse Login Users ({warehouseEmployees.length})</div>
-              <table style={S.table}>
-                <thead><tr>{['Code','Name','Password','Status','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {warehouseEmployees.map(w => (
-                    editingWarehouseId === w.id ? (
-                      <tr key={w.id} style={{ background: '#fffbea' }}>
-                        <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
-                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editWarehouseForm?.name ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, name: e.target.value }))} /></td>
-                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editWarehouseForm?.password ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, password: e.target.value }))} /></td>
-                        <td style={S.td}><span style={{ fontWeight: 800, color: Number(w.is_active ?? 1) === 1 ? '#15803d' : '#b91c1c' }}>{Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span></td>
-                        <td style={S.td}>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={async () => {
-                              try {
-                                await api.updateWarehouseEmployee(w.id, { name: editWarehouseForm.name, password: editWarehouseForm.password });
-                                setBuyerMsg('✅ Warehouse employee updated');
-                                setEditingWarehouseId(null);
-                                setEditWarehouseForm(null);
-                                setWarehouseEmployees(await api.getWarehouseEmployees());
-                              } catch (e) { setBuyerMsg(e.message); }
-                            }}>Save</button>
+              {isCompactLoginView ? (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {warehouseEmployees.map((w) => (
+                    <div key={w.id} style={{ border: '1px solid #d9ebfb', borderRadius: 10, padding: 10 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                        <div style={{ fontSize: 12 }}><b>Code:</b> {w.code}</div>
+                        <div style={{ fontSize: 12 }}><b>Status:</b> {Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</div>
+                        <div style={{ fontSize: 12 }}><b>Name:</b> {w.name}</div>
+                      </div>
+                      <div style={{ fontSize: 12, marginBottom: 8, wordBreak: 'break-all' }}><b>Password:</b> {w.password}</div>
+
+                      {editingWarehouseId === w.id ? (
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          <input style={{ ...S.input, marginBottom: 0 }} value={editWarehouseForm?.name ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, name: e.target.value }))} />
+                          <input style={{ ...S.input, marginBottom: 0 }} type="password" placeholder="New password" value={editWarehouseForm?.password ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, password: e.target.value }))} />
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => saveWarehouseEdit(w)}>Save</button>
                             <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingWarehouseId(null); setEditWarehouseForm(null); }}>Cancel</button>
                           </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      <tr key={w.id}>
-                        <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
-                        <td style={S.td}>{w.name}</td>
-                        <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{w.password}</td>
-                        <td style={S.td}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '3px 8px',
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 800,
-                            color: Number(w.is_active ?? 1) === 1 ? '#166534' : '#b91c1c',
-                            background: Number(w.is_active ?? 1) === 1 ? '#dcfce7' : '#fee2e2',
-                            border: Number(w.is_active ?? 1) === 1 ? '1px solid #86efac' : '1px solid #fca5a5'
-                          }}>{Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span>
-                        </td>
-                        <td style={S.td}>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button
-                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(w.is_active ?? 1) === 1 ? 1 : 0.55 }}
-                              onClick={() => handleSetWarehouseActive(w, true)}
-                            >
-                              Active
-                            </button>
-                            <button
-                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(w.is_active ?? 1) === 0 ? 1 : 0.55 }}
-                              onClick={() => handleSetWarehouseActive(w, false)}
-                            >
-                              Inactive
-                            </button>
-                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingWarehouseId(w.id); setEditWarehouseForm({ name: w.name, password: '' }); setBuyerMsg(''); }}>✏️ Edit</button>
-                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteWarehouseEmployee(w)}>🗑 Delete</button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <button
+                            style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }}
+                            onClick={() => handleSetWarehouseActive(w, Number(w.is_active ?? 1) !== 1)}
+                          >
+                            {Number(w.is_active ?? 1) === 1 ? 'Set Inactive' : 'Set Active'}
+                          </button>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingWarehouseId(w.id); setEditWarehouseForm({ name: w.name, password: '' }); setBuyerMsg(''); }}>Edit</button>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteWarehouseEmployee(w)}>Delete</button>
+                        </div>
+                      )}
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={S.table}>
+                    <thead><tr>{['Code','Name','Password','Status','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {warehouseEmployees.map(w => (
+                        editingWarehouseId === w.id ? (
+                          <tr key={w.id} style={{ background: '#fffbea' }}>
+                            <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
+                            <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editWarehouseForm?.name ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, name: e.target.value }))} /></td>
+                            <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editWarehouseForm?.password ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, password: e.target.value }))} /></td>
+                            <td style={S.td}><span style={{ fontWeight: 800, color: Number(w.is_active ?? 1) === 1 ? '#15803d' : '#b91c1c' }}>{Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span></td>
+                            <td style={S.td}>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => saveWarehouseEdit(w)}>Save</button>
+                                <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingWarehouseId(null); setEditWarehouseForm(null); }}>Cancel</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          <tr key={w.id}>
+                            <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
+                            <td style={S.td}>{w.name}</td>
+                            <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{w.password}</td>
+                            <td style={S.td}>
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '3px 8px',
+                                borderRadius: 999,
+                                fontSize: 11,
+                                fontWeight: 800,
+                                color: Number(w.is_active ?? 1) === 1 ? '#166534' : '#b91c1c',
+                                background: Number(w.is_active ?? 1) === 1 ? '#dcfce7' : '#fee2e2',
+                                border: Number(w.is_active ?? 1) === 1 ? '1px solid #86efac' : '1px solid #fca5a5'
+                              }}>{Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span>
+                            </td>
+                            <td style={S.td}>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                <button
+                                  style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }}
+                                  onClick={() => handleSetWarehouseActive(w, Number(w.is_active ?? 1) !== 1)}
+                                >
+                                  {Number(w.is_active ?? 1) === 1 ? 'Set Inactive' : 'Set Active'}
+                                </button>
+                                <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingWarehouseId(w.id); setEditWarehouseForm({ name: w.name, password: '' }); setBuyerMsg(''); }}>✏️ Edit</button>
+                                <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteWarehouseEmployee(w)}>🗑 Delete</button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1548,7 +1626,7 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={S.card}>
               <div style={S.subheading}>APF Number Maintenance</div>
               {apfNumberMsg && <div style={apfNumberMsg.startsWith('✅') ? S.success : S.error}>{apfNumberMsg}</div>}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>APF Number</label>
                   <input
@@ -1563,40 +1641,46 @@ export default function AdminDashboard({ user, onLogout }) {
                   <label style={S.label}>Description (Optional)</label>
                   <input style={S.input} placeholder="Optional description" value={apfNumberDescription} onChange={e => setApfNumberDescription(e.target.value)} />
                 </div>
-                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px' }} onClick={handleSaveApfNumber}>
-                  {apfNumberEditingId ? 'Update' : 'Add'}
-                </button>
-                {apfNumberEditingId && (
-                  <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 16px' }} onClick={resetApfNumberForm}>
-                    Cancel
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  <button style={{ ...S.btnPrimary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={handleSaveApfNumber}>
+                    {apfNumberEditingId ? 'Update' : 'Add'}
                   </button>
-                )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  {apfNumberEditingId && (
+                    <button style={{ ...S.btnSecondary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={resetApfNumberForm}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
             <div style={S.card}>
               <div style={S.subheading}>All APF Numbers ({apfNumbers.length})</div>
-              <table style={S.table}>
-                <thead><tr>{['APF Number','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {sortedApfNumbers.map(a => (
-                    <tr key={a.id}>
-                      <td style={S.td}><b>{a.number}</b></td>
-                      <td style={S.td}>{a.description || '—'}</td>
-                      <td style={S.td}>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditApfNumber(a)}>
-                            ✏️ Edit
-                          </button>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteApfNumber(a)}>
-                            🗑 Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ ...S.table, minWidth: 520 }}>
+                  <thead><tr>{['APF Number','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {sortedApfNumbers.map(a => (
+                      <tr key={a.id}>
+                        <td style={S.td}><b>{a.number}</b></td>
+                        <td style={{ ...S.td, whiteSpace: 'normal' }}>{a.description || '—'}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditApfNumber(a)}>
+                              ✏️ Edit
+                            </button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteApfNumber(a)}>
+                              🗑 Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -1607,7 +1691,7 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={S.card}>
               <div style={S.subheading}>NON-FCV Location Maintenance</div>
               {purchaseLocationMsg && <div style={purchaseLocationMsg.startsWith('✅') ? S.success : S.error}>{purchaseLocationMsg}</div>}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>Location</label>
                   <input ref={purchaseLocationCodeInputRef} style={S.input} placeholder="e.g. Godown A" value={purchaseLocationCode} onChange={e => setPurchaseLocationCode(e.target.value)} />
@@ -1616,40 +1700,46 @@ export default function AdminDashboard({ user, onLogout }) {
                   <label style={S.label}>Description (Optional)</label>
                   <input style={S.input} placeholder="Optional description" value={purchaseLocationDescription} onChange={e => setPurchaseLocationDescription(e.target.value)} />
                 </div>
-                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px' }} onClick={handleSavePurchaseLocation}>
-                  {purchaseLocationEditingId ? 'Update' : 'Add'}
-                </button>
-                {purchaseLocationEditingId && (
-                  <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 16px' }} onClick={resetPurchaseLocationForm}>
-                    Cancel
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  <button style={{ ...S.btnPrimary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={handleSavePurchaseLocation}>
+                    {purchaseLocationEditingId ? 'Update' : 'Add'}
                   </button>
-                )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  {purchaseLocationEditingId && (
+                    <button style={{ ...S.btnSecondary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={resetPurchaseLocationForm}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
             <div style={S.card}>
               <div style={S.subheading}>All NON-FCV Locations ({purchaseLocations.length})</div>
-              <table style={S.table}>
-                <thead><tr>{['Location','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {sortedPurchaseLocations.map(row => (
-                    <tr key={row.id}>
-                      <td style={S.td}><b>{row.location}</b></td>
-                      <td style={S.td}>{row.description || '—'}</td>
-                      <td style={S.td}>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditPurchaseLocation(row)}>
-                            ✏️ Edit
-                          </button>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeletePurchaseLocation(row)}>
-                            🗑 Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ ...S.table, minWidth: 520 }}>
+                  <thead><tr>{['Location','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {sortedPurchaseLocations.map(row => (
+                      <tr key={row.id}>
+                        <td style={S.td}><b>{row.location}</b></td>
+                        <td style={{ ...S.td, whiteSpace: 'normal' }}>{row.description || '—'}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditPurchaseLocation(row)}>
+                              ✏️ Edit
+                            </button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeletePurchaseLocation(row)}>
+                              🗑 Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -1660,7 +1750,7 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={S.card}>
               <div style={S.subheading}>Type of Tobacco / Variety Maintenance</div>
               {tobaccoTypeMsg && <div style={tobaccoTypeMsg.startsWith('✅') ? S.success : S.error}>{tobaccoTypeMsg}</div>}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>Type / Variety</label>
                   <input ref={tobaccoTypeCodeInputRef} style={S.input} placeholder="e.g. FCV Virginia" value={tobaccoTypeCode} onChange={e => setTobaccoTypeCode(e.target.value)} />
@@ -1669,40 +1759,46 @@ export default function AdminDashboard({ user, onLogout }) {
                   <label style={S.label}>Description (Optional)</label>
                   <input style={S.input} placeholder="Optional description" value={tobaccoTypeDescription} onChange={e => setTobaccoTypeDescription(e.target.value)} />
                 </div>
-                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px' }} onClick={handleSaveTobaccoType}>
-                  {tobaccoTypeEditingId ? 'Update' : 'Add'}
-                </button>
-                {tobaccoTypeEditingId && (
-                  <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 16px' }} onClick={resetTobaccoTypeForm}>
-                    Cancel
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  <button style={{ ...S.btnPrimary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={handleSaveTobaccoType}>
+                    {tobaccoTypeEditingId ? 'Update' : 'Add'}
                   </button>
-                )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  {tobaccoTypeEditingId && (
+                    <button style={{ ...S.btnSecondary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={resetTobaccoTypeForm}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
             <div style={S.card}>
               <div style={S.subheading}>All Tobacco Types ({tobaccoTypes.length})</div>
-              <table style={S.table}>
-                <thead><tr>{['Type / Variety','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {sortedTobaccoTypes.map(row => (
-                    <tr key={row.id}>
-                      <td style={S.td}><b>{row.type}</b></td>
-                      <td style={S.td}>{row.description || '—'}</td>
-                      <td style={S.td}>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditTobaccoType(row)}>
-                            ✏️ Edit
-                          </button>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteTobaccoType(row)}>
-                            🗑 Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ ...S.table, minWidth: 520 }}>
+                  <thead><tr>{['Type / Variety','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {sortedTobaccoTypes.map(row => (
+                      <tr key={row.id}>
+                        <td style={S.td}><b>{row.type}</b></td>
+                        <td style={{ ...S.td, whiteSpace: 'normal' }}>{row.description || '—'}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditTobaccoType(row)}>
+                              ✏️ Edit
+                            </button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteTobaccoType(row)}>
+                              🗑 Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -1713,7 +1809,7 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={S.card}>
               <div style={S.subheading}>Tobacco Board Grade Maintenance</div>
               {tbGradeMsg && <div style={tbGradeMsg.startsWith('✅') ? S.success : S.error}>{tbGradeMsg}</div>}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>Grade Code</label>
                   <input ref={tbGradeCodeInputRef} style={S.input} placeholder="e.g. H1" value={tbGradeCode} onChange={e => setTbGradeCode(e.target.value.toUpperCase())} />
@@ -1722,40 +1818,46 @@ export default function AdminDashboard({ user, onLogout }) {
                   <label style={S.label}>Description</label>
                   <input style={S.input} placeholder="e.g. High Grade 1" value={tbGradeDescription} onChange={e => setTbGradeDescription(e.target.value)} />
                 </div>
-                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px' }} onClick={handleSaveTobaccoBoardGrade}>
-                  {tbGradeEditingId ? 'Update' : 'Add'}
-                </button>
-                {tbGradeEditingId && (
-                  <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 16px' }} onClick={resetTobaccoBoardGradeForm}>
-                    Cancel
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  <button style={{ ...S.btnPrimary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={handleSaveTobaccoBoardGrade}>
+                    {tbGradeEditingId ? 'Update' : 'Add'}
                   </button>
-                )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  {tbGradeEditingId && (
+                    <button style={{ ...S.btnSecondary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={resetTobaccoBoardGradeForm}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
             <div style={S.card}>
               <div style={S.subheading}>All Tobacco Board Grades ({tobaccoBoardGrades.length})</div>
-              <table style={S.table}>
-                <thead><tr>{['Grade Code','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {sortedTobaccoBoardGrades.map(g => (
-                    <tr key={g.id}>
-                      <td style={S.td}><b>{g.code}</b></td>
-                      <td style={S.td}>{g.description}</td>
-                      <td style={S.td}>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditTobaccoBoardGrade(g)}>
-                            ✏️ Edit
-                          </button>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteTobaccoBoardGrade(g)}>
-                            🗑 Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ ...S.table, minWidth: 520 }}>
+                  <thead><tr>{['Grade Code','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {sortedTobaccoBoardGrades.map(g => (
+                      <tr key={g.id}>
+                        <td style={S.td}><b>{g.code}</b></td>
+                        <td style={{ ...S.td, whiteSpace: 'normal' }}>{g.description}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditTobaccoBoardGrade(g)}>
+                              ✏️ Edit
+                            </button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteTobaccoBoardGrade(g)}>
+                              🗑 Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -1766,7 +1868,7 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={S.card}>
               <div style={S.subheading}>Buyer Grade Maintenance</div>
               {buyerGradeMsg && <div style={buyerGradeMsg.startsWith('✅') ? S.success : S.error}>{buyerGradeMsg}</div>}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>Grade Code</label>
                   <input ref={buyerGradeCodeInputRef} style={S.input} placeholder="e.g. A1" value={buyerGradeCode} onChange={e => setBuyerGradeCode(e.target.value.toUpperCase())} />
@@ -1775,40 +1877,46 @@ export default function AdminDashboard({ user, onLogout }) {
                   <label style={S.label}>Description</label>
                   <input style={S.input} placeholder="e.g. Buyer Premium A1" value={buyerGradeDescription} onChange={e => setBuyerGradeDescription(e.target.value)} />
                 </div>
-                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px' }} onClick={handleSaveBuyerGrade}>
-                  {buyerGradeEditingId ? 'Update' : 'Add'}
-                </button>
-                {buyerGradeEditingId && (
-                  <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 16px' }} onClick={resetBuyerGradeForm}>
-                    Cancel
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  <button style={{ ...S.btnPrimary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={handleSaveBuyerGrade}>
+                    {buyerGradeEditingId ? 'Update' : 'Add'}
                   </button>
-                )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  {buyerGradeEditingId && (
+                    <button style={{ ...S.btnSecondary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={resetBuyerGradeForm}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
             <div style={S.card}>
               <div style={S.subheading}>All Buyer Grades ({buyerGrades.length})</div>
-              <table style={S.table}>
-                <thead><tr>{['Grade Code','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {sortedBuyerGrades.map(g => (
-                    <tr key={g.id}>
-                      <td style={S.td}><b>{g.code}</b></td>
-                      <td style={S.td}>{g.description}</td>
-                      <td style={S.td}>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditBuyerGrade(g)}>
-                            ✏️ Edit
-                          </button>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteBuyerGrade(g)}>
-                            🗑 Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ ...S.table, minWidth: 520 }}>
+                  <thead><tr>{['Grade Code','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {sortedBuyerGrades.map(g => (
+                      <tr key={g.id}>
+                        <td style={S.td}><b>{g.code}</b></td>
+                        <td style={{ ...S.td, whiteSpace: 'normal' }}>{g.description}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditBuyerGrade(g)}>
+                              ✏️ Edit
+                            </button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteBuyerGrade(g)}>
+                              🗑 Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -1893,6 +2001,13 @@ export default function AdminDashboard({ user, onLogout }) {
                     onKeyDown={(e) => { if (e.key === 'Enter') handleTrackQRCode(); }}
                   />
                 </div>
+                <QRCameraScanner
+                  buttonLabel="Camera Scan"
+                  onDetected={(value) => {
+                    setQrTrackCode(value);
+                    handleTrackQRCode(value);
+                  }}
+                />
                 <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 18px', opacity: qrTrackLoading ? 0.6 : 1 }} onClick={handleTrackQRCode} disabled={qrTrackLoading}>
                   {qrTrackLoading ? 'Tracking...' : 'Track'}
                 </button>
