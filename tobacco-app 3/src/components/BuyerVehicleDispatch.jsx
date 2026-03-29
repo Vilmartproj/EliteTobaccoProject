@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { S as _S } from '../styles';
 import { formatDateTime } from '../utils/dateFormat';
+import QRCameraScanner from './QRCameraScanner';
 
 // Sorting logic for dispatch history
 // (moved after imports)
@@ -313,6 +314,13 @@ export default function BuyerVehicleDispatch({ buyer }) {
             value={scanCode}
             onChange={(e) => setScanCode(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && scanAndMatchQRCode()}
+          />
+          <QRCameraScanner
+            buttonLabel="Camera Scan"
+            onDetected={(value) => {
+              setScanCode(value);
+              scanAndMatchQRCode(value);
+            }}
           />
           <button
             style={{ ...S.btnPrimary, flex: 'none', padding: '6px 14px', opacity: scanLoading ? 0.65 : 1 }}

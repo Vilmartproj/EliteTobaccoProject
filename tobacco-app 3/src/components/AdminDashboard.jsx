@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from '../api';
 import { S as _S } from '../styles';
 import QRCode from './QRCode';
+import QRCameraScanner from './QRCameraScanner';
 import AdminUserReview from './AdminUserReview';
 
 
@@ -291,8 +292,8 @@ export default function AdminDashboard({ user, onLogout }) {
     }
   };
 
-  const handleTrackQRCode = async () => {
-    const code = String(qrTrackCode || '').trim();
+  const handleTrackQRCode = async (inputCode) => {
+    const code = String(inputCode ?? qrTrackCode ?? '').trim();
     if (!code) {
       setQrTrackMsg('Enter QR code to track');
       setQrTrackResult(null);
@@ -1113,6 +1114,32 @@ export default function AdminDashboard({ user, onLogout }) {
     </div>
   );
 
+  const isCompactLoginView = typeof window !== 'undefined' && window.innerWidth <= 900;
+
+  const saveBuyerEdit = async (buyer) => {
+    try {
+      await api.updateBuyer(buyer.id, { name: editBuyerForm.name, password: editBuyerForm.password });
+      setBuyerMsg('✅ Buyer updated');
+      setEditingBuyerId(null);
+      setEditBuyerForm(null);
+      setBuyers(await api.getBuyers());
+    } catch (e) {
+      setBuyerMsg(e.message);
+    }
+  };
+
+  const saveWarehouseEdit = async (employee) => {
+    try {
+      await api.updateWarehouseEmployee(employee.id, { name: editWarehouseForm.name, password: editWarehouseForm.password });
+      setBuyerMsg('✅ Warehouse employee updated');
+      setEditingWarehouseId(null);
+      setEditWarehouseForm(null);
+      setWarehouseEmployees(await api.getWarehouseEmployees());
+    } catch (e) {
+      setBuyerMsg(e.message);
+    }
+  };
+
   return (
     <div style={S.app}>
       <div style={S.topBar}>
@@ -1368,7 +1395,7 @@ export default function AdminDashboard({ user, onLogout }) {
 
             <div style={S.card}>
               <div style={S.subheading}>Add New Admin Login</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'end' }}>
                 <div><label style={S.label}>Username / Code</label><input style={S.input} placeholder="e.g. admin2" value={newAdminCode} onChange={e => setNewAdminCode(e.target.value)} /></div>
                 <div><label style={S.label}>Display Name</label><input style={S.input} placeholder="e.g. Site Admin" value={newAdminName} onChange={e => setNewAdminName(e.target.value)} /></div>
                 <div><label style={S.label}>Password</label><input style={S.input} type="password" placeholder="Enter password" value={newAdminPassword} onChange={e => setNewAdminPassword(e.target.value)} /></div>
@@ -1402,142 +1429,193 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={S.card}>
               <div style={S.subheading}>Buyer Login Users ({buyers.length})</div>
               {buyerMsg && <div style={buyerMsg.startsWith('✅') ? S.success : S.error}>{buyerMsg}</div>}
-              <table style={S.table}>
-                <thead><tr>{['Code','Name','Password','Status','QR Assigned','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {buyers.map(b => (
-                    editingBuyerId === b.id ? (
-                      <tr key={b.id} style={{ background: '#fffbea' }}>
-                        <td style={{ ...S.td, fontWeight: 800 }}>{b.code}</td>
-                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editBuyerForm?.name ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, name: e.target.value }))} /></td>
-                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editBuyerForm?.password ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, password: e.target.value }))} /></td>
-                        <td style={S.td}><span style={{ fontWeight: 800, color: Number(b.is_active ?? 1) === 1 ? '#15803d' : '#b91c1c' }}>{Number(b.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span></td>
-                        <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
-                        <td style={S.td}>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={async () => {
-                              try {
-                                await api.updateBuyer(b.id, { name: editBuyerForm.name, password: editBuyerForm.password });
-                                setBuyerMsg('✅ Buyer updated');
-                                setEditingBuyerId(null);
-                                setEditBuyerForm(null);
-                                setBuyers(await api.getBuyers());
-                              } catch (e) { setBuyerMsg(e.message); }
-                            }}>Save</button>
+              {isCompactLoginView ? (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {buyers.map((b) => (
+                    <div key={b.id} style={{ border: '1px solid #d9ebfb', borderRadius: 10, padding: 10 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                        <div style={{ fontSize: 12 }}><b>Code:</b> {b.code}</div>
+                        <div style={{ fontSize: 12 }}><b>QR Assigned:</b> {qrCodes.filter(q => q.buyer_id === b.id).length}</div>
+                        <div style={{ fontSize: 12 }}><b>Name:</b> {b.name}</div>
+                        <div style={{ fontSize: 12 }}><b>Status:</b> {Number(b.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</div>
+                      </div>
+                      <div style={{ fontSize: 12, marginBottom: 8, wordBreak: 'break-all' }}><b>Password:</b> {b.password}</div>
+
+                      {editingBuyerId === b.id ? (
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          <input style={{ ...S.input, marginBottom: 0 }} value={editBuyerForm?.name ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, name: e.target.value }))} />
+                          <input style={{ ...S.input, marginBottom: 0 }} type="password" placeholder="New password" value={editBuyerForm?.password ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, password: e.target.value }))} />
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => saveBuyerEdit(b)}>Save</button>
                             <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingBuyerId(null); setEditBuyerForm(null); }}>Cancel</button>
                           </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      <tr key={b.id}>
-                        <td style={S.td}><b>{b.code}</b></td>
-                        <td style={S.td}>{b.name}</td>
-                        <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{b.password}</td>
-                        <td style={S.td}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '3px 8px',
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 800,
-                            color: Number(b.is_active ?? 1) === 1 ? '#166534' : '#b91c1c',
-                            background: Number(b.is_active ?? 1) === 1 ? '#dcfce7' : '#fee2e2',
-                            border: Number(b.is_active ?? 1) === 1 ? '1px solid #86efac' : '1px solid #fca5a5'
-                          }}>{Number(b.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span>
-                        </td>
-                        <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
-                        <td style={S.td}>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button
-                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(b.is_active ?? 1) === 1 ? 1 : 0.55 }}
-                              onClick={() => handleSetBuyerActive(b, true)}
-                            >
-                              Active
-                            </button>
-                            <button
-                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(b.is_active ?? 1) === 0 ? 1 : 0.55 }}
-                              onClick={() => handleSetBuyerActive(b, false)}
-                            >
-                              Inactive
-                            </button>
-                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingBuyerId(b.id); setEditBuyerForm({ name: b.name, password: '' }); setBuyerMsg(''); }}>✏️ Edit</button>
-                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteBuyer(b)}>🗑 Delete</button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <button
+                            style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }}
+                            onClick={() => handleSetBuyerActive(b, Number(b.is_active ?? 1) !== 1)}
+                          >
+                            {Number(b.is_active ?? 1) === 1 ? 'Set Inactive' : 'Set Active'}
+                          </button>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingBuyerId(b.id); setEditBuyerForm({ name: b.name, password: '' }); setBuyerMsg(''); }}>Edit</button>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteBuyer(b)}>Delete</button>
+                        </div>
+                      )}
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={S.table}>
+                    <thead><tr>{['Code','Name','Password','Status','QR Assigned','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {buyers.map(b => (
+                        editingBuyerId === b.id ? (
+                          <tr key={b.id} style={{ background: '#fffbea' }}>
+                            <td style={{ ...S.td, fontWeight: 800 }}>{b.code}</td>
+                            <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editBuyerForm?.name ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, name: e.target.value }))} /></td>
+                            <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editBuyerForm?.password ?? ''} onChange={e => setEditBuyerForm(f => ({ ...f, password: e.target.value }))} /></td>
+                            <td style={S.td}><span style={{ fontWeight: 800, color: Number(b.is_active ?? 1) === 1 ? '#15803d' : '#b91c1c' }}>{Number(b.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span></td>
+                            <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
+                            <td style={S.td}>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => saveBuyerEdit(b)}>Save</button>
+                                <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingBuyerId(null); setEditBuyerForm(null); }}>Cancel</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          <tr key={b.id}>
+                            <td style={S.td}><b>{b.code}</b></td>
+                            <td style={S.td}>{b.name}</td>
+                            <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{b.password}</td>
+                            <td style={S.td}>
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '3px 8px',
+                                borderRadius: 999,
+                                fontSize: 11,
+                                fontWeight: 800,
+                                color: Number(b.is_active ?? 1) === 1 ? '#166534' : '#b91c1c',
+                                background: Number(b.is_active ?? 1) === 1 ? '#dcfce7' : '#fee2e2',
+                                border: Number(b.is_active ?? 1) === 1 ? '1px solid #86efac' : '1px solid #fca5a5'
+                              }}>{Number(b.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span>
+                            </td>
+                            <td style={S.td}>{qrCodes.filter(q => q.buyer_id === b.id).length}</td>
+                            <td style={S.td}>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                <button
+                                  style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }}
+                                  onClick={() => handleSetBuyerActive(b, Number(b.is_active ?? 1) !== 1)}
+                                >
+                                  {Number(b.is_active ?? 1) === 1 ? 'Set Inactive' : 'Set Active'}
+                                </button>
+                                <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingBuyerId(b.id); setEditBuyerForm({ name: b.name, password: '' }); setBuyerMsg(''); }}>✏️ Edit</button>
+                                <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteBuyer(b)}>🗑 Delete</button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             <div style={S.card}>
               <div style={S.subheading}>Warehouse Login Users ({warehouseEmployees.length})</div>
-              <table style={S.table}>
-                <thead><tr>{['Code','Name','Password','Status','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {warehouseEmployees.map(w => (
-                    editingWarehouseId === w.id ? (
-                      <tr key={w.id} style={{ background: '#fffbea' }}>
-                        <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
-                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editWarehouseForm?.name ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, name: e.target.value }))} /></td>
-                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editWarehouseForm?.password ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, password: e.target.value }))} /></td>
-                        <td style={S.td}><span style={{ fontWeight: 800, color: Number(w.is_active ?? 1) === 1 ? '#15803d' : '#b91c1c' }}>{Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span></td>
-                        <td style={S.td}>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={async () => {
-                              try {
-                                await api.updateWarehouseEmployee(w.id, { name: editWarehouseForm.name, password: editWarehouseForm.password });
-                                setBuyerMsg('✅ Warehouse employee updated');
-                                setEditingWarehouseId(null);
-                                setEditWarehouseForm(null);
-                                setWarehouseEmployees(await api.getWarehouseEmployees());
-                              } catch (e) { setBuyerMsg(e.message); }
-                            }}>Save</button>
+              {isCompactLoginView ? (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {warehouseEmployees.map((w) => (
+                    <div key={w.id} style={{ border: '1px solid #d9ebfb', borderRadius: 10, padding: 10 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                        <div style={{ fontSize: 12 }}><b>Code:</b> {w.code}</div>
+                        <div style={{ fontSize: 12 }}><b>Status:</b> {Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</div>
+                        <div style={{ fontSize: 12 }}><b>Name:</b> {w.name}</div>
+                      </div>
+                      <div style={{ fontSize: 12, marginBottom: 8, wordBreak: 'break-all' }}><b>Password:</b> {w.password}</div>
+
+                      {editingWarehouseId === w.id ? (
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          <input style={{ ...S.input, marginBottom: 0 }} value={editWarehouseForm?.name ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, name: e.target.value }))} />
+                          <input style={{ ...S.input, marginBottom: 0 }} type="password" placeholder="New password" value={editWarehouseForm?.password ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, password: e.target.value }))} />
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => saveWarehouseEdit(w)}>Save</button>
                             <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingWarehouseId(null); setEditWarehouseForm(null); }}>Cancel</button>
                           </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      <tr key={w.id}>
-                        <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
-                        <td style={S.td}>{w.name}</td>
-                        <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{w.password}</td>
-                        <td style={S.td}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '3px 8px',
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 800,
-                            color: Number(w.is_active ?? 1) === 1 ? '#166534' : '#b91c1c',
-                            background: Number(w.is_active ?? 1) === 1 ? '#dcfce7' : '#fee2e2',
-                            border: Number(w.is_active ?? 1) === 1 ? '1px solid #86efac' : '1px solid #fca5a5'
-                          }}>{Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span>
-                        </td>
-                        <td style={S.td}>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button
-                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(w.is_active ?? 1) === 1 ? 1 : 0.55 }}
-                              onClick={() => handleSetWarehouseActive(w, true)}
-                            >
-                              Active
-                            </button>
-                            <button
-                              style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, opacity: Number(w.is_active ?? 1) === 0 ? 1 : 0.55 }}
-                              onClick={() => handleSetWarehouseActive(w, false)}
-                            >
-                              Inactive
-                            </button>
-                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingWarehouseId(w.id); setEditWarehouseForm({ name: w.name, password: '' }); setBuyerMsg(''); }}>✏️ Edit</button>
-                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteWarehouseEmployee(w)}>🗑 Delete</button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <button
+                            style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }}
+                            onClick={() => handleSetWarehouseActive(w, Number(w.is_active ?? 1) !== 1)}
+                          >
+                            {Number(w.is_active ?? 1) === 1 ? 'Set Inactive' : 'Set Active'}
+                          </button>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingWarehouseId(w.id); setEditWarehouseForm({ name: w.name, password: '' }); setBuyerMsg(''); }}>Edit</button>
+                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteWarehouseEmployee(w)}>Delete</button>
+                        </div>
+                      )}
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={S.table}>
+                    <thead><tr>{['Code','Name','Password','Status','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {warehouseEmployees.map(w => (
+                        editingWarehouseId === w.id ? (
+                          <tr key={w.id} style={{ background: '#fffbea' }}>
+                            <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
+                            <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editWarehouseForm?.name ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, name: e.target.value }))} /></td>
+                            <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editWarehouseForm?.password ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, password: e.target.value }))} /></td>
+                            <td style={S.td}><span style={{ fontWeight: 800, color: Number(w.is_active ?? 1) === 1 ? '#15803d' : '#b91c1c' }}>{Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span></td>
+                            <td style={S.td}>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => saveWarehouseEdit(w)}>Save</button>
+                                <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingWarehouseId(null); setEditWarehouseForm(null); }}>Cancel</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          <tr key={w.id}>
+                            <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
+                            <td style={S.td}>{w.name}</td>
+                            <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{w.password}</td>
+                            <td style={S.td}>
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '3px 8px',
+                                borderRadius: 999,
+                                fontSize: 11,
+                                fontWeight: 800,
+                                color: Number(w.is_active ?? 1) === 1 ? '#166534' : '#b91c1c',
+                                background: Number(w.is_active ?? 1) === 1 ? '#dcfce7' : '#fee2e2',
+                                border: Number(w.is_active ?? 1) === 1 ? '1px solid #86efac' : '1px solid #fca5a5'
+                              }}>{Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span>
+                            </td>
+                            <td style={S.td}>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                <button
+                                  style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }}
+                                  onClick={() => handleSetWarehouseActive(w, Number(w.is_active ?? 1) !== 1)}
+                                >
+                                  {Number(w.is_active ?? 1) === 1 ? 'Set Inactive' : 'Set Active'}
+                                </button>
+                                <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingWarehouseId(w.id); setEditWarehouseForm({ name: w.name, password: '' }); setBuyerMsg(''); }}>✏️ Edit</button>
+                                <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => handleDeleteWarehouseEmployee(w)}>🗑 Delete</button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1893,6 +1971,13 @@ export default function AdminDashboard({ user, onLogout }) {
                     onKeyDown={(e) => { if (e.key === 'Enter') handleTrackQRCode(); }}
                   />
                 </div>
+                <QRCameraScanner
+                  buttonLabel="Camera Scan"
+                  onDetected={(value) => {
+                    setQrTrackCode(value);
+                    handleTrackQRCode(value);
+                  }}
+                />
                 <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 18px', opacity: qrTrackLoading ? 0.6 : 1 }} onClick={handleTrackQRCode} disabled={qrTrackLoading}>
                   {qrTrackLoading ? 'Tracking...' : 'Track'}
                 </button>

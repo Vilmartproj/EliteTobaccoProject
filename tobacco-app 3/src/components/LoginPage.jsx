@@ -31,7 +31,7 @@ export default function LoginPage({ onLogin, onShowRegister }) {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg,#fff5f5 0%,#ffe8e8 100%)' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg,#fff5f5 0%,#ffe8e8 100%)', padding: 12 }}>
       <div style={{ background: '#fff', borderRadius: 16, padding: '40px 36px', boxShadow: '0 8px 40px rgba(192,57,43,0.12)', width: 380, maxWidth: '95vw', border: '1px solid #f5d5d0' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <BrandLogo

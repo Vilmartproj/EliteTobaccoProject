@@ -14,9 +14,11 @@
     "start:qa": "cross-env NODE_ENV=production APP_ENV=qa node server/start.js",
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
-    "android:build": "npm run build:mobile && npm run cap:sync"
+    "android:build": "npm run build:mobile && npm run cap:sync",
+    "android:debug": "powershell -ExecutionPolicy Bypass -File ./scripts/android-debug.ps1"
   },
   "dependencies": {
+    "@capacitor-mlkit/barcode-scanning": "^8.0.1",
     "@capacitor/android": "^8.2.0",
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
