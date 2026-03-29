@@ -1626,7 +1626,7 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={S.card}>
               <div style={S.subheading}>APF Number Maintenance</div>
               {apfNumberMsg && <div style={apfNumberMsg.startsWith('✅') ? S.success : S.error}>{apfNumberMsg}</div>}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>APF Number</label>
                   <input
@@ -1641,40 +1641,46 @@ export default function AdminDashboard({ user, onLogout }) {
                   <label style={S.label}>Description (Optional)</label>
                   <input style={S.input} placeholder="Optional description" value={apfNumberDescription} onChange={e => setApfNumberDescription(e.target.value)} />
                 </div>
-                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px' }} onClick={handleSaveApfNumber}>
-                  {apfNumberEditingId ? 'Update' : 'Add'}
-                </button>
-                {apfNumberEditingId && (
-                  <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 16px' }} onClick={resetApfNumberForm}>
-                    Cancel
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  <button style={{ ...S.btnPrimary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={handleSaveApfNumber}>
+                    {apfNumberEditingId ? 'Update' : 'Add'}
                   </button>
-                )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  {apfNumberEditingId && (
+                    <button style={{ ...S.btnSecondary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={resetApfNumberForm}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
             <div style={S.card}>
               <div style={S.subheading}>All APF Numbers ({apfNumbers.length})</div>
-              <table style={S.table}>
-                <thead><tr>{['APF Number','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {sortedApfNumbers.map(a => (
-                    <tr key={a.id}>
-                      <td style={S.td}><b>{a.number}</b></td>
-                      <td style={S.td}>{a.description || '—'}</td>
-                      <td style={S.td}>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditApfNumber(a)}>
-                            ✏️ Edit
-                          </button>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteApfNumber(a)}>
-                            🗑 Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ ...S.table, minWidth: 520 }}>
+                  <thead><tr>{['APF Number','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {sortedApfNumbers.map(a => (
+                      <tr key={a.id}>
+                        <td style={S.td}><b>{a.number}</b></td>
+                        <td style={{ ...S.td, whiteSpace: 'normal' }}>{a.description || '—'}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditApfNumber(a)}>
+                              ✏️ Edit
+                            </button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteApfNumber(a)}>
+                              🗑 Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -1685,7 +1691,7 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={S.card}>
               <div style={S.subheading}>NON-FCV Location Maintenance</div>
               {purchaseLocationMsg && <div style={purchaseLocationMsg.startsWith('✅') ? S.success : S.error}>{purchaseLocationMsg}</div>}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>Location</label>
                   <input ref={purchaseLocationCodeInputRef} style={S.input} placeholder="e.g. Godown A" value={purchaseLocationCode} onChange={e => setPurchaseLocationCode(e.target.value)} />
@@ -1694,40 +1700,46 @@ export default function AdminDashboard({ user, onLogout }) {
                   <label style={S.label}>Description (Optional)</label>
                   <input style={S.input} placeholder="Optional description" value={purchaseLocationDescription} onChange={e => setPurchaseLocationDescription(e.target.value)} />
                 </div>
-                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px' }} onClick={handleSavePurchaseLocation}>
-                  {purchaseLocationEditingId ? 'Update' : 'Add'}
-                </button>
-                {purchaseLocationEditingId && (
-                  <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 16px' }} onClick={resetPurchaseLocationForm}>
-                    Cancel
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  <button style={{ ...S.btnPrimary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={handleSavePurchaseLocation}>
+                    {purchaseLocationEditingId ? 'Update' : 'Add'}
                   </button>
-                )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  {purchaseLocationEditingId && (
+                    <button style={{ ...S.btnSecondary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={resetPurchaseLocationForm}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
             <div style={S.card}>
               <div style={S.subheading}>All NON-FCV Locations ({purchaseLocations.length})</div>
-              <table style={S.table}>
-                <thead><tr>{['Location','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {sortedPurchaseLocations.map(row => (
-                    <tr key={row.id}>
-                      <td style={S.td}><b>{row.location}</b></td>
-                      <td style={S.td}>{row.description || '—'}</td>
-                      <td style={S.td}>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditPurchaseLocation(row)}>
-                            ✏️ Edit
-                          </button>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeletePurchaseLocation(row)}>
-                            🗑 Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ ...S.table, minWidth: 520 }}>
+                  <thead><tr>{['Location','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {sortedPurchaseLocations.map(row => (
+                      <tr key={row.id}>
+                        <td style={S.td}><b>{row.location}</b></td>
+                        <td style={{ ...S.td, whiteSpace: 'normal' }}>{row.description || '—'}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditPurchaseLocation(row)}>
+                              ✏️ Edit
+                            </button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeletePurchaseLocation(row)}>
+                              🗑 Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -1738,7 +1750,7 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={S.card}>
               <div style={S.subheading}>Type of Tobacco / Variety Maintenance</div>
               {tobaccoTypeMsg && <div style={tobaccoTypeMsg.startsWith('✅') ? S.success : S.error}>{tobaccoTypeMsg}</div>}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>Type / Variety</label>
                   <input ref={tobaccoTypeCodeInputRef} style={S.input} placeholder="e.g. FCV Virginia" value={tobaccoTypeCode} onChange={e => setTobaccoTypeCode(e.target.value)} />
@@ -1747,40 +1759,46 @@ export default function AdminDashboard({ user, onLogout }) {
                   <label style={S.label}>Description (Optional)</label>
                   <input style={S.input} placeholder="Optional description" value={tobaccoTypeDescription} onChange={e => setTobaccoTypeDescription(e.target.value)} />
                 </div>
-                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px' }} onClick={handleSaveTobaccoType}>
-                  {tobaccoTypeEditingId ? 'Update' : 'Add'}
-                </button>
-                {tobaccoTypeEditingId && (
-                  <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 16px' }} onClick={resetTobaccoTypeForm}>
-                    Cancel
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  <button style={{ ...S.btnPrimary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={handleSaveTobaccoType}>
+                    {tobaccoTypeEditingId ? 'Update' : 'Add'}
                   </button>
-                )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  {tobaccoTypeEditingId && (
+                    <button style={{ ...S.btnSecondary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={resetTobaccoTypeForm}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
             <div style={S.card}>
               <div style={S.subheading}>All Tobacco Types ({tobaccoTypes.length})</div>
-              <table style={S.table}>
-                <thead><tr>{['Type / Variety','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {sortedTobaccoTypes.map(row => (
-                    <tr key={row.id}>
-                      <td style={S.td}><b>{row.type}</b></td>
-                      <td style={S.td}>{row.description || '—'}</td>
-                      <td style={S.td}>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditTobaccoType(row)}>
-                            ✏️ Edit
-                          </button>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteTobaccoType(row)}>
-                            🗑 Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ ...S.table, minWidth: 520 }}>
+                  <thead><tr>{['Type / Variety','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {sortedTobaccoTypes.map(row => (
+                      <tr key={row.id}>
+                        <td style={S.td}><b>{row.type}</b></td>
+                        <td style={{ ...S.td, whiteSpace: 'normal' }}>{row.description || '—'}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditTobaccoType(row)}>
+                              ✏️ Edit
+                            </button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteTobaccoType(row)}>
+                              🗑 Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -1791,7 +1809,7 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={S.card}>
               <div style={S.subheading}>Tobacco Board Grade Maintenance</div>
               {tbGradeMsg && <div style={tbGradeMsg.startsWith('✅') ? S.success : S.error}>{tbGradeMsg}</div>}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>Grade Code</label>
                   <input ref={tbGradeCodeInputRef} style={S.input} placeholder="e.g. H1" value={tbGradeCode} onChange={e => setTbGradeCode(e.target.value.toUpperCase())} />
@@ -1800,40 +1818,46 @@ export default function AdminDashboard({ user, onLogout }) {
                   <label style={S.label}>Description</label>
                   <input style={S.input} placeholder="e.g. High Grade 1" value={tbGradeDescription} onChange={e => setTbGradeDescription(e.target.value)} />
                 </div>
-                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px' }} onClick={handleSaveTobaccoBoardGrade}>
-                  {tbGradeEditingId ? 'Update' : 'Add'}
-                </button>
-                {tbGradeEditingId && (
-                  <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 16px' }} onClick={resetTobaccoBoardGradeForm}>
-                    Cancel
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  <button style={{ ...S.btnPrimary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={handleSaveTobaccoBoardGrade}>
+                    {tbGradeEditingId ? 'Update' : 'Add'}
                   </button>
-                )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  {tbGradeEditingId && (
+                    <button style={{ ...S.btnSecondary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={resetTobaccoBoardGradeForm}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
             <div style={S.card}>
               <div style={S.subheading}>All Tobacco Board Grades ({tobaccoBoardGrades.length})</div>
-              <table style={S.table}>
-                <thead><tr>{['Grade Code','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {sortedTobaccoBoardGrades.map(g => (
-                    <tr key={g.id}>
-                      <td style={S.td}><b>{g.code}</b></td>
-                      <td style={S.td}>{g.description}</td>
-                      <td style={S.td}>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditTobaccoBoardGrade(g)}>
-                            ✏️ Edit
-                          </button>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteTobaccoBoardGrade(g)}>
-                            🗑 Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ ...S.table, minWidth: 520 }}>
+                  <thead><tr>{['Grade Code','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {sortedTobaccoBoardGrades.map(g => (
+                      <tr key={g.id}>
+                        <td style={S.td}><b>{g.code}</b></td>
+                        <td style={{ ...S.td, whiteSpace: 'normal' }}>{g.description}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditTobaccoBoardGrade(g)}>
+                              ✏️ Edit
+                            </button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteTobaccoBoardGrade(g)}>
+                              🗑 Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -1844,7 +1868,7 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={S.card}>
               <div style={S.subheading}>Buyer Grade Maintenance</div>
               {buyerGradeMsg && <div style={buyerGradeMsg.startsWith('✅') ? S.success : S.error}>{buyerGradeMsg}</div>}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: 12, alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
                 <div>
                   <label style={S.label}>Grade Code</label>
                   <input ref={buyerGradeCodeInputRef} style={S.input} placeholder="e.g. A1" value={buyerGradeCode} onChange={e => setBuyerGradeCode(e.target.value.toUpperCase())} />
@@ -1853,40 +1877,46 @@ export default function AdminDashboard({ user, onLogout }) {
                   <label style={S.label}>Description</label>
                   <input style={S.input} placeholder="e.g. Buyer Premium A1" value={buyerGradeDescription} onChange={e => setBuyerGradeDescription(e.target.value)} />
                 </div>
-                <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 16px' }} onClick={handleSaveBuyerGrade}>
-                  {buyerGradeEditingId ? 'Update' : 'Add'}
-                </button>
-                {buyerGradeEditingId && (
-                  <button style={{ ...S.btnSecondary, flex: 'none', padding: '10px 16px' }} onClick={resetBuyerGradeForm}>
-                    Cancel
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  <button style={{ ...S.btnPrimary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={handleSaveBuyerGrade}>
+                    {buyerGradeEditingId ? 'Update' : 'Add'}
                   </button>
-                )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  {buyerGradeEditingId && (
+                    <button style={{ ...S.btnSecondary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={resetBuyerGradeForm}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
             <div style={S.card}>
               <div style={S.subheading}>All Buyer Grades ({buyerGrades.length})</div>
-              <table style={S.table}>
-                <thead><tr>{['Grade Code','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {sortedBuyerGrades.map(g => (
-                    <tr key={g.id}>
-                      <td style={S.td}><b>{g.code}</b></td>
-                      <td style={S.td}>{g.description}</td>
-                      <td style={S.td}>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditBuyerGrade(g)}>
-                            ✏️ Edit
-                          </button>
-                          <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteBuyerGrade(g)}>
-                            🗑 Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ ...S.table, minWidth: 520 }}>
+                  <thead><tr>{['Grade Code','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {sortedBuyerGrades.map(g => (
+                      <tr key={g.id}>
+                        <td style={S.td}><b>{g.code}</b></td>
+                        <td style={{ ...S.td, whiteSpace: 'normal' }}>{g.description}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditBuyerGrade(g)}>
+                              ✏️ Edit
+                            </button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteBuyerGrade(g)}>
+                              🗑 Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
