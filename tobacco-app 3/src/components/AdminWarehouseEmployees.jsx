@@ -69,33 +69,35 @@ export default function AdminWarehouseEmployees() {
         {rows.length === 0 ? (
           <div style={{ color: '#777' }}>No warehouse employees configured.</div>
         ) : (
-          <table style={S.table}>
-            <thead>
-              <tr>
-                <th style={S.th}>Code</th>
-                <th style={S.th}>Name</th>
-                <th style={S.th}>Created</th>
-                <th style={S.th}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td style={{ ...S.td, fontWeight: 700 }}>{row.code}</td>
-                  <td style={S.td}>{row.name}</td>
-                  <td style={S.td}>{formatDateTime(row.created_at)}</td>
-                  <td style={S.td}>
-                    <button
-                      style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }}
-                      onClick={() => deleteEmployee(row)}
-                    >
-                      Delete
-                    </button>
-                  </td>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={S.table}>
+              <thead>
+                <tr>
+                  <th style={S.th}>Code</th>
+                  <th style={S.th}>Name</th>
+                  <th style={S.th}>Created</th>
+                  <th style={S.th}>Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <td style={{ ...S.td, fontWeight: 700 }}>{row.code}</td>
+                    <td style={S.td}>{row.name}</td>
+                    <td style={S.td}>{formatDateTime(row.created_at)}</td>
+                    <td style={S.td}>
+                      <button
+                        style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }}
+                        onClick={() => deleteEmployee(row)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

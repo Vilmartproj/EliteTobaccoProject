@@ -1315,24 +1315,26 @@ export default function AdminDashboard({ user, onLogout }) {
             </div>
             <div style={S.card}>
               <div style={S.subheading}>Buyer Summary</div>
-              <table style={S.table}>
-                <thead><tr>{['Code','Name','QR Assigned','QR Used','Bales'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {buyers.map(b => {
-                    const bqr   = qrCodes.filter(q => q.buyer_id === b.id);
-                    const bbags = bags.filter(bg => bg.buyer_id === b.id);
-                    return (
-                      <tr key={b.id}>
-                        <td style={S.td}><b>{b.code}</b></td>
-                        <td style={S.td}>{b.name}</td>
-                        <td style={S.td}>{bqr.length}</td>
-                        <td style={S.td}>{bqr.filter(q => q.used).length}</td>
-                        <td style={S.td}><span style={S.badge('green')}>{bbags.length}</span></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={S.table}>
+                  <thead><tr>{['Code','Name','QR Assigned','QR Used','Bales'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {buyers.map(b => {
+                      const bqr   = qrCodes.filter(q => q.buyer_id === b.id);
+                      const bbags = bags.filter(bg => bg.buyer_id === b.id);
+                      return (
+                        <tr key={b.id}>
+                          <td style={S.td}><b>{b.code}</b></td>
+                          <td style={S.td}>{b.name}</td>
+                          <td style={S.td}>{bqr.length}</td>
+                          <td style={S.td}>{bqr.filter(q => q.used).length}</td>
+                          <td style={S.td}><span style={S.badge('green')}>{bbags.length}</span></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -1344,53 +1346,55 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={S.card}>
               <div style={S.subheading}>Admin Login Accounts ({adminLogins.length})</div>
               {adminLoginMsg && <div style={adminLoginMsg.startsWith('✅') ? S.success : S.error}>{adminLoginMsg}</div>}
-              <table style={S.table}>
-                <thead><tr>{['Code / Username','Name','Password','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {adminLogins.map(al => (
-                    editingAdminLoginId === al.id ? (
-                      <tr key={al.id} style={{ background: '#fffbea' }}>
-                        <td style={{ ...S.td, fontWeight: 800 }}>{al.code}</td>
-                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editAdminLoginForm?.name ?? ''} onChange={e => setEditAdminLoginForm(f => ({ ...f, name: e.target.value }))} /></td>
-                        <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editAdminLoginForm?.password ?? ''} onChange={e => setEditAdminLoginForm(f => ({ ...f, password: e.target.value }))} /></td>
-                        <td style={S.td}>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={async () => {
-                              try {
-                                await api.updateAdminLogin(al.id, { name: editAdminLoginForm.name, password: editAdminLoginForm.password });
-                                setAdminLoginMsg('✅ Admin login updated');
-                                setEditingAdminLoginId(null);
-                                setEditAdminLoginForm(null);
-                                setAdminLogins(await api.getAdminLogins());
-                              } catch (e) { setAdminLoginMsg(e.message); }
-                            }}>Save</button>
-                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingAdminLoginId(null); setEditAdminLoginForm(null); }}>Cancel</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      <tr key={al.id}>
-                        <td style={{ ...S.td, fontWeight: 800 }}>{al.code}</td>
-                        <td style={S.td}>{al.name}</td>
-                        <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{al.password}</td>
-                        <td style={S.td}>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingAdminLoginId(al.id); setEditAdminLoginForm({ name: al.name, password: '' }); setAdminLoginMsg(''); }}>✏️ Edit</button>
-                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={async () => {
-                              if (!window.confirm(`Delete admin "${al.code}"? This cannot be undone.`)) return;
-                              try {
-                                await api.deleteAdminLogin(al.id);
-                                setAdminLoginMsg(`✅ Admin "${al.code}" deleted`);
-                                setAdminLogins(await api.getAdminLogins());
-                              } catch (e) { setAdminLoginMsg(e.message); }
-                            }}>🗑 Delete</button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={S.table}>
+                  <thead><tr>{['Code / Username','Name','Password','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {adminLogins.map(al => (
+                      editingAdminLoginId === al.id ? (
+                        <tr key={al.id} style={{ background: '#fffbea' }}>
+                          <td style={{ ...S.td, fontWeight: 800 }}>{al.code}</td>
+                          <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editAdminLoginForm?.name ?? ''} onChange={e => setEditAdminLoginForm(f => ({ ...f, name: e.target.value }))} /></td>
+                          <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editAdminLoginForm?.password ?? ''} onChange={e => setEditAdminLoginForm(f => ({ ...f, password: e.target.value }))} /></td>
+                          <td style={S.td}>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button style={{ ...S.btnPrimary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={async () => {
+                                try {
+                                  await api.updateAdminLogin(al.id, { name: editAdminLoginForm.name, password: editAdminLoginForm.password });
+                                  setAdminLoginMsg('✅ Admin login updated');
+                                  setEditingAdminLoginId(null);
+                                  setEditAdminLoginForm(null);
+                                  setAdminLogins(await api.getAdminLogins());
+                                } catch (e) { setAdminLoginMsg(e.message); }
+                              }}>Save</button>
+                              <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 12px', fontSize: 12 }} onClick={() => { setEditingAdminLoginId(null); setEditAdminLoginForm(null); }}>Cancel</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        <tr key={al.id}>
+                          <td style={{ ...S.td, fontWeight: 800 }}>{al.code}</td>
+                          <td style={S.td}>{al.name}</td>
+                          <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{al.password}</td>
+                          <td style={S.td}>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => { setEditingAdminLoginId(al.id); setEditAdminLoginForm({ name: al.name, password: '' }); setAdminLoginMsg(''); }}>✏️ Edit</button>
+                              <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12, color: '#b91c1c' }} onClick={async () => {
+                                if (!window.confirm(`Delete admin "${al.code}"? This cannot be undone.`)) return;
+                                try {
+                                  await api.deleteAdminLogin(al.id);
+                                  setAdminLoginMsg(`✅ Admin "${al.code}" deleted`);
+                                  setAdminLogins(await api.getAdminLogins());
+                                } catch (e) { setAdminLoginMsg(e.message); }
+                              }}>🗑 Delete</button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div style={S.card}>
