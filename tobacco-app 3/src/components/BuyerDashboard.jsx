@@ -997,7 +997,7 @@ const S = {
                       ...S.input,
                       minWidth: 220,
                       marginBottom: 0,
-                      paddingRight: 36,
+                      paddingLeft: 36,
                       borderColor: dispatchScanStatus === 'ok' ? '#2e7d32' : dispatchScanStatus === 'error' ? '#c0392b' : undefined,
                     }}
                     placeholder="Scan QR code or type code manually"
@@ -1025,7 +1025,7 @@ const S = {
                     <span
                       style={{
                         position: 'absolute',
-                        right: 12,
+                        left: 12,
                         top: '50%',
                         transform: 'translateY(-50%)',
                         fontSize: 16,

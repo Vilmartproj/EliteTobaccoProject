@@ -498,58 +498,61 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
       {/* Unique Code */}
       <div style={S.row}>
         <label style={labelWithMissing(isMissingField('uniqueCode'))}>{requiredLabel('Unique Code')}</label>
-        <div style={{ position: 'relative' }}>
+        <div>
           <>
-            <input
-              ref={uniqueCodeInputRef}
-              style={inputWithMissing({ ...S.input, borderColor, paddingRight: 38 }, isMissingField('uniqueCode'))}
-              placeholder="Scan QR or enter code manually"
-              value={uniqueCode}
-              list={qrListId}
-              onChange={e => handleCodeChange(e.target.value)}
-              onBlur={handleCodeBlur}
-              autoFocus
-            />
-            {uniqueCode ? (
-              <button
-                type="button"
-                aria-label="Clear code"
-                title="Clear"
-                onClick={clearUniqueCode}
-                style={{
-                  position: 'absolute',
-                  right: 8,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: 24,
-                  height: 24,
-                  borderRadius: 999,
-                  border: 'none',
-                  cursor: 'pointer',
-                  background: '#eef4fb',
-                  color: '#335b87',
-                  fontWeight: 700,
-                  lineHeight: 1,
-                }}
-              >
-                ×
-              </button>
-            ) : codeStatus ? (
-              <span
-                style={{
-                  position: 'absolute',
-                  right: 12,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  fontSize: 16,
-                  pointerEvents: 'none',
-                  color: codeStatus === 'ok' ? '#2e7d32' : '#c0392b',
-                }}
-                aria-hidden="true"
-              >
-                {codeStatus === 'ok' ? '✓' : '✕'}
-              </span>
-            ) : null}
+            <div style={{ position: 'relative' }}>
+              <input
+                ref={uniqueCodeInputRef}
+                style={inputWithMissing({ ...S.input, borderColor, paddingLeft: codeStatus ? 34 : undefined, paddingRight: 38 }, isMissingField('uniqueCode'))}
+                placeholder="Scan QR or enter code manually"
+                value={uniqueCode}
+                list={qrListId}
+                onChange={e => handleCodeChange(e.target.value)}
+                onBlur={handleCodeBlur}
+                autoFocus
+              />
+              {codeStatus && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    left: 12,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    fontSize: 16,
+                    pointerEvents: 'none',
+                    color: codeStatus === 'ok' ? '#2e7d32' : '#c0392b',
+                  }}
+                  aria-hidden="true"
+                >
+                  {codeStatus === 'ok' ? '✓' : '✕'}
+                </span>
+              )}
+              {uniqueCode ? (
+                <button
+                  type="button"
+                  aria-label="Clear code"
+                  title="Clear"
+                  onClick={clearUniqueCode}
+                  style={{
+                    position: 'absolute',
+                    right: 8,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    width: 24,
+                    height: 24,
+                    borderRadius: 999,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: '#eef4fb',
+                    color: '#335b87',
+                    fontWeight: 700,
+                    lineHeight: 1,
+                  }}
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
             <datalist id={qrListId}>
               {assignedAvailableCodes.map((code) => (
                 <option key={code} value={code} />
