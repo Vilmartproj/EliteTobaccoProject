@@ -94,53 +94,55 @@ const AdminUserReview = forwardRef(function AdminUserReview(props, ref) {
   return (
     <div>
       <h2 style={{ color: '#2780e3', fontFamily: 'Roboto', fontWeight: 900, fontSize: 22, marginBottom: 18 }}>Pending User Registrations</h2>
-      <table style={S.table}>
-        <thead>
-          <tr>
-            <th style={S.th}>ID</th>
-            <th style={S.th}>Username</th>
-            <th style={S.th}>Name</th>
-            <th style={S.th}>Email</th>
-            <th style={S.th}>Phone</th>
-            <th style={S.th}>Address</th>
-            <th style={S.th}>Role</th>
-            <th style={S.th}>Status</th>
-            <th style={S.th}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {requests.map((req) => (
-            <tr key={req.id} style={req.status === 'pending' ? S.pendingRow : S.reviewedRow}>
-              <td style={S.td}>{req.id}</td>
-              <td style={S.td}>{req.username}</td>
-              <td style={S.td}>{req.name}</td>
-              <td style={S.td}>{req.email}</td>
-              <td style={S.td}>{req.phone}</td>
-              <td style={S.td}>{req.address || ''}</td>
-              <td style={S.td}>{req.role}</td>
-              <td style={S.td}>{req.status}</td>
-              <td style={S.td}>
-                {req.status === 'pending' ? (
-                  <>
-                    <button
-                      disabled={actionLoading}
-                      onClick={() => handleAction(req.id, 'approve')}
-                      style={{ background: '#2780e3', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 14px', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginRight: 6 }}
-                    >Approve</button>
-                    <button
-                      disabled={actionLoading}
-                      onClick={() => handleAction(req.id, 'deny')}
-                      style={{ background: '#d32f2f', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 14px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
-                    >Deny</button>
-                  </>
-                ) : (
-                  <span>{req.status}</span>
-                )}
-              </td>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={S.table}>
+          <thead>
+            <tr>
+              <th style={S.th}>ID</th>
+              <th style={S.th}>Username</th>
+              <th style={S.th}>Name</th>
+              <th style={S.th}>Email</th>
+              <th style={S.th}>Phone</th>
+              <th style={S.th}>Address</th>
+              <th style={S.th}>Role</th>
+              <th style={S.th}>Status</th>
+              <th style={S.th}>Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {requests.map((req) => (
+              <tr key={req.id} style={req.status === 'pending' ? S.pendingRow : S.reviewedRow}>
+                <td style={S.td}>{req.id}</td>
+                <td style={S.td}>{req.username}</td>
+                <td style={S.td}>{req.name}</td>
+                <td style={S.td}>{req.email}</td>
+                <td style={S.td}>{req.phone}</td>
+                <td style={S.td}>{req.address || ''}</td>
+                <td style={S.td}>{req.role}</td>
+                <td style={S.td}>{req.status}</td>
+                <td style={S.td}>
+                  {req.status === 'pending' ? (
+                    <>
+                      <button
+                        disabled={actionLoading}
+                        onClick={() => handleAction(req.id, 'approve')}
+                        style={{ background: '#2780e3', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 14px', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginRight: 6 }}
+                      >Approve</button>
+                      <button
+                        disabled={actionLoading}
+                        onClick={() => handleAction(req.id, 'deny')}
+                        style={{ background: '#d32f2f', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 14px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
+                      >Deny</button>
+                    </>
+                  ) : (
+                    <span>{req.status}</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 });
