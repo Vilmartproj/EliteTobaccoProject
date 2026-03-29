@@ -1,7 +1,11 @@
+
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { S as _S } from '../styles';
 import { formatDateTime } from '../utils/dateFormat';
+
+// Sorting logic for dispatch history
+// (moved after imports)
 
 const S = {
   ..._S,
@@ -73,6 +77,34 @@ function formatInr(value) {
 }
 
 export default function BuyerVehicleDispatch({ buyer }) {
+    // Sorting logic for dispatch history
+    const [dispatchSort, setDispatchSort] = useState({ key: 'id', direction: 'desc' });
+    const toggleSort = (sortState, setSortState, key) => {
+      if (sortState.key === key) {
+        setSortState({ key, direction: sortState.direction === 'asc' ? 'desc' : 'asc' });
+        return;
+      }
+      setSortState({ key, direction: 'asc' });
+    };
+    const compareBy = (aValue, bValue, direction) => {
+      const order = direction === 'asc' ? 1 : -1;
+      const aNum = Number(aValue);
+      const bNum = Number(bValue);
+      if (Number.isFinite(aNum) && Number.isFinite(bNum)) return (aNum - bNum) * order;
+      const aDate = Date.parse(aValue);
+      const bDate = Date.parse(bValue);
+      if (!Number.isNaN(aDate) && !Number.isNaN(bDate)) return (aDate - bDate) * order;
+      return String(aValue ?? '').localeCompare(String(bValue ?? ''), undefined, { numeric: true }) * order;
+    };
+    const SortableTh = ({ label, sortKey, sortState, onSort, minWidth }) => (
+      <th
+        style={{ ...S.th, cursor: 'pointer', userSelect: 'none', fontWeight: 700, ...(minWidth ? { minWidth } : {}) }}
+        onClick={() => onSort(sortKey)}
+        title="Click to sort"
+      >
+        {label}{sortState.key === sortKey ? (sortState.direction === 'asc' ? ' ▲' : ' ▼') : ''}
+      </th>
+    );
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [vehicleType, setVehicleType] = useState('');
   const [destinationLocation, setDestinationLocation] = useState('');
@@ -81,6 +113,8 @@ export default function BuyerVehicleDispatch({ buyer }) {
   const [buyerNote, setBuyerNote] = useState('');
   const [eligibleRows, setEligibleRows] = useState([]);
   const [dispatches, setDispatches] = useState([]);
+  const [detailsById, setDetailsById] = useState({});
+  const [qrTooltip, setQrTooltip] = useState({ visible: false, dispatchId: null, rect: null });
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [scanCode, setScanCode] = useState('');
@@ -88,13 +122,15 @@ export default function BuyerVehicleDispatch({ buyer }) {
   const [matchedCodes, setMatchedCodes] = useState([]);
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
+  // Fetch all dispatches globally for correct nextDispatchNumber
   const loadData = async () => {
     const [eligible, allDispatches] = await Promise.all([
       api.getEligibleVehicleQRCodes(buyer.id),
-      api.getVehicleDispatches(buyer.id),
+      api.getVehicleDispatches(), // No buyerId: fetch all
     ]);
     setEligibleRows(eligible);
-    setDispatches(allDispatches);
+    // Use all dispatches for global dispatch number
+    setDispatches(allDispatches.filter(d => Number(d.buyer_id) === Number(buyer.id)));
   };
 
   useEffect(() => {
@@ -109,8 +145,13 @@ export default function BuyerVehicleDispatch({ buyer }) {
 
 
   const nextDispatchNumber = useMemo(() => {
-    const maxId = dispatches.reduce((maxValue, row) => Math.max(maxValue, Number(row.id || 0)), 0);
-    return `DSP-${String(maxId + 1).padStart(5, '0')}`;
+    // Find max numeric value from dispatch_number like DSP-00001
+    const maxNum = dispatches.reduce((maxValue, row) => {
+      const num = String(row.dispatch_number || '').match(/^DSP-(\d{5})$/);
+      const val = num ? Number(num[1]) : 0;
+      return Math.max(maxValue, val);
+    }, 0);
+    return `DSP-${String(maxNum + 1).padStart(5, '0')}`;
   }, [dispatches]);
 
   const dispatchDate = useMemo(() => formatDateTime(new Date()), []);
@@ -243,6 +284,21 @@ export default function BuyerVehicleDispatch({ buyer }) {
       setLoading(false);
     }
   };
+
+  const ensureDetails = async (dispatchId) => {
+    if (detailsById[dispatchId]) return detailsById[dispatchId];
+    const full = await api.getVehicleDispatchById(dispatchId);
+    setDetailsById((prev) => ({ ...prev, [dispatchId]: full }));
+    return full;
+  };
+
+  const handleQrHover = async (e, dispatchId) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setQrTooltip({ visible: true, dispatchId, rect });
+    try { await ensureDetails(dispatchId); } catch (_) {}
+  };
+
+  const handleQrLeave = () => setQrTooltip((prev) => ({ ...prev, visible: false }));
 
   return (
     <div>
@@ -412,24 +468,24 @@ export default function BuyerVehicleDispatch({ buyer }) {
             <table style={S.table}>
               <thead>
                 <tr>
-                  <th style={S.th}>ID</th>
-                  <th style={S.th}>Dispatch No</th>
-                  <th style={S.th}>Date</th>
-                  <th style={S.th}>Vehicle</th>
-                  <th style={S.th}>Vehicle Type</th>
-                  <th style={S.th}>Destination</th>
-                  <th style={S.th}>Way Bill</th>
-                  <th style={S.th}>Invoice</th>
-                  <th style={S.th}>Status</th>
-                  <th style={S.th}>QR Count</th>
-                  <th style={S.th}>Total Weight</th>
-                  <th style={S.th}>Total Bale Value</th>
-                  <th style={S.th}>Warehouse Note</th>
-                  <th style={S.th}>Updated</th>
+                  <SortableTh label="ID" sortKey="id" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Dispatch No" sortKey="dispatch_number" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Date" sortKey="dispatch_date" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Vehicle" sortKey="vehicle_number" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Vehicle Type" sortKey="vehicle_type" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Destination" sortKey="destination_location" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Way Bill" sortKey="way_bill_number" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Invoice" sortKey="invoice_number" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Status" sortKey="status" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="QR Count" sortKey="item_count" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Total Weight" sortKey="total_weight" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Total Bale Value" sortKey="total_bale_value" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Buyer Note" sortKey="buyer_note" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
+                  <SortableTh label="Updated" sortKey="updated_at" sortState={dispatchSort} onSort={(key) => toggleSort(dispatchSort, setDispatchSort, key)} />
                 </tr>
               </thead>
               <tbody>
-                {dispatches.map((row) => {
+                {[...dispatches].sort((a, b) => compareBy(a[dispatchSort.key], b[dispatchSort.key], dispatchSort.direction)).map((row) => {
                   const isSentToWarehouse = row.status === 'sent_to_warehouse';
                   return (
                   <tr
@@ -448,10 +504,16 @@ export default function BuyerVehicleDispatch({ buyer }) {
                     <td style={S.td}>{row.way_bill_number || '—'}</td>
                     <td style={S.td}>{row.invoice_number || '—'}</td>
                     <td style={S.td}><span style={statusBadge(row.status)}>{statusLabel(row.status)}</span></td>
-                    <td style={S.td}>{row.item_count}</td>
+                    <td
+                      style={{ ...S.td, cursor: 'pointer', textDecoration: 'underline dotted' }}
+                      onMouseEnter={(e) => handleQrHover(e, row.id)}
+                      onMouseLeave={handleQrLeave}
+                    >
+                      {row.item_count}
+                    </td>
                     <td style={S.td}>{Number(row.total_weight || 0).toFixed(2)} kg</td>
                     <td style={S.td}>₹{formatInr(row.total_bale_value)}</td>
-                    <td style={S.td}>{row.warehouse_note || '—'}</td>
+                    <td style={S.td}>{row.buyer_note || '—'}</td>
                     <td style={S.td}>{formatDateTime(row.updated_at)}</td>
                   </tr>
                 );})}
@@ -460,6 +522,38 @@ export default function BuyerVehicleDispatch({ buyer }) {
           </div>
         )}
       </div>
+
+      {qrTooltip.visible && qrTooltip.rect && (() => {
+        const items = detailsById[qrTooltip.dispatchId]?.items;
+        return (
+          <div style={{
+            position: 'fixed',
+            top: Math.min(qrTooltip.rect.bottom + 4, window.innerHeight - 300),
+            left: Math.min(qrTooltip.rect.left, window.innerWidth - 260),
+            background: '#fff',
+            border: '1.5px solid #b7d9f8',
+            borderRadius: 10,
+            padding: '10px 14px',
+            boxShadow: '0 6px 20px rgba(39,128,227,0.22)',
+            zIndex: 9999,
+            minWidth: 220,
+            maxWidth: 260,
+            maxHeight: 280,
+            overflowY: 'auto',
+            pointerEvents: 'none',
+          }}>
+            <div style={{ fontWeight: 800, fontSize: 12, color: '#2780e3', marginBottom: 6, borderBottom: '1px solid #dbeafe', paddingBottom: 4 }}>
+              QR Codes ({items ? items.length : '…'})
+            </div>
+            {!items && <div style={{ fontSize: 12, color: '#888' }}>Loading…</div>}
+            {items && items.map((item, i) => (
+              <div key={i} style={{ fontSize: 12, color: '#1b3555', padding: '3px 0', borderBottom: '1px solid #f0f6ff', fontWeight: 700 }}>
+                {item.unique_code}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }

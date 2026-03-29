@@ -9,7 +9,7 @@ export default function BrandLogo({
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: align === 'center' ? 'center' : 'flex-start' }}>
       <img
-        src="/elite-leaf-logo.svg"
+        src="/logo.jpeg"
         alt="Elite Leaf Tobacco Company logo"
         style={{ width: size, height: size, objectFit: 'contain', flexShrink: 0 }}
       />

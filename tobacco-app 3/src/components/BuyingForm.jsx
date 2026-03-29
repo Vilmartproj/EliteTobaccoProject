@@ -1,8 +1,10 @@
+
+
 // src/components/BuyingForm.jsx
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { S as _S } from '../styles';
-import { fromInputDateTime, nowInputDateTime } from '../utils/dateFormat';
+import { fromInputDateTime, nowInputDateTime, formatDateTime } from '../utils/dateFormat';
 import SearchableSelect from './SearchableSelect';
 
 const S = {
@@ -31,48 +33,30 @@ const S = {
     ..._S.toggleGroup,
     border: '1.5px solid #2780e3',
   },
-  toggleBtn: (active, disabled) => ({
-    ..._S.toggleBtn(active, disabled),
-    background: disabled ? '#8ab8ef' : '#2780e3',
-    color: '#ffffff',
-  }),
-  btnPrimary: {
-    ..._S.btnPrimary,
-    background: '#2780e3',
-    color: '#fff',
-    border: '1px solid #1f67b9',
-  },
-  btnSecondary: {
-    ..._S.btnSecondary,
-    color: '#fff',
-    background: '#2780e3',
-    border: '1px solid #1f67b9',
-  },
 };
 
-const calendarValueToDisplayDate = (value) => {
-  const text = String(value || '').trim();
-  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return '';
-  const [, yyyy, mm, dd] = match;
-  return `${dd}-${mm}-${yyyy}`;
-};
-
-const dateTimeInputToDisplayDate = (value) => {
-  const datePart = String(value || '').split('T')[0] || '';
-  return calendarValueToDisplayDate(datePart);
-};
-
-export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: [] }, apfNumbers = [], tobaccoTypes = [], purchaseLocations = [], assignedQRCodes = [], onSaveExit }) {
+export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: [] }, apfNumbers = [], tobaccoTypes = [], purchaseLocations = [], assignedQRCodes = [], onSaveExit, forceFcvType, onBagSaved }) {
+  // Support deletedHistory and setDeletedHistory if passed as props (for deletedCodes logic)
   const buyerTitleColor = '#2780e3';
   const buyerButtonTextColor = '#fff';
+  // Fallbacks for deletedCodes and setDeletedHistory if not provided
+  const deletedHistory = typeof window !== 'undefined' && window.deletedHistory ? window.deletedHistory : [];
+  const setDeletedHistory = typeof window !== 'undefined' && window.setDeletedHistory ? window.setDeletedHistory : undefined;
+  const deletedCodes = Array.isArray(deletedHistory) ? deletedHistory.map(row => String(row.unique_code).trim()) : [];
   const fcvToggleColor = '#fff';
   const buyerLabelStyle = { ...S.label, fontWeight: 800 };
   const missingFieldStyle = {
     background: '#fffee0',
     color: '#1b3555',
   };
-  const [fcv, setFcv]                   = useState('');
+  const [fcv, setFcv] = useState(forceFcvType || '');
+
+  // If forceFcvType changes, update fcv state
+  useEffect(() => {
+    if (forceFcvType && fcv !== forceFcvType) {
+      setFcv(forceFcvType);
+    }
+  }, [forceFcvType]);
   const [uniqueCode, setUniqueCode]     = useState('');
   const [codeStatus, setCodeStatus]     = useState(null); // null|checking|ok|duplicate|error
   const [codeMsg, setCodeMsg]           = useState('');
@@ -84,8 +68,24 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
   const [lotNumber, setLotNumber]       = useState('');
   const [typeOfTobacco, setTypeOfTobacco] = useState('');
   const [purchaseLocation, setPurchaseLocation] = useState('');
-  const [purchaseDate, setPurchaseDate] = useState('');
-  const [nonFcvPurchaseDate, setNonFcvPurchaseDate] = useState('');
+  const [purchaseDate, setPurchaseDate] = useState(() => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  });
+  const [nonFcvPurchaseDate, setNonFcvPurchaseDate] = useState(() => {
+    // If this is the NON-FCV page, default to today
+    if (forceFcvType === 'NON-FCV') {
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    return '';
+  });
   const [dateOfPurchase, setDate]       = useState(nowInputDateTime());
   const [error, setError]               = useState('');
   const [saved, setSaved]               = useState(false);
@@ -131,6 +131,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
       label: a.description ? `${a.number} - ${a.description}` : String(a.number),
       keywords: `${a.number} ${a.description || ''}`,
     }));
+  // Assigned and unused QR codes
   const assignedAvailableCodes = [...assignedQRCodes]
     .filter((q) => !q.used)
     .map((q) => String(q.unique_code));
@@ -333,11 +334,26 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
       setTypeOfTobacco('');
       setPurchaseLocation('');
       setNonFcvPurchaseDate('');
+      // If purchaseDate is empty, set to today
+      setPurchaseDate(prev => {
+        if (prev) return prev;
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+      });
     }
     if (value === 'NON-FCV') {
       setApfNumber('');
       setTobaccoGrade('');
       setPurchaseDate('');
+      // Set nonFcvPurchaseDate to today
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      setNonFcvPurchaseDate(`${yyyy}-${mm}-${dd}`);
     }
     if (!value) {
       setTypeOfTobacco('');
@@ -360,10 +376,15 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     if (isFCV && !purchaseDate)            return 'Purchase Date is required for FCV';
     if (isFCV && !apfNumber)           return 'APF Number is required for FCV';
     if (isFCV && !tobaccoGrade)        return 'Tobacco Board Grade is required for FCV';
-    if (isFCV && !lotNumber.trim())    return 'Lot Number is required for FCV';
+    if (!lotNumber.trim())    return 'Lot Number is required';
     if (!weight)                       return 'Weight is required';
     if (!rate)                         return 'Rate is required';
     if (!buyerGrade)                   return 'Buyer Grade is required';
+    // Prevent out-of-range baleValue
+    const MAX_BALE_VALUE = 99999999.99;
+    if (baleValue !== '' && Number(baleValue) > MAX_BALE_VALUE) {
+      return `Bale Value exceeds maximum allowed (${MAX_BALE_VALUE}). Please enter smaller weight or rate.`;
+    }
     return null;
   };
 
@@ -376,7 +397,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     if (field === 'purchaseDate') return isFCV && !purchaseDate;
     if (field === 'apfNumber') return isFCV && !apfNumber;
     if (field === 'tobaccoGrade') return isFCV && !tobaccoGrade;
-    if (field === 'lotNumber') return isFCV && !lotNumber.trim();
+    if (field === 'lotNumber') return !lotNumber.trim();
     if (field === 'weight') return !weight;
     if (field === 'rate') return !rate;
     if (field === 'buyerGrade') return !buyerGrade;
@@ -389,6 +410,10 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
   const doSave = async (exit) => {
     setSubmitAttempted(true);
     setError('');
+    if (!lotNumber.trim()) {
+      setError('Lot Number is required');
+      return;
+    }
     if (uniqueCode.trim() && codeStatus === null) {
       await checkCode(uniqueCode.trim());
       return;
@@ -397,7 +422,9 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
     if (err) { setError(err); return; }
     setLoading(true);
     try {
-      await api.saveBag({
+      // Use the selected purchase date for both fields
+      const selectedDate = isFCV ? purchaseDate : nonFcvPurchaseDate;
+      const payload = {
         unique_code: uniqueCode.trim(), buyer_id: buyer.id,
         buyer_code: buyer.code, buyer_name: buyer.name,
         fcv,
@@ -406,10 +433,19 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
         type_of_tobacco: isNonFCV ? typeOfTobacco : '',
         purchase_location: purchaseLocation || '',
         weight: parseFloat(weight), rate: parseFloat(rate), bale_value: baleValue, buyer_grade: buyerGrade,
-        lot_number: isFCV ? lotNumber.trim() : '',
-        purchase_date: isFCV ? purchaseDate : nonFcvPurchaseDate,
-        date_of_purchase: fromInputDateTime(dateOfPurchase),
-      });
+        lot_number: lotNumber.trim(),
+        purchase_date: selectedDate,
+        date_of_purchase: selectedDate,
+      };
+      console.log('DEBUG: API payload for saveBag:', payload);
+      await api.saveBag(payload);
+      if (typeof onBagSaved === 'function') {
+        await onBagSaved();
+      }
+      // Remove from deletedHistory if present
+      if (deletedCodes.includes(uniqueCode.trim()) && typeof setDeletedHistory === 'function') {
+        setDeletedHistory((prev) => prev.filter(row => String(row.unique_code) !== uniqueCode.trim()));
+      }
       setSaved(true);
       setSubmitAttempted(false);
       if (exit) {
@@ -417,8 +453,39 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
         setTimeout(onSaveExit, 600);
       }
       else {
-        setFcvFieldsLocked(fcv === 'FCV' && !!purchaseDate && !!apfNumber);
-        setTimeout(() => reset({ preserveFcvContext: true, preserveFcvLock: true, focusUniqueCode: true }), 800);
+        if (isNonFCV) {
+          // For NON-FCV, always reset to a fresh NON-FCV state
+          setFcvFieldsLocked(false);
+          setTimeout(() => {
+            setFcv('NON-FCV');
+            setUniqueCode('');
+            setApfNumber('');
+            setTobaccoGrade('');
+            setWeight('');
+            setRate('');
+            setBuyerGrade('');
+            setLotNumber('');
+            setTypeOfTobacco('');
+            setPurchaseLocation('');
+            // Set nonFcvPurchaseDate to today
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            setNonFcvPurchaseDate(`${yyyy}-${mm}-${dd}`);
+            setPurchaseDate('');
+            setError('');
+            setSaved(false);
+            setSubmitAttempted(false);
+            setCodeStatus(null);
+            setCodeMsg('');
+            setDate(nowInputDateTime());
+            setTimeout(() => uniqueCodeInputRef.current?.focus(), 0);
+          }, 800);
+        } else {
+          setFcvFieldsLocked(fcv === 'FCV' && !!purchaseDate && !!apfNumber);
+          setTimeout(() => reset({ preserveFcvContext: true, preserveFcvLock: true, focusUniqueCode: true }), 800);
+        }
       }
     } catch (e) {
       setError(e.message);
@@ -438,50 +505,58 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
       {error && <div ref={errorRef} tabIndex={-1} style={S.error}>⚠️ {error}</div>}
 
       {/* FCV Toggle */}
-      <label style={labelWithMissing(isMissingField('fcv'))}>{requiredLabel('FCV / NON-FCV')}</label>
-      <div
-        style={{
-          ...S.toggleGroup,
-          gap: 10,
-          border: 'none',
-          overflow: 'visible',
-          ...(isMissingField('fcv') ? { background: '#fffee0', borderRadius: 10, padding: 2 } : {}),
-        }}
-      >
-        <button
-          style={{
-            ...S.toggleBtn(fcv === 'FCV', fcv === 'NON-FCV'),
-            color: fcvToggleColor,
-            border: '1.5px solid #1f67b9',
-            borderRadius: 8,
-          }}
-          onClick={() => handleFcvSelect('FCV')}
-        >
-          FCV
-        </button>
-        <button
-          style={{
-            ...S.toggleBtn(fcv === 'NON-FCV', fcv === 'FCV'),
-            color: fcvToggleColor,
-            border: '1.5px solid #1f67b9',
-            borderRadius: 8,
-          }}
-          onClick={() => handleFcvSelect('NON-FCV')}
-        >
-          NON-FCV
-        </button>
-      </div>
-      {fcv && (
-        <div style={{ fontSize: 11, color: '#aaa', marginBottom: 14 }}>
-          <b style={{ color: '#c0392b' }}>{fcv}</b> selected.{' '}
-          <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setFcv('')}>Clear</span>
-        </div>
+      {/*
+        FCV/NON-FCV label, toggle, and 'FCV selected. Clear' message are commented out when forceFcvType is set (i.e., on split entry pages)
+      */}
+      {!forceFcvType && (
+        <>
+          <label style={labelWithMissing(isMissingField('fcv'))}>{requiredLabel('FCV / NON-FCV')}</label>
+          <div
+            style={{
+              ...S.toggleGroup,
+              gap: 10,
+              border: 'none',
+              overflow: 'visible',
+              ...(isMissingField('fcv') ? { background: '#fffee0', borderRadius: 10, padding: 2 } : {}),
+            }}
+          >
+            <button
+              style={{
+                ...S.toggleBtn(fcv === 'FCV', fcv === 'NON-FCV'),
+                color: fcvToggleColor,
+                border: '1.5px solid #1f67b9',
+                borderRadius: 8,
+              }}
+              onClick={() => handleFcvSelect('FCV')}
+            >
+              FCV
+            </button>
+            <button
+              style={{
+                ...S.toggleBtn(fcv === 'NON-FCV', fcv === 'FCV'),
+                color: fcvToggleColor,
+                border: '1.5px solid #1f67b9',
+                borderRadius: 8,
+              }}
+              onClick={() => handleFcvSelect('NON-FCV')}
+            >
+              NON-FCV
+            </button>
+          </div>
+          {fcv && (
+            <div style={{ fontSize: 11, color: '#aaa', marginBottom: 14 }}>
+              <b style={{ color: '#c0392b' }}>{fcv}</b> selected.{' '}
+              <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setFcv('')}>Clear</span>
+            </div>
+          )}
+        </>
       )}
 
       {/* Unique Code */}
       <div style={S.row}>
         <label style={labelWithMissing(isMissingField('uniqueCode'))}>{requiredLabel('Unique Code')}</label>
         <div style={{ position: 'relative' }}>
+
           {isMobileDevice ? (
             <select
               ref={uniqueCodeInputRef}
@@ -513,82 +588,46 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
                   <option key={code} value={code} />
                 ))}
               </datalist>
+              {/* Move Scan QR button below input */}
+              <div
+                style={{
+                  marginTop: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  flexDirection: window.innerWidth <= 600 ? 'column' : 'row',
+                  gap: window.innerWidth <= 600 ? 8 : 0,
+                  width: '100%',
+                }}
+              >
+                <button
+                  type="button"
+                  style={{
+                    padding: window.innerWidth <= 600 ? '12px 0' : '6px 16px',
+                    fontSize: 15,
+                    borderRadius: 8,
+                    border: '1px solid #2780e3',
+                    background: scannerActive ? '#e0f2fe' : '#fff',
+                    color: '#2780e3',
+                    cursor: 'pointer',
+                    zIndex: 2,
+                    width: window.innerWidth <= 600 ? '100%' : 'auto',
+                    minWidth: window.innerWidth <= 600 ? 0 : 120,
+                  }}
+                  onClick={scannerActive ? stopScanner : startScanner}
+                >
+                  {scannerActive ? 'Stop Scanner' : 'Scan QR'}
+                </button>
+                {scannerError && <span style={{ fontSize: 12, color: '#c0392b', marginLeft: window.innerWidth <= 600 ? 0 : 12, marginTop: window.innerWidth <= 600 ? 8 : 0 }}>{scannerError}</span>}
+              </div>
             </>
           )}
-          {(codeStatus === 'error' || codeStatus === 'duplicate') ? (
-            <button
-              type="button"
-              aria-label="Clear unique code"
-              title="Clear code"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={clearUniqueCode}
-              style={{
-                position: 'absolute',
-                right: 8,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: 24,
-                height: 24,
-                borderRadius: '50%',
-                border: '1px solid #ffc2cc',
-                background: '#fff0f2',
-                color: '#c0392b',
-                cursor: 'pointer',
-                fontSize: 14,
-                fontWeight: 800,
-                lineHeight: '22px',
-                padding: 0,
-              }}
-            >
-              ×
-            </button>
-          ) : codeStatus ? (
-            <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 16, pointerEvents: 'none' }}>
-              {codeStatus === 'ok' ? '✅' : '⏳'}
-            </span>
-          ) : null}
         </div>
-        {codeStatus && codeMsg && (
-          <div style={{
-            fontSize: 12, marginTop: 5, fontWeight: codeStatus !== 'ok' ? 'bold' : 'normal',
-            color: codeStatus === 'ok' ? '#2e7d32' : codeStatus === 'duplicate' ? '#e67e22' : '#c0392b',
-          }}>
-            {codeMsg}
-          </div>
-        )}
-        {!codeStatus && (
-          <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-            Scan QR or type — date &amp; time will be auto-stamped on entry
-          </div>
-        )}
-        {isMobileDevice && (
-          <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {!scannerActive ? (
-              <button
-                type="button"
-                style={{ ...S.btnSecondary, color: buyerButtonTextColor, flex: 'none', padding: '8px 12px', fontSize: 12 }}
-                onClick={startScanner}
-              >
-                Open Scanner
-              </button>
-            ) : (
-              <button
-                type="button"
-                style={{ ...S.btnSecondary, color: buyerButtonTextColor, flex: 'none', padding: '8px 12px', fontSize: 12 }}
-                onClick={stopScanner}
-              >
-                Stop Scanner
-              </button>
-            )}
-            {scannerError && <span style={{ fontSize: 12, color: '#c0392b' }}>{scannerError}</span>}
-          </div>
-        )}
-        {scannerActive && (
-          <div style={{ marginTop: 10, border: '1px solid #ffd0d6', borderRadius: 10, overflow: 'hidden' }}>
-            <video ref={videoRef} style={{ width: '100%', maxHeight: 260, objectFit: 'cover', background: '#000' }} playsInline muted />
-          </div>
-        )}
-      </div>
+      {scannerActive && (
+        <div style={{ marginTop: 10, border: '1px solid #ffd0d6', borderRadius: 10, overflow: 'hidden' }}>
+          <video ref={videoRef} style={{ width: '100%', maxHeight: 260, objectFit: 'cover', background: '#000' }} playsInline muted />
+        </div>
+      )}
+    </div>
 
       {/* Duplicate warning banner */}
       {codeStatus === 'duplicate' && (
@@ -625,6 +664,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
         </div>
       )}
 
+
       {isNonFCV && (
         <div style={S.row}>
           <label style={labelWithMissing(isMissingField('nonFcvPurchaseDate'))}>{requiredLabel('Date of Purchase (dd-mm-yyyy)')}</label>
@@ -632,14 +672,26 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
             style={inputWithMissing(S.input, isMissingField('nonFcvPurchaseDate'))}
             type="date"
             lang="en-GB"
-            value={nonFcvPurchaseDate}
+            value={nonFcvPurchaseDate || (() => {
+              const today = new Date();
+              const yyyy = today.getFullYear();
+              const mm = String(today.getMonth() + 1).padStart(2, '0');
+              const dd = String(today.getDate()).padStart(2, '0');
+              return `${yyyy}-${mm}-${dd}`;
+            })()}
+            min="2020-01-01"
+            max={(() => {
+              const today = new Date();
+              const yyyy = today.getFullYear();
+              const mm = String(today.getMonth() + 1).padStart(2, '0');
+              const dd = String(today.getDate()).padStart(2, '0');
+              return `${yyyy}-${mm}-${dd}`;
+            })()}
             onChange={e => setNonFcvPurchaseDate(e.target.value)}
           />
-          {nonFcvPurchaseDate && (
-            <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-              Selected Date: {calendarValueToDisplayDate(nonFcvPurchaseDate)}
-            </div>
-          )}
+          <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+            Selected Date: {nonFcvPurchaseDate ? formatDateTime(nonFcvPurchaseDate) : ''}
+          </div>
         </div>
       )}
 
@@ -650,15 +702,27 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
             style={inputWithMissing(isPurchaseDateLocked ? lockedFieldStyle : S.input, isMissingField('purchaseDate'))}
             type="date"
             lang="en-GB"
-            value={purchaseDate}
+            value={purchaseDate || (() => {
+              const today = new Date();
+              const yyyy = today.getFullYear();
+              const mm = String(today.getMonth() + 1).padStart(2, '0');
+              const dd = String(today.getDate()).padStart(2, '0');
+              return `${yyyy}-${mm}-${dd}`;
+            })()}
+            min="2020-01-01"
+            max={(() => {
+              const today = new Date();
+              const yyyy = today.getFullYear();
+              const mm = String(today.getMonth() + 1).padStart(2, '0');
+              const dd = String(today.getDate()).padStart(2, '0');
+              return `${yyyy}-${mm}-${dd}`;
+            })()}
             onChange={e => setPurchaseDate(e.target.value)}
             disabled={isPurchaseDateLocked}
           />
-          {purchaseDate && (
-            <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-              Selected Date: {calendarValueToDisplayDate(purchaseDate)}
-            </div>
-          )}
+          <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+            Selected Date: {purchaseDate ? formatDateTime(purchaseDate) : ''}
+          </div>
           {isPurchaseDateLocked && (
             <div style={{ fontSize: 11, color: '#0284c7', fontWeight: 700, marginTop: 4 }}>
               🔒 Purchase Date locked after Save & Next Bag.
@@ -751,7 +815,7 @@ export default function BuyingForm({ buyer, grades = { tobaccoBoard: [], buyer: 
 
       <div style={S.btnRow}>
         <button
-          style={{ ...S.btnSecondary, color: buyerButtonTextColor, opacity: (loading || codeStatus === 'duplicate') ? 0.5 : 1 }}
+          style={{ ...S.btnSecondary, color: '#1b3555', opacity: (loading || codeStatus === 'duplicate') ? 0.5 : 1 }}
           onClick={() => doSave(true)}
           disabled={loading || codeStatus === 'duplicate'}
         >
