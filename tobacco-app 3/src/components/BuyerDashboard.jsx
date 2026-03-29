@@ -1020,6 +1020,10 @@ const S = {
                         scanBagToDispatch(e.target.value.trim());
                       }
                     }}
+                    onBlur={(e) => {
+                      const val = e.target.value.trim();
+                      if (val) scanBagToDispatch(val);
+                    }}
                   />
                   {dispatchScanStatus && (
                     <span

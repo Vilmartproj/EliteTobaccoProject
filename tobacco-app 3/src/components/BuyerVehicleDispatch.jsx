@@ -346,6 +346,10 @@ export default function BuyerVehicleDispatch({ buyer }) {
                     scanAndMatchQRCode(e.currentTarget.value);
                   }
                 }}
+                onBlur={(e) => {
+                  const val = e.target.value.trim();
+                  if (val) scanAndMatchQRCode(val);
+                }}
               />
               {scanStatus && (
                 <span
