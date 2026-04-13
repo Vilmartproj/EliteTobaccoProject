@@ -904,7 +904,7 @@ const S = {
       setQrScanDeleteId(matchedBagId);
       setDispatchScanStatus('ok');
       setDispatchScanStatusMsg('Valid QR for this buyer');
-      setDispatchScanCode(matchedBag.unique_code);
+      setDispatchScanCode('');
       setEditMsg(`✅ ${matchedBag.unique_code} selected. Assign invoice to dispatch, or click Delete to remove this purchase.`);
     } catch (e) {
       setDispatchScanStatus('error');
