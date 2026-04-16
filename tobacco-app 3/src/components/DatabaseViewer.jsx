@@ -138,6 +138,10 @@ export default function DatabaseViewer() {
             { table: 'vehicle_dispatches', cols: ['id','buyer_id','warehouse_employee_id','vehicle_number','status','buyer_note','admin_note','warehouse_note','sent_to_admin_at','sent_to_warehouse_at','warehouse_confirmed_at','created_at','updated_at'] },
             { table: 'vehicle_dispatch_items', cols: ['id','dispatch_id','qr_code_id','unique_code','bag_id','weight','rate','bale_value','warehouse_scan_status','scanned_at','scanned_by_employee_id','created_at'] },
             { table: 'vehicle_dispatch_scan_events', cols: ['id','dispatch_id','item_id','warehouse_employee_id','scanned_code','result','created_at'] },
+            { table: 'processing_batches', cols: ['id','batch_code','status','current_stage_key','created_by_employee_id','created_by_role','completed_at','created_at','updated_at'] },
+            { table: 'processing_batch_items', cols: ['id','batch_id','bag_id','qr_code_id','unique_code','weight','bale_value','status','created_at'] },
+            { table: 'processing_batch_stage_logs', cols: ['id','batch_id','stage_key','stage_label','action','total_quantity','worker_names_json','note','logged_by_employee_id','logged_by_role','logged_at'] },
+            { table: 'processing_export_bags', cols: ['id','batch_id','export_unique_code','grade','quantity','created_by_employee_id','created_by_role','created_at'] },
           ].map(({ table, cols }) => (
             <div key={table} style={{ background: '#fdf8f8', border: '1px solid #f0dada', borderRadius: 8, padding: 14 }}>
               <div style={{ fontWeight: 'bold', color: '#c0392b', marginBottom: 8, fontFamily: 'monospace' }}>{table}</div>

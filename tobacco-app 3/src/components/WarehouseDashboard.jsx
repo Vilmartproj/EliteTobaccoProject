@@ -3,6 +3,7 @@ import { api } from '../api';
 import { S as _S } from '../styles';
 import BrandLogo from './BrandLogo';
 import QRCameraScanner from './QRCameraScanner';
+import WarehouseBatchProcessing from './WarehouseBatchProcessing';
 import { formatDateTime } from '../utils/dateFormat';
 
 // ── Warehouse colour theme: teal → blue gradient (matching buyer dashboard) ──
@@ -88,6 +89,8 @@ function itemRowStyle(scanStatus) {
 }
 
 export default function WarehouseDashboard({ user, onLogout }) {
+  const normalizedRole = String(user?.role || '').toLowerCase();
+  const isClassificationUser = normalizedRole === 'classification' || normalizedRole === 'supervisor';
   const [dispatches, setDispatches] = useState([]);
   const [activeDispatchId, setActiveDispatchId] = useState(null);
   const [activeDispatch, setActiveDispatch] = useState(null);
@@ -174,7 +177,7 @@ export default function WarehouseDashboard({ user, onLogout }) {
       <div style={S.topBar}>
         <BrandLogo
           size={38}
-          title="Elite Leaf Tobacco Company - Warehouse"
+          title={isClassificationUser ? 'Elite Leaf Tobacco Company - Classification' : 'Elite Leaf Tobacco Company - Warehouse'}
           titleStyle={S.topBarTitle}
         />
         <div style={S.buyerInfo}>
@@ -325,6 +328,8 @@ export default function WarehouseDashboard({ user, onLogout }) {
             </div>
           </div>
         )}
+
+        {isClassificationUser && <WarehouseBatchProcessing user={user} />}
       </div>
     </div>
   );

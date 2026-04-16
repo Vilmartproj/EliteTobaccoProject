@@ -41,6 +41,14 @@ const S = {
   reviewedRow: { background: '#f0f0f0' },
 };
 
+const ROLE_LABELS = {
+  buyer: 'Buyer',
+  warehouse: 'Warehouse',
+  classification: 'Classification User',
+  supervisor: 'Supervisor',
+  admin: 'Admin',
+};
+
 
 // Allow parent to get pending count via ref
 import { forwardRef, useImperativeHandle } from 'react';
@@ -118,7 +126,7 @@ const AdminUserReview = forwardRef(function AdminUserReview(props, ref) {
                 <td style={S.td}>{req.email}</td>
                 <td style={S.td}>{req.phone}</td>
                 <td style={S.td}>{req.address || ''}</td>
-                <td style={S.td}>{req.role}</td>
+                <td style={S.td}>{ROLE_LABELS[String(req.role || '').toLowerCase()] || req.role}</td>
                 <td style={S.td}>{req.status}</td>
                 <td style={S.td}>
                   {req.status === 'pending' ? (

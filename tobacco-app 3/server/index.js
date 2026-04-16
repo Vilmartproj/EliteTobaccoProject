@@ -79,6 +79,16 @@ const GRADE_TYPES = {
 const DEFAULT_GRADE_TYPE = GRADE_TYPES.TOBACCO_BOARD;
 const GRADE_TYPE_VALUES = new Set(Object.values(GRADE_TYPES));
 
+const PROCESSING_STAGE_DEFS = [
+  { key: 'grading', label: 'Grading' },
+  { key: 'butting', label: 'Butting' },
+  { key: 'conditioning', label: 'Conditioning' },
+  { key: 'packing', label: 'Packing' },
+];
+const PROCESSING_STAGE_KEYS = new Set(PROCESSING_STAGE_DEFS.map((stage) => stage.key));
+const PROCESSING_STAGE_LABEL_BY_KEY = Object.fromEntries(PROCESSING_STAGE_DEFS.map((stage) => [stage.key, stage.label]));
+const PROCESSING_ALLOWED_ROLES = new Set(['classification', 'supervisor']);
+
 const seedGradeTemplates = [
   ['H1', 'High Grade 1'],
   ['H2', 'High Grade 2'],
@@ -149,7 +159,24 @@ const QR_SEED = [
   { unique_code: '117', buyer_code: null },
 ];
 
-const ALLOWED_TABLES = ['buyers', 'warehouse_employees', 'apf_numbers', 'tobacco_types', 'purchase_locations', 'grades', 'qr_codes', 'bags', 'settings', 'vehicle_dispatches', 'vehicle_dispatch_items', 'vehicle_dispatch_scan_events'];
+const ALLOWED_TABLES = [
+  'buyers',
+  'warehouse_employees',
+  'apf_numbers',
+  'tobacco_types',
+  'purchase_locations',
+  'grades',
+  'qr_codes',
+  'bags',
+  'settings',
+  'vehicle_dispatches',
+  'vehicle_dispatch_items',
+  'vehicle_dispatch_scan_events',
+  'processing_batches',
+  'processing_batch_items',
+  'processing_batch_stage_logs',
+  'processing_export_bags',
+];
 
 let pool;
 
@@ -378,6 +405,100 @@ function normalizeVehicleDispatchRow(row) {
   return normalized;
 }
 
+function normalizeActorRole(value) {
+  const role = String(value || '').trim().toLowerCase();
+  if (!role) return null;
+  if (role === 'classification_user') return 'classification';
+  return role;
+}
+
+function assertProcessingRoleOrThrow(actorRole) {
+  const normalizedRole = normalizeActorRole(actorRole);
+  if (!normalizedRole || !PROCESSING_ALLOWED_ROLES.has(normalizedRole)) {
+    const error = new Error('Only Classification or Supervisor roles can perform this action');
+    error.statusCode = 403;
+    throw error;
+  }
+  return normalizedRole;
+}
+
+function buildBatchCode(batchId) {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `PB-${y}${m}${d}-${String(batchId).padStart(5, '0')}`;
+}
+
+function normalizeIsoDate(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  const m = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return `${m[1]}-${m[2]}-${m[3]}`;
+}
+
+async function getProcessingBatchById(batchId) {
+  const rows = await q(
+    `SELECT pb.*, we.code AS created_by_code, we.name AS created_by_name,
+            COUNT(pbi.id) AS item_count,
+            COALESCE(SUM(CASE WHEN pbi.status = 'active' THEN pbi.weight ELSE 0 END), 0) AS total_weight,
+            COALESCE(SUM(CASE WHEN pbi.status = 'active' THEN pbi.bale_value ELSE 0 END), 0) AS total_bale_value
+     FROM processing_batches pb
+     LEFT JOIN warehouse_employees we ON we.id = pb.created_by_employee_id
+     LEFT JOIN processing_batch_items pbi ON pbi.batch_id = pb.id
+     WHERE pb.id = ?
+     GROUP BY pb.id
+     LIMIT 1`,
+    [batchId]
+  );
+  if (rows.length === 0) return null;
+
+  const batch = rows[0];
+  const items = await q(
+    `SELECT pbi.*, bag.buyer_id, bag.buyer_code, bag.buyer_name, bag.buyer_grade, bag.tobacco_grade,
+            bag.apf_number, bag.purchase_location
+     FROM processing_batch_items pbi
+     LEFT JOIN bags bag ON bag.id = pbi.bag_id
+     WHERE pbi.batch_id = ?
+     ORDER BY pbi.id ASC`,
+    [batchId]
+  );
+
+  const stageLogs = await q(
+    `SELECT psl.*,
+            we.code AS logged_by_code,
+            we.name AS logged_by_name
+     FROM processing_batch_stage_logs psl
+     LEFT JOIN warehouse_employees we ON we.id = psl.logged_by_employee_id
+     WHERE psl.batch_id = ?
+     ORDER BY psl.id ASC`,
+    [batchId]
+  );
+
+  const exportBags = await q(
+    `SELECT peb.*,
+            we.code AS created_by_code,
+            we.name AS created_by_name
+     FROM processing_export_bags peb
+     LEFT JOIN warehouse_employees we ON we.id = peb.created_by_employee_id
+     WHERE peb.batch_id = ?
+     ORDER BY peb.id DESC`,
+    [batchId]
+  );
+
+  return {
+    ...batch,
+    stages: PROCESSING_STAGE_DEFS,
+    items,
+    stage_logs: stageLogs.map((row) => ({
+      ...row,
+      worker_names: row.worker_names_json ? JSON.parse(row.worker_names_json) : [],
+    })),
+    export_bags: exportBags,
+  };
+}
+
 async function ensureColumnExists(tableName, columnName, columnDefinitionSql) {
   const rows = await q(
     `SELECT COUNT(*) AS total
@@ -439,6 +560,7 @@ async function initDatabase() {
       code VARCHAR(50) NOT NULL UNIQUE,
       name VARCHAR(255) NOT NULL,
       password VARCHAR(100) NOT NULL,
+      role ENUM('warehouse','classification','supervisor') NOT NULL DEFAULT 'warehouse',
       is_active TINYINT(1) NOT NULL DEFAULT 1,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB;
@@ -561,7 +683,7 @@ async function initDatabase() {
       email VARCHAR(255),
       address VARCHAR(255),
       phone VARCHAR(30),
-      role ENUM('buyer','warehouse','admin') NOT NULL,
+      role ENUM('buyer','warehouse','classification','supervisor','admin') NOT NULL,
       status ENUM('pending','approved','denied') NOT NULL DEFAULT 'pending',
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       reviewed_at DATETIME NULL,
@@ -569,6 +691,8 @@ async function initDatabase() {
       review_note VARCHAR(500)
     ) ENGINE=InnoDB;
   `);
+
+  await q("ALTER TABLE registration_requests MODIFY COLUMN role ENUM('buyer','warehouse','classification','supervisor','admin') NOT NULL");
 
   if (DB_CLEAN_SETUP) {
     await q('SET FOREIGN_KEY_CHECKS = 0');
@@ -712,6 +836,82 @@ async function initDatabase() {
     ) ENGINE=InnoDB;
   `);
 
+  await q(`
+    CREATE TABLE IF NOT EXISTS processing_batches (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      batch_code VARCHAR(40) NOT NULL UNIQUE,
+      status VARCHAR(20) NOT NULL DEFAULT 'open',
+      current_stage_key VARCHAR(40) NULL,
+      created_by_employee_id INT NULL,
+      created_by_role VARCHAR(40) NOT NULL,
+      completed_at DATETIME NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_processing_batches_status (status),
+      INDEX idx_processing_batches_stage (current_stage_key),
+      CONSTRAINT fk_processing_batches_created_by FOREIGN KEY (created_by_employee_id) REFERENCES warehouse_employees(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS processing_batch_items (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      batch_id INT NOT NULL,
+      bag_id INT NOT NULL,
+      qr_code_id INT NULL,
+      unique_code VARCHAR(120) NOT NULL,
+      weight DECIMAL(12,3) NULL,
+      bale_value DECIMAL(12,3) NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'active',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_processing_batch_items_batch_code (batch_id, unique_code),
+      INDEX idx_processing_batch_items_code (unique_code),
+      INDEX idx_processing_batch_items_status (status),
+      CONSTRAINT fk_processing_batch_items_batch FOREIGN KEY (batch_id) REFERENCES processing_batches(id) ON DELETE CASCADE,
+      CONSTRAINT fk_processing_batch_items_bag FOREIGN KEY (bag_id) REFERENCES bags(id) ON DELETE RESTRICT,
+      CONSTRAINT fk_processing_batch_items_qr FOREIGN KEY (qr_code_id) REFERENCES qr_codes(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS processing_batch_stage_logs (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      batch_id INT NOT NULL,
+      stage_key VARCHAR(40) NOT NULL,
+      stage_label VARCHAR(80) NOT NULL,
+      action VARCHAR(20) NOT NULL,
+      total_quantity DECIMAL(12,3) NULL,
+      worker_names_json JSON NULL,
+      note VARCHAR(500) NOT NULL DEFAULT '',
+      logged_by_employee_id INT NULL,
+      logged_by_role VARCHAR(40) NOT NULL,
+      logged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_processing_stage_logs_batch (batch_id),
+      INDEX idx_processing_stage_logs_stage (stage_key),
+      INDEX idx_processing_stage_logs_action (action),
+      INDEX idx_processing_stage_logs_date (logged_at),
+      CONSTRAINT fk_processing_stage_logs_batch FOREIGN KEY (batch_id) REFERENCES processing_batches(id) ON DELETE CASCADE,
+      CONSTRAINT fk_processing_stage_logs_employee FOREIGN KEY (logged_by_employee_id) REFERENCES warehouse_employees(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS processing_export_bags (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      batch_id INT NOT NULL,
+      export_unique_code VARCHAR(120) NOT NULL UNIQUE,
+      grade VARCHAR(80) NOT NULL,
+      quantity DECIMAL(12,3) NOT NULL,
+      created_by_employee_id INT NULL,
+      created_by_role VARCHAR(40) NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_processing_export_bags_batch (batch_id),
+      INDEX idx_processing_export_bags_grade (grade),
+      CONSTRAINT fk_processing_export_bags_batch FOREIGN KEY (batch_id) REFERENCES processing_batches(id) ON DELETE CASCADE,
+      CONSTRAINT fk_processing_export_bags_employee FOREIGN KEY (created_by_employee_id) REFERENCES warehouse_employees(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
   await ensureColumnExists('vehicle_dispatches', 'warehouse_employee_id', 'warehouse_employee_id INT NULL');
   await ensureColumnExists('vehicle_dispatches', 'dispatch_number', 'dispatch_number VARCHAR(40) NULL');
   await ensureColumnExists('vehicle_dispatches', 'dispatch_date', 'dispatch_date DATETIME NULL');
@@ -720,6 +920,7 @@ async function initDatabase() {
   await ensureColumnExists('vehicle_dispatches', 'way_bill_number', 'way_bill_number VARCHAR(120) NULL');
   await ensureColumnExists('vehicle_dispatches', 'invoice_number', 'invoice_number VARCHAR(120) NULL');
   await ensureColumnExists('buyers', 'is_active', 'is_active TINYINT(1) NOT NULL DEFAULT 1');
+  await ensureColumnExists('warehouse_employees', 'role', "role ENUM('warehouse','classification','supervisor') NOT NULL DEFAULT 'warehouse'");
   await ensureColumnExists('warehouse_employees', 'is_active', 'is_active TINYINT(1) NOT NULL DEFAULT 1');
   await ensureColumnExists('bags', 'status', 'status VARCHAR(40) NULL DEFAULT NULL');
   await ensureColumnExists('bags', 'dispatch_list_added', 'dispatch_list_added TINYINT(1) NOT NULL DEFAULT 0');
@@ -792,14 +993,20 @@ app.post('/api/login', withAsync(async (req, res) => {
   }
 
   const warehouseRows = await q(
-    'SELECT id, code, name, is_active, created_at FROM warehouse_employees WHERE code = ? AND password = ? LIMIT 1',
+    'SELECT id, code, name, role, is_active, created_at FROM warehouse_employees WHERE code = ? AND password = ? LIMIT 1',
     [loginCode, loginPassword]
   );
   if (warehouseRows.length > 0) {
     if (Number(warehouseRows[0].is_active ?? 1) !== 1) {
       return res.status(403).json({ error: 'Warehouse account is inactive. Contact admin.' });
     }
-    return res.json({ success: true, user: { role: 'warehouse', ...warehouseRows[0] } });
+    return res.json({
+      success: true,
+      user: {
+        ...warehouseRows[0],
+        role: normalizeActorRole(warehouseRows[0].role) || 'warehouse',
+      },
+    });
   }
 
   return res.status(401).json({ error: 'Invalid login code or password' });
@@ -865,7 +1072,7 @@ app.post('/api/register-user', withAsync(async (req, res) => {
   if (!normUsername || !normName || !normPassword || !normRole) {
     return res.status(400).json({ error: 'username, name, password, and role are required' });
   }
-  if (!['buyer','warehouse','admin'].includes(normRole)) {
+  if (!['buyer', 'warehouse', 'classification', 'admin', 'supervisor'].includes(normRole)) {
     return res.status(400).json({ error: 'Invalid role' });
   }
   try {
@@ -902,9 +1109,9 @@ app.post('/api/registration-requests/:id/approve', withAsync(async (req, res) =>
   if (request.role === 'buyer') {
     insertSql = 'INSERT INTO buyers (code, name, password, created_at) VALUES (?, ?, ?, NOW())';
     insertParams = [request.username, request.name, request.password];
-  } else if (request.role === 'warehouse') {
-    insertSql = 'INSERT INTO warehouse_employees (code, name, password, created_at) VALUES (?, ?, ?, NOW())';
-    insertParams = [request.username, request.name, request.password];
+  } else if (request.role === 'warehouse' || request.role === 'classification' || request.role === 'supervisor') {
+    insertSql = 'INSERT INTO warehouse_employees (code, name, password, role, created_at) VALUES (?, ?, ?, ?, NOW())';
+    insertParams = [request.username, request.name, request.password, request.role];
   } else if (request.role === 'admin') {
     insertSql = 'INSERT INTO admin_logins (code, name, password, created_at) VALUES (?, ?, ?, NOW())';
     insertParams = [request.username, request.name, request.password];
@@ -997,25 +1204,29 @@ app.delete('/api/buyers/:id', withAsync(async (req, res) => {
 }));
 
 app.get('/api/warehouse-employees', withAsync(async (_req, res) => {
-  const rows = await q('SELECT id, code, name, password, is_active, created_at FROM warehouse_employees ORDER BY id ASC');
+  const rows = await q('SELECT id, code, name, password, role, is_active, created_at FROM warehouse_employees ORDER BY id ASC');
   res.json(rows);
 }));
 
 app.post('/api/warehouse-employees', withAsync(async (req, res) => {
-  const { code, name } = req.body || {};
+  const { code, name, role } = req.body || {};
   const normalizedCode = String(code || '').trim().toUpperCase();
   const normalizedName = String(name || '').trim();
+  const normalizedRole = normalizeActorRole(role) || 'warehouse';
 
   if (!normalizedCode || !normalizedName) {
     return res.status(400).json({ error: 'code and name required' });
   }
+  if (!['warehouse', 'classification', 'supervisor'].includes(normalizedRole)) {
+    return res.status(400).json({ error: 'Invalid warehouse employee role' });
+  }
 
   try {
     const result = await q(
-      'INSERT INTO warehouse_employees (code, name, password, created_at) VALUES (?, ?, ?, NOW())',
-      [normalizedCode, normalizedName, normalizedCode]
+      'INSERT INTO warehouse_employees (code, name, password, role, created_at) VALUES (?, ?, ?, ?, NOW())',
+      [normalizedCode, normalizedName, normalizedCode, normalizedRole]
     );
-    const rows = await q('SELECT id, code, name, password, is_active, created_at FROM warehouse_employees WHERE id = ?', [result.insertId]);
+    const rows = await q('SELECT id, code, name, password, role, is_active, created_at FROM warehouse_employees WHERE id = ?', [result.insertId]);
     return res.json(rows[0]);
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Warehouse employee code already exists' });
@@ -1025,17 +1236,24 @@ app.post('/api/warehouse-employees', withAsync(async (req, res) => {
 
 app.put('/api/warehouse-employees/:id', withAsync(async (req, res) => {
   const id = Number(req.params.id);
-  const { name, password, is_active } = req.body || {};
+  const { name, password, is_active, role } = req.body || {};
   const updates = {};
   if (name && String(name).trim()) updates.name = String(name).trim();
   if (password && String(password).trim()) updates.password = String(password).trim();
+  if (role !== undefined && role !== null && String(role).trim()) {
+    const normalizedRole = normalizeActorRole(role);
+    if (!['warehouse', 'classification', 'supervisor'].includes(normalizedRole)) {
+      return res.status(400).json({ error: 'Invalid warehouse employee role' });
+    }
+    updates.role = normalizedRole;
+  }
   if ([true, false, 1, 0, '1', '0'].includes(is_active)) {
     updates.is_active = (is_active === true || is_active === 1 || is_active === '1') ? 1 : 0;
   }
   if (!Object.keys(updates).length) return res.status(400).json({ error: 'Nothing to update' });
   const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
   await q(`UPDATE warehouse_employees SET ${setClauses} WHERE id = ?`, [...Object.values(updates), id]);
-  const rows = await q('SELECT id, code, name, password, is_active, created_at FROM warehouse_employees WHERE id = ?', [id]);
+  const rows = await q('SELECT id, code, name, password, role, is_active, created_at FROM warehouse_employees WHERE id = ?', [id]);
   if (rows.length === 0) return res.status(404).json({ error: 'Warehouse employee not found' });
   res.json(rows[0]);
 }));
@@ -2320,6 +2538,493 @@ app.post('/api/vehicle-dispatches/:id/scan', withAsync(async (req, res) => {
   }
 }));
 
+app.get('/api/processing/stages', (_req, res) => {
+  res.json(PROCESSING_STAGE_DEFS);
+});
+
+app.get('/api/processing/batches', withAsync(async (req, res) => {
+  const onDate = normalizeIsoDate(req.query.date);
+  const stageKey = String(req.query.stage_key || '').trim().toLowerCase();
+  const status = String(req.query.status || '').trim().toLowerCase();
+
+  const filters = [];
+  const params = [];
+  if (onDate) {
+    filters.push('DATE(pb.created_at) = ?');
+    params.push(onDate);
+  }
+  if (stageKey) {
+    filters.push('pb.current_stage_key = ?');
+    params.push(stageKey);
+  }
+  if (status) {
+    filters.push('pb.status = ?');
+    params.push(status);
+  }
+
+  const whereClause = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
+  const rows = await q(
+    `SELECT pb.*, we.code AS created_by_code, we.name AS created_by_name,
+            COUNT(pbi.id) AS item_count,
+            COALESCE(SUM(CASE WHEN pbi.status = 'active' THEN pbi.weight ELSE 0 END), 0) AS total_weight,
+            COALESCE(SUM(CASE WHEN pbi.status = 'active' THEN pbi.bale_value ELSE 0 END), 0) AS total_bale_value,
+            MAX(psl.logged_at) AS last_stage_log_at
+     FROM processing_batches pb
+     LEFT JOIN warehouse_employees we ON we.id = pb.created_by_employee_id
+     LEFT JOIN processing_batch_items pbi ON pbi.batch_id = pb.id
+     LEFT JOIN processing_batch_stage_logs psl ON psl.batch_id = pb.id
+     ${whereClause}
+     GROUP BY pb.id
+     ORDER BY pb.id DESC`,
+    params
+  );
+  res.json(rows);
+}));
+
+app.get('/api/processing/batches/:id', withAsync(async (req, res) => {
+  const batchId = Number(req.params.id);
+  if (!Number.isFinite(batchId) || batchId <= 0) return res.status(400).json({ error: 'Invalid batch id' });
+  const batch = await getProcessingBatchById(batchId);
+  if (!batch) return res.status(404).json({ error: 'Processing batch not found' });
+  res.json(batch);
+}));
+
+app.post('/api/processing/batches', withAsync(async (req, res) => {
+  const body = req.body || {};
+  const actorRole = assertProcessingRoleOrThrow(body.actor_role);
+  const actorId = normalizeBuyerId(body.actor_id);
+  const codes = Array.isArray(body.qr_codes)
+    ? [...new Set(body.qr_codes.map((value) => String(value || '').trim()).filter(Boolean))]
+    : [];
+
+  if (codes.length === 0) return res.status(400).json({ error: 'At least one QR code is required' });
+
+  const placeholders = codes.map(() => '?').join(',');
+  const bagRows = await q(
+    `SELECT bag.id AS bag_id, bag.unique_code, bag.weight,
+            COALESCE(bag.bale_value, bag.weight * bag.rate, 0) AS bale_value,
+            qr.id AS qr_code_id,
+            (
+              SELECT vd.status
+              FROM vehicle_dispatch_items vdi
+              INNER JOIN vehicle_dispatches vd ON vd.id = vdi.dispatch_id
+              WHERE vdi.bag_id = bag.id
+              ORDER BY vdi.id DESC
+              LIMIT 1
+            ) AS latest_dispatch_status
+     FROM bags bag
+     LEFT JOIN qr_codes qr ON qr.unique_code = bag.unique_code
+     WHERE bag.unique_code IN (${placeholders})`,
+    codes
+  );
+
+  if (bagRows.length !== codes.length) {
+    return res.status(400).json({ error: 'One or more QR codes do not exist as warehouse bags' });
+  }
+
+  for (const row of bagRows) {
+    if (!['warehouse_received', 'unmatched_bags'].includes(String(row.latest_dispatch_status || ''))) {
+      return res.status(400).json({ error: `QR code ${row.unique_code} is not warehouse-ready for processing` });
+    }
+  }
+
+  const existingRows = await q(
+    `SELECT pbi.unique_code
+     FROM processing_batch_items pbi
+     INNER JOIN processing_batches pb ON pb.id = pbi.batch_id
+     WHERE pbi.unique_code IN (${placeholders})
+       AND pb.status IN ('open', 'in_progress')
+       AND pbi.status = 'active'
+     LIMIT 1`,
+    codes
+  );
+
+  if (existingRows.length > 0) {
+    return res.status(400).json({ error: `QR code ${existingRows[0].unique_code} is already in an active processing batch` });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const tempCode = `TMP-${Date.now()}`;
+    const [batchInsert] = await conn.query(
+      `INSERT INTO processing_batches
+       (batch_code, status, current_stage_key, created_by_employee_id, created_by_role, created_at, updated_at)
+       VALUES (?, 'open', ?, ?, ?, NOW(), NOW())`,
+      [tempCode, PROCESSING_STAGE_DEFS[0].key, actorId, actorRole]
+    );
+
+    const batchId = Number(batchInsert.insertId);
+    const finalCode = buildBatchCode(batchId);
+    await conn.query('UPDATE processing_batches SET batch_code = ? WHERE id = ?', [finalCode, batchId]);
+
+    for (const row of bagRows) {
+      await conn.query(
+        `INSERT INTO processing_batch_items
+         (batch_id, bag_id, qr_code_id, unique_code, weight, bale_value, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'active', NOW())`,
+        [batchId, row.bag_id, row.qr_code_id || null, row.unique_code, row.weight ?? null, row.bale_value ?? null]
+      );
+    }
+
+    await conn.commit();
+    const batch = await getProcessingBatchById(batchId);
+    res.json({ success: true, batch });
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}));
+
+app.post('/api/processing/batches/:id/items', withAsync(async (req, res) => {
+  const batchId = Number(req.params.id);
+  if (!Number.isFinite(batchId) || batchId <= 0) return res.status(400).json({ error: 'Invalid batch id' });
+
+  const body = req.body || {};
+  const actorRole = assertProcessingRoleOrThrow(body.actor_role);
+  const _actorId = normalizeBuyerId(body.actor_id);
+  const codes = Array.isArray(body.qr_codes)
+    ? [...new Set(body.qr_codes.map((value) => String(value || '').trim()).filter(Boolean))]
+    : [];
+  if (codes.length === 0) return res.status(400).json({ error: 'At least one QR code is required' });
+
+  const batchRows = await q('SELECT * FROM processing_batches WHERE id = ? LIMIT 1', [batchId]);
+  if (batchRows.length === 0) return res.status(404).json({ error: 'Processing batch not found' });
+  if (batchRows[0].status === 'completed') return res.status(400).json({ error: 'Completed batch cannot be modified' });
+
+  const placeholders = codes.map(() => '?').join(',');
+  const bagRows = await q(
+    `SELECT bag.id AS bag_id, bag.unique_code, bag.weight,
+            COALESCE(bag.bale_value, bag.weight * bag.rate, 0) AS bale_value,
+            qr.id AS qr_code_id
+     FROM bags bag
+     LEFT JOIN qr_codes qr ON qr.unique_code = bag.unique_code
+     WHERE bag.unique_code IN (${placeholders})`,
+    codes
+  );
+  if (bagRows.length !== codes.length) {
+    return res.status(400).json({ error: 'One or more QR codes do not exist as warehouse bags' });
+  }
+
+  const activeExisting = await q(
+    `SELECT pbi.unique_code
+     FROM processing_batch_items pbi
+     INNER JOIN processing_batches pb ON pb.id = pbi.batch_id
+     WHERE pbi.unique_code IN (${placeholders})
+       AND pbi.status = 'active'
+       AND pb.status IN ('open', 'in_progress')
+       AND pb.id <> ?
+     LIMIT 1`,
+    [...codes, batchId]
+  );
+  if (activeExisting.length > 0) {
+    return res.status(400).json({ error: `QR code ${activeExisting[0].unique_code} is already in another active batch` });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    for (const row of bagRows) {
+      await conn.query(
+        `INSERT INTO processing_batch_items
+         (batch_id, bag_id, qr_code_id, unique_code, weight, bale_value, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'active', NOW())
+         ON DUPLICATE KEY UPDATE status = 'active'`,
+        [batchId, row.bag_id, row.qr_code_id || null, row.unique_code, row.weight ?? null, row.bale_value ?? null]
+      );
+    }
+    await conn.query(
+      `INSERT INTO processing_batch_stage_logs
+       (batch_id, stage_key, stage_label, action, total_quantity, worker_names_json, note, logged_by_employee_id, logged_by_role, logged_at)
+       VALUES (?, ?, ?, 'note', NULL, NULL, ?, ?, ?, NOW())`,
+      [batchId, batchRows[0].current_stage_key || PROCESSING_STAGE_DEFS[0].key, PROCESSING_STAGE_LABEL_BY_KEY[batchRows[0].current_stage_key || PROCESSING_STAGE_DEFS[0].key], `Added ${codes.length} item(s) to batch`, _actorId, actorRole]
+    );
+    await conn.commit();
+    const batch = await getProcessingBatchById(batchId);
+    res.json({ success: true, batch });
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}));
+
+app.delete('/api/processing/batches/:id/items/:itemId', withAsync(async (req, res) => {
+  const batchId = Number(req.params.id);
+  const itemId = Number(req.params.itemId);
+  const actorRole = assertProcessingRoleOrThrow(req.query.actor_role);
+  const actorId = normalizeBuyerId(req.query.actor_id);
+
+  if (!Number.isFinite(batchId) || batchId <= 0) return res.status(400).json({ error: 'Invalid batch id' });
+  if (!Number.isFinite(itemId) || itemId <= 0) return res.status(400).json({ error: 'Invalid item id' });
+
+  const batchRows = await q('SELECT * FROM processing_batches WHERE id = ? LIMIT 1', [batchId]);
+  if (batchRows.length === 0) return res.status(404).json({ error: 'Processing batch not found' });
+  if (batchRows[0].status === 'completed') return res.status(400).json({ error: 'Completed batch items cannot be removed' });
+
+  const itemRows = await q('SELECT * FROM processing_batch_items WHERE id = ? AND batch_id = ? LIMIT 1', [itemId, batchId]);
+  if (itemRows.length === 0) return res.status(404).json({ error: 'Batch item not found' });
+
+  await q("UPDATE processing_batch_items SET status = 'removed' WHERE id = ?", [itemId]);
+  await q(
+    `INSERT INTO processing_batch_stage_logs
+     (batch_id, stage_key, stage_label, action, total_quantity, worker_names_json, note, logged_by_employee_id, logged_by_role, logged_at)
+     VALUES (?, ?, ?, 'note', NULL, NULL, ?, ?, ?, NOW())`,
+    [
+      batchId,
+      batchRows[0].current_stage_key || PROCESSING_STAGE_DEFS[0].key,
+      PROCESSING_STAGE_LABEL_BY_KEY[batchRows[0].current_stage_key || PROCESSING_STAGE_DEFS[0].key],
+      `Removed item ${itemRows[0].unique_code} from batch`,
+      actorId,
+      actorRole,
+    ]
+  );
+
+  const batch = await getProcessingBatchById(batchId);
+  res.json({ success: true, batch });
+}));
+
+app.put('/api/processing/batches/:id/stages/:stageKey', withAsync(async (req, res) => {
+  const batchId = Number(req.params.id);
+  const stageKey = String(req.params.stageKey || '').trim().toLowerCase();
+  const body = req.body || {};
+  const action = String(body.action || '').trim().toLowerCase();
+  const actorRole = assertProcessingRoleOrThrow(body.actor_role);
+  const actorId = normalizeBuyerId(body.actor_id);
+
+  if (!Number.isFinite(batchId) || batchId <= 0) return res.status(400).json({ error: 'Invalid batch id' });
+  if (!PROCESSING_STAGE_KEYS.has(stageKey)) return res.status(400).json({ error: 'Invalid stage key' });
+  if (!['start', 'finish'].includes(action)) return res.status(400).json({ error: 'action must be start or finish' });
+
+  const batchRows = await q('SELECT * FROM processing_batches WHERE id = ? LIMIT 1', [batchId]);
+  if (batchRows.length === 0) return res.status(404).json({ error: 'Processing batch not found' });
+  const batch = batchRows[0];
+
+  if (batch.status === 'completed') return res.status(400).json({ error: 'Batch is already completed' });
+  if (batch.current_stage_key !== stageKey) {
+    return res.status(400).json({ error: `Current batch stage is ${batch.current_stage_key || 'not set'}` });
+  }
+
+  const stageIndex = PROCESSING_STAGE_DEFS.findIndex((stage) => stage.key === stageKey);
+  const latestStarted = await q(
+    `SELECT id FROM processing_batch_stage_logs
+     WHERE batch_id = ? AND stage_key = ? AND action = 'started'
+     ORDER BY id DESC
+     LIMIT 1`,
+    [batchId, stageKey]
+  );
+  const latestFinished = await q(
+    `SELECT id FROM processing_batch_stage_logs
+     WHERE batch_id = ? AND stage_key = ? AND action = 'finished'
+     ORDER BY id DESC
+     LIMIT 1`,
+    [batchId, stageKey]
+  );
+
+  if (action === 'start' && latestStarted.length > 0 && (latestFinished.length === 0 || Number(latestStarted[0].id) > Number(latestFinished[0].id))) {
+    return res.status(400).json({ error: 'Stage is already started and not finished yet' });
+  }
+  if (action === 'finish' && (latestStarted.length === 0 || (latestFinished.length > 0 && Number(latestFinished[0].id) > Number(latestStarted[0].id)))) {
+    return res.status(400).json({ error: 'Stage must be started before finish' });
+  }
+
+  const workerNames = Array.isArray(body.worker_names)
+    ? body.worker_names.map((value) => String(value || '').trim()).filter(Boolean)
+    : String(body.worker_names || '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+  const quantityRaw = body.total_quantity;
+  const totalQuantity = quantityRaw === undefined || quantityRaw === null || quantityRaw === '' ? null : Number(quantityRaw);
+  if (action === 'finish' && (!Number.isFinite(totalQuantity) || totalQuantity <= 0)) {
+    return res.status(400).json({ error: 'total_quantity is required for finish action' });
+  }
+
+  const note = String(body.note || '').trim();
+  const stageLabel = PROCESSING_STAGE_LABEL_BY_KEY[stageKey] || stageKey;
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query(
+      `INSERT INTO processing_batch_stage_logs
+       (batch_id, stage_key, stage_label, action, total_quantity, worker_names_json, note, logged_by_employee_id, logged_by_role, logged_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        batchId,
+        stageKey,
+        stageLabel,
+        action === 'start' ? 'started' : 'finished',
+        totalQuantity,
+        workerNames.length > 0 ? JSON.stringify(workerNames) : null,
+        note,
+        actorId,
+        actorRole,
+      ]
+    );
+
+    if (action === 'start') {
+      await conn.query(
+        `UPDATE processing_batches
+         SET status = 'in_progress', updated_at = NOW()
+         WHERE id = ?`,
+        [batchId]
+      );
+    } else {
+      const isLastStage = stageIndex >= PROCESSING_STAGE_DEFS.length - 1;
+      if (isLastStage) {
+        await conn.query(
+          `UPDATE processing_batches
+           SET status = 'completed', current_stage_key = NULL, completed_at = NOW(), updated_at = NOW()
+           WHERE id = ?`,
+          [batchId]
+        );
+      } else {
+        const nextStageKey = PROCESSING_STAGE_DEFS[stageIndex + 1].key;
+        await conn.query(
+          `UPDATE processing_batches
+           SET status = 'in_progress', current_stage_key = ?, updated_at = NOW()
+           WHERE id = ?`,
+          [nextStageKey, batchId]
+        );
+      }
+    }
+
+    await conn.commit();
+    const updatedBatch = await getProcessingBatchById(batchId);
+    res.json({ success: true, batch: updatedBatch });
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}));
+
+app.get('/api/processing/daily-progress', withAsync(async (req, res) => {
+  const dateValue = normalizeIsoDate(req.query.date) || DateTime.now().setZone('Asia/Kolkata').toFormat('yyyy-MM-dd');
+
+  const stageRows = await q(
+    `SELECT stage_key, stage_label,
+            COUNT(DISTINCT batch_id) AS total_batches,
+            COALESCE(SUM(total_quantity), 0) AS total_quantity
+     FROM processing_batch_stage_logs
+     WHERE action = 'finished'
+       AND DATE(logged_at) = ?
+     GROUP BY stage_key, stage_label`,
+    [dateValue]
+  );
+
+  const workerRows = await q(
+    `SELECT stage_key, worker_names_json, total_quantity
+     FROM processing_batch_stage_logs
+     WHERE action = 'finished'
+       AND DATE(logged_at) = ?`,
+    [dateValue]
+  );
+
+  const workerSummary = {};
+  for (const row of workerRows) {
+    const stageKey = String(row.stage_key || '').trim();
+    if (!workerSummary[stageKey]) workerSummary[stageKey] = {};
+    const workerNames = row.worker_names_json ? JSON.parse(row.worker_names_json) : [];
+    const qty = Number(row.total_quantity || 0);
+    for (const workerName of workerNames) {
+      if (!workerSummary[stageKey][workerName]) {
+        workerSummary[stageKey][workerName] = { entries: 0, quantity: 0 };
+      }
+      workerSummary[stageKey][workerName].entries += 1;
+      workerSummary[stageKey][workerName].quantity += qty;
+    }
+  }
+
+  const orderedStageRows = stageRows.sort((a, b) => {
+    const ai = PROCESSING_STAGE_DEFS.findIndex((stage) => stage.key === a.stage_key);
+    const bi = PROCESSING_STAGE_DEFS.findIndex((stage) => stage.key === b.stage_key);
+    return ai - bi;
+  });
+
+  res.json({
+    date: dateValue,
+    stages: orderedStageRows.map((stageRow) => ({
+      ...stageRow,
+      workers: Object.entries(workerSummary[stageRow.stage_key] || {}).map(([worker_name, stats]) => ({ worker_name, ...stats })),
+    })),
+  });
+}));
+
+app.post('/api/processing/batches/:id/export-bags', withAsync(async (req, res) => {
+  const batchId = Number(req.params.id);
+  if (!Number.isFinite(batchId) || batchId <= 0) return res.status(400).json({ error: 'Invalid batch id' });
+
+  const body = req.body || {};
+  const actorRole = assertProcessingRoleOrThrow(body.actor_role);
+  const actorId = normalizeBuyerId(body.actor_id);
+  const inputBags = Array.isArray(body.bags) ? body.bags : [];
+  if (inputBags.length === 0) return res.status(400).json({ error: 'At least one export bag is required' });
+
+  const batchRows = await q('SELECT * FROM processing_batches WHERE id = ? LIMIT 1', [batchId]);
+  if (batchRows.length === 0) return res.status(404).json({ error: 'Processing batch not found' });
+  if (batchRows[0].status !== 'completed') return res.status(400).json({ error: 'Export bags can be created only after all stages are completed' });
+
+  const validatedBags = [];
+  for (let index = 0; index < inputBags.length; index += 1) {
+    const row = inputBags[index] || {};
+    const grade = String(row.grade || '').trim();
+    const quantity = Number(row.quantity);
+    const exportCode = String(row.export_unique_code || '').trim();
+    if (!grade) return res.status(400).json({ error: `grade is required for export bag #${index + 1}` });
+    if (!Number.isFinite(quantity) || quantity <= 0) return res.status(400).json({ error: `quantity must be positive for export bag #${index + 1}` });
+    validatedBags.push({ grade, quantity, export_unique_code: exportCode });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const createdIds = [];
+    for (let index = 0; index < validatedBags.length; index += 1) {
+      const bag = validatedBags[index];
+      const generatedCode = bag.export_unique_code || `EXP-${batchId}-${Date.now()}-${index + 1}`;
+
+      await conn.query(
+        `INSERT INTO qr_codes (unique_code, buyer_id, used, created_at)
+         VALUES (?, NULL, 1, NOW())
+         ON DUPLICATE KEY UPDATE unique_code = unique_code`,
+        [generatedCode]
+      );
+
+      const [insertRow] = await conn.query(
+        `INSERT INTO processing_export_bags
+         (batch_id, export_unique_code, grade, quantity, created_by_employee_id, created_by_role, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        [batchId, generatedCode, bag.grade, bag.quantity, actorId, actorRole]
+      );
+      createdIds.push(Number(insertRow.insertId));
+    }
+
+    await conn.commit();
+    const created = await q(
+      `SELECT peb.*
+       FROM processing_export_bags peb
+       WHERE peb.id IN (${createdIds.map(() => '?').join(',')})
+       ORDER BY peb.id DESC`,
+      createdIds
+    );
+    const batch = await getProcessingBatchById(batchId);
+    res.json({ success: true, export_bags: created, batch });
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}));
+
 app.get('/api/stats', withAsync(async (_req, res) => {
   const rows = await q(`
     SELECT
@@ -2335,6 +3040,10 @@ app.get('/api/stats', withAsync(async (_req, res) => {
 }));
 
 app.use((error, _req, res, _next) => {
+  if (error.statusCode && Number.isFinite(Number(error.statusCode))) {
+    return res.status(Number(error.statusCode)).json({ error: error.message || 'Request failed' });
+  }
+
   if (error.code === 'ER_NO_SUCH_TABLE') {
     return res.status(500).json({ error: 'Database not initialized properly' });
   }

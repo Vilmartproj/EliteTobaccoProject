@@ -72,6 +72,22 @@ import { generateInvoice } from '../utils/generateInvoice';
 import { formatDateTime, fromInputDateTime, nowInputDateTime, toInputDateTime } from '../utils/dateFormat';
 
 export default function AdminDashboard({ user, onLogout }) {
+  const roleLabel = (role) => {
+    const value = String(role || '').toLowerCase();
+    if (value === 'classification') return 'Classification User';
+    if (value === 'supervisor') return 'Supervisor';
+    if (value === 'warehouse') return 'Warehouse';
+    if (value === 'buyer') return 'Buyer';
+    if (value === 'admin') return 'Admin';
+    return role || '-';
+  };
+
+  const loginTypeLabel = (type) => {
+    if (type === 'classification') return 'Classification User';
+    if (type === 'warehouse') return 'Warehouse';
+    return 'Buyer';
+  };
+
   const [tab, setTab]         = useState('overview');
   const [stats, setStats]     = useState({});
   const [buyers, setBuyers]   = useState([]);
@@ -223,9 +239,9 @@ export default function AdminDashboard({ user, onLogout }) {
   const handleAddBuyer = async () => {
     if (!newCode || !newName) { setBuyerMsg('Fill all fields'); return; }
     try {
-      if (newLoginType === 'warehouse') {
-        await api.addWarehouseEmployee({ code: newCode, name: newName });
-        setBuyerMsg(`✅ Warehouse login ${newCode.toUpperCase()} added. Password = ${newCode.toUpperCase()}`);
+      if (newLoginType === 'warehouse' || newLoginType === 'classification') {
+        await api.addWarehouseEmployee({ code: newCode, name: newName, role: newLoginType });
+        setBuyerMsg(`✅ ${loginTypeLabel(newLoginType)} login ${newCode.toUpperCase()} added. Password = ${newCode.toUpperCase()}`);
       } else {
         await api.addBuyer({ code: newCode, name: newName });
         setBuyerMsg(`✅ Buyer ${newCode.toUpperCase()} added. Password = ${newCode.toUpperCase()}`);
@@ -236,10 +252,10 @@ export default function AdminDashboard({ user, onLogout }) {
   };
 
   const handleDeleteWarehouseEmployee = async (employee) => {
-    if (!window.confirm(`Delete warehouse login ${employee.code} (${employee.name})?`)) return;
+    if (!window.confirm(`Delete ${roleLabel(employee.role)} login ${employee.code} (${employee.name})?`)) return;
     try {
       await api.deleteWarehouseEmployee(employee.id);
-      setBuyerMsg(`✅ Warehouse login ${employee.code} deleted`);
+      setBuyerMsg(`✅ ${roleLabel(employee.role)} login ${employee.code} deleted`);
       await refresh();
     } catch (e) {
       setBuyerMsg(e.message);
@@ -274,7 +290,7 @@ export default function AdminDashboard({ user, onLogout }) {
   const handleSetWarehouseActive = async (employee, isActive) => {
     try {
       await api.setWarehouseEmployeeActive(employee.id, isActive);
-      setBuyerMsg(`✅ Warehouse login ${employee.code} marked as ${isActive ? 'active' : 'inactive'}`);
+      setBuyerMsg(`✅ ${roleLabel(employee.role)} login ${employee.code} marked as ${isActive ? 'active' : 'inactive'}`);
       await refresh();
     } catch (e) {
       setBuyerMsg(e.message);
@@ -1415,7 +1431,7 @@ export default function AdminDashboard({ user, onLogout }) {
             </div>
 
             <div style={S.card}>
-              <div style={S.subheading}>Add Buyer / Warehouse Login</div>
+              <div style={S.subheading}>Add Buyer / Operations Login</div>
               {buyerMsg && <div style={buyerMsg.startsWith('✅') ? S.success : S.error}>{buyerMsg}</div>}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
                 <div>
@@ -1423,10 +1439,11 @@ export default function AdminDashboard({ user, onLogout }) {
                   <select style={S.input} value={newLoginType} onChange={e => setNewLoginType(e.target.value)}>
                     <option value="buyer">Buyer Login</option>
                     <option value="warehouse">Warehouse Login</option>
+                    <option value="classification">Classification User Login</option>
                   </select>
                 </div>
-                <div><label style={S.label}>{newLoginType === 'warehouse' ? 'Warehouse Code' : 'Buyer Code'}</label><input style={S.input} placeholder={newLoginType === 'warehouse' ? 'e.g. W003' : 'e.g. B004'} value={newCode} onChange={e => setNewCode(e.target.value)} /></div>
-                <div><label style={S.label}>{newLoginType === 'warehouse' ? 'Warehouse Name' : 'Buyer Name'}</label><input style={S.input} placeholder="Full Name" value={newName} onChange={e => setNewName(e.target.value)} /></div>
+                <div><label style={S.label}>{newLoginType === 'buyer' ? 'Buyer Code' : 'User Code'}</label><input style={S.input} placeholder={newLoginType === 'buyer' ? 'e.g. B004' : newLoginType === 'classification' ? 'e.g. C001' : 'e.g. W003'} value={newCode} onChange={e => setNewCode(e.target.value)} /></div>
+                <div><label style={S.label}>{newLoginType === 'buyer' ? 'Buyer Name' : 'User Name'}</label><input style={S.input} placeholder="Full Name" value={newName} onChange={e => setNewName(e.target.value)} /></div>
                 <button style={{ ...S.btnPrimary, flex: 'none', padding: '10px 20px' }} onClick={handleAddBuyer}>Add</button>
               </div>
             </div>
@@ -1529,7 +1546,7 @@ export default function AdminDashboard({ user, onLogout }) {
             </div>
 
             <div style={S.card}>
-              <div style={S.subheading}>Warehouse Login Users ({warehouseEmployees.length})</div>
+              <div style={S.subheading}>Operations Login Users ({warehouseEmployees.length})</div>
               {isCompactLoginView ? (
                 <div style={{ display: 'grid', gap: 10 }}>
                   {warehouseEmployees.map((w) => (
@@ -1538,6 +1555,7 @@ export default function AdminDashboard({ user, onLogout }) {
                         <div style={{ fontSize: 12 }}><b>Code:</b> {w.code}</div>
                         <div style={{ fontSize: 12 }}><b>Status:</b> {Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</div>
                         <div style={{ fontSize: 12 }}><b>Name:</b> {w.name}</div>
+                        <div style={{ fontSize: 12 }}><b>Role:</b> {roleLabel(w.role)}</div>
                       </div>
                       <div style={{ fontSize: 12, marginBottom: 8, wordBreak: 'break-all' }}><b>Password:</b> {w.password}</div>
 
@@ -1568,13 +1586,14 @@ export default function AdminDashboard({ user, onLogout }) {
               ) : (
                 <div style={{ overflowX: 'auto' }}>
                   <table style={S.table}>
-                    <thead><tr>{['Code','Name','Password','Status','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                    <thead><tr>{['Code','Name','Role','Password','Status','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                     <tbody>
                       {warehouseEmployees.map(w => (
                         editingWarehouseId === w.id ? (
                           <tr key={w.id} style={{ background: '#fffbea' }}>
                             <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
                             <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} value={editWarehouseForm?.name ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, name: e.target.value }))} /></td>
+                            <td style={S.td}>{roleLabel(w.role)}</td>
                             <td style={S.td}><input style={{ ...S.input, minWidth: 140, marginBottom: 0 }} type="password" placeholder="New password" value={editWarehouseForm?.password ?? ''} onChange={e => setEditWarehouseForm(f => ({ ...f, password: e.target.value }))} /></td>
                             <td style={S.td}><span style={{ fontWeight: 800, color: Number(w.is_active ?? 1) === 1 ? '#15803d' : '#b91c1c' }}>{Number(w.is_active ?? 1) === 1 ? 'Active' : 'Inactive'}</span></td>
                             <td style={S.td}>
@@ -1588,6 +1607,7 @@ export default function AdminDashboard({ user, onLogout }) {
                           <tr key={w.id}>
                             <td style={{ ...S.td, fontWeight: 800 }}>{w.code}</td>
                             <td style={S.td}>{w.name}</td>
+                            <td style={S.td}>{roleLabel(w.role)}</td>
                             <td style={{ ...S.td, fontFamily: 'monospace', color: '#c0392b' }}>{w.password}</td>
                             <td style={S.td}>
                               <span style={{

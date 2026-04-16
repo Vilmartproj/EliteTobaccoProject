@@ -93,6 +93,28 @@ export const api = {
   sendVehicleDispatchToWarehouse: (id, body) => req('PUT', `/vehicle-dispatches/${id}/send-to-warehouse`, body),
   confirmVehicleDispatch: (id, body) => req('PUT', `/vehicle-dispatches/${id}/warehouse-confirmation`, body),
   scanVehicleDispatchQRCode: (id, body) => req('POST', `/vehicle-dispatches/${id}/scan`, body),
+  getProcessingStages: () => req('GET', '/processing/stages'),
+  getProcessingBatches: (query = {}) => {
+    const params = new URLSearchParams();
+    if (query.date) params.set('date', String(query.date));
+    if (query.stage_key) params.set('stage_key', String(query.stage_key));
+    if (query.status) params.set('status', String(query.status));
+    const q = params.toString();
+    return req('GET', `/processing/batches${q ? `?${q}` : ''}`);
+  },
+  getProcessingBatchById: (id) => req('GET', `/processing/batches/${id}`),
+  createProcessingBatch: (body) => req('POST', '/processing/batches', body),
+  addProcessingBatchItems: (id, body) => req('POST', `/processing/batches/${id}/items`, body),
+  removeProcessingBatchItem: (batchId, itemId, query = {}) => {
+    const params = new URLSearchParams();
+    if (query.actor_role) params.set('actor_role', String(query.actor_role));
+    if (query.actor_id) params.set('actor_id', String(query.actor_id));
+    const q = params.toString();
+    return req('DELETE', `/processing/batches/${batchId}/items/${itemId}${q ? `?${q}` : ''}`);
+  },
+  updateProcessingStage: (batchId, stageKey, body) => req('PUT', `/processing/batches/${batchId}/stages/${encodeURIComponent(stageKey)}`, body),
+  getDailyProcessingProgress: (date) => req('GET', `/processing/daily-progress${date ? `?date=${encodeURIComponent(date)}` : ''}`),
+  createProcessingExportBags: (batchId, body) => req('POST', `/processing/batches/${batchId}/export-bags`, body),
   getBags:          (buyerId)      => req('GET',  `/bags${buyerId ? `?buyer_id=${buyerId}` : ''}`),
   saveBag:          (body)         => req('POST', '/bags', body),
   updateBag:        (id, body)     => req('PUT',  `/bags/${id}`, body),

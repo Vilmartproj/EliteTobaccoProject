@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 const USER_TYPES = [
   { value: 'buyer', label: 'Buyer' },
   { value: 'warehouse', label: 'Warehouse' },
+  { value: 'classification', label: 'Classification User' },
   { value: 'admin', label: 'Admin' },
 ];
 

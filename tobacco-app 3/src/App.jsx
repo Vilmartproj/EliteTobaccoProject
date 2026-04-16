@@ -42,7 +42,7 @@ export default function App() {
      if (session.role === 'admin') {
           return <AdminDashboard user={session} onLogout={() => setSession(null)} />;
      }
-     if (session.role === 'warehouse') {
+     if (session.role === 'warehouse' || session.role === 'classification' || session.role === 'supervisor') {
           return <WarehouseDashboard user={session} onLogout={() => setSession(null)} />;
      }
      return <BuyerDashboard user={session} onLogout={() => setSession(null)} />;
