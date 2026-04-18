@@ -4,6 +4,16 @@
 const BASE = import.meta.env.VITE_API_BASE || '/api';
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 10000);
 
+function withQuery(path, query = {}) {
+  const params = new URLSearchParams();
+  Object.entries(query || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    params.set(key, String(value));
+  });
+  const q = params.toString();
+  return `${path}${q ? `?${q}` : ''}`;
+}
+
 async function req(method, path, body) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -138,7 +148,18 @@ export const api = {
     return req('DELETE', `/processing/batches/${batchId}/items/${itemId}${q ? `?${q}` : ''}`);
   },
   updateProcessingStage: (batchId, stageKey, body) => req('PUT', `/processing/batches/${batchId}/stages/${encodeURIComponent(stageKey)}`, body),
+  updateProcessingBatchStatus: (batchId, body) => req('PUT', `/processing/batches/${batchId}/status`, body),
   getDailyProcessingProgress: (date) => req('GET', `/processing/daily-progress${date ? `?date=${encodeURIComponent(date)}` : ''}`),
+  getProcessingReports: (query = {}) => {
+    const params = new URLSearchParams();
+    if (query.batch_id) params.set('batch_id', String(query.batch_id));
+    if (query.date) params.set('date', String(query.date));
+    const q = params.toString();
+    return req('GET', `/processing/reports${q ? `?${q}` : ''}`);
+  },
+  getProcessingMissingStageAlerts: (query = {}) => req('GET', withQuery('/processing/alerts/missing-stages', query)),
+  getProcessingTraceability: (query = {}) => req('GET', withQuery('/processing/traceability', query)),
+  getProcessingReportExportUrl: (query = {}) => `${BASE}${withQuery('/processing/reports/export', query)}`,
   createProcessingExportBags: (batchId, body) => req('POST', `/processing/batches/${batchId}/export-bags`, body),
   // Classification entries
   getClassificationEntries: (query = {}) => {

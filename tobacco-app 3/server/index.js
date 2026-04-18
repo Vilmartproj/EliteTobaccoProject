@@ -80,14 +80,24 @@ const DEFAULT_GRADE_TYPE = GRADE_TYPES.TOBACCO_BOARD;
 const GRADE_TYPE_VALUES = new Set(Object.values(GRADE_TYPES));
 
 const PROCESSING_STAGE_DEFS = [
-  { key: 'grading', label: 'Grading' },
   { key: 'butting', label: 'Butting' },
-  { key: 'conditioning', label: 'Conditioning' },
+  { key: 'stripping', label: 'Stripping' },
+  { key: 'kutcha', label: 'Kutcha' },
+  { key: 'threshing', label: 'Threshing' },
+  { key: 'grading', label: 'Grading' },
   { key: 'packing', label: 'Packing' },
 ];
 const PROCESSING_STAGE_KEYS = new Set(PROCESSING_STAGE_DEFS.map((stage) => stage.key));
 const PROCESSING_STAGE_LABEL_BY_KEY = Object.fromEntries(PROCESSING_STAGE_DEFS.map((stage) => [stage.key, stage.label]));
 const PROCESSING_ALLOWED_ROLES = new Set(['classification', 'supervisor']);
+const PROCESSING_STAGE_PARAM_RULES = {
+  butting: ['input_bales', 'input_weight', 'stalk_removal_pct'],
+  stripping: ['input_weight', 'leaf_recovery_pct', 'output_weight'],
+  kutcha: ['moisture_pct', 'cut_size_mm', 'output_weight'],
+  threshing: ['feed_rate_kgph', 'waste_pct', 'output_weight'],
+  grading: ['grade_mix', 'uniformity_pct', 'output_weight'],
+  packing: ['pack_count', 'pack_weight', 'output_weight'],
+};
 
 const seedGradeTemplates = [
   ['H1', 'High Grade 1'],
@@ -438,6 +448,358 @@ function normalizeIsoDate(value) {
   return `${m[1]}-${m[2]}-${m[3]}`;
 }
 
+function parseJsonArray(value) {
+  if (!value) return [];
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function parseJsonObject(value) {
+  if (!value) return null;
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function roundMetric(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return 0;
+  return Number(numeric.toFixed(2));
+}
+
+function sanitizeStageMetrics(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const entries = Object.entries(value).filter(([key, fieldValue]) => {
+    if (!key || typeof key !== 'string') return false;
+    if (fieldValue === null || fieldValue === undefined) return false;
+    if (typeof fieldValue === 'string' && !fieldValue.trim()) return false;
+    return true;
+  });
+  return Object.fromEntries(entries);
+}
+
+function validateStageMetrics(stageKey, stageMetrics) {
+  const required = PROCESSING_STAGE_PARAM_RULES[stageKey] || [];
+  const missingFields = required.filter((field) => {
+    const value = stageMetrics[field];
+    if (value === null || value === undefined) return true;
+    if (typeof value === 'string' && !value.trim()) return true;
+    return false;
+  });
+  return missingFields;
+}
+
+function formatCsvCell(value) {
+  const text = String(value ?? '');
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function buildProcessingReportCsv(report) {
+  const lines = [];
+  lines.push(['Section', 'Field', 'Value'].map(formatCsvCell).join(','));
+  lines.push(['Summary', 'Total Batches', report.summary?.total_batches ?? 0].map(formatCsvCell).join(','));
+  lines.push(['Summary', 'Total Input Weight', report.summary?.total_input_weight ?? 0].map(formatCsvCell).join(','));
+  lines.push(['Summary', 'Total Input Value', report.summary?.total_input_value ?? 0].map(formatCsvCell).join(','));
+  lines.push(['Summary', 'Total Output Quantity', report.summary?.total_output_quantity ?? 0].map(formatCsvCell).join(','));
+  lines.push(['Summary', 'Total Output Bags', report.summary?.total_output_bags ?? 0].map(formatCsvCell).join(','));
+  lines.push(['Summary', 'Yield Percentage', report.summary?.yield_percentage ?? 0].map(formatCsvCell).join(','));
+
+  lines.push([]);
+  lines.push(['Grade Distribution', 'Grade', 'Bag Count', 'Total Quantity'].map(formatCsvCell).join(','));
+  for (const row of report.grade_distribution || []) {
+    lines.push(['Grade Distribution', row.grade, row.bag_count, row.total_quantity].map(formatCsvCell).join(','));
+  }
+
+  lines.push([]);
+  lines.push(['Worker Productivity', 'Worker', 'Entries', 'Total Quantity', 'Stages'].map(formatCsvCell).join(','));
+  for (const row of report.worker_productivity || []) {
+    lines.push([
+      'Worker Productivity',
+      row.worker_name,
+      row.entries,
+      row.total_quantity,
+      Object.entries(row.stages || {}).map(([k, count]) => `${k}:${count}`).join(' | '),
+    ].map(formatCsvCell).join(','));
+  }
+
+  lines.push([]);
+  lines.push(['Batches', 'Batch Code', 'Status', 'Current Stage', 'Input Weight', 'Output Quantity', 'Yield Percentage'].map(formatCsvCell).join(','));
+  for (const row of report.batches || []) {
+    lines.push([
+      'Batches',
+      row.batch_code,
+      row.status,
+      row.current_stage_key || '',
+      row.total_input_weight,
+      row.total_output_quantity,
+      row.yield_percentage,
+    ].map(formatCsvCell).join(','));
+  }
+
+  return lines.filter((row) => row.length > 0).join('\n');
+}
+
+function buildProcessingReportPrintHtml(report) {
+  const rows = report.batches || [];
+  const gradeRows = report.grade_distribution || [];
+  const workerRows = report.worker_productivity || [];
+  const generatedAt = DateTime.now().setZone('Asia/Kolkata').toFormat('dd/MM/yyyy HH:mm:ss');
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Processing Report</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; padding: 24px; color: #1f2937; }
+    h1 { margin: 0 0 8px; color: #0f4c81; }
+    h2 { margin: 20px 0 8px; color: #0f4c81; }
+    .summary { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap: 8px; margin-top: 12px; }
+    .summary .card { border: 1px solid #d6e7f8; border-radius: 8px; padding: 8px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border: 1px solid #d6e7f8; padding: 6px 8px; font-size: 12px; text-align: left; }
+    th { background: #eef6ff; }
+    .muted { color: #6b7280; font-size: 12px; }
+    @media print { .print-btn { display: none; } }
+  </style>
+</head>
+<body>
+  <button class="print-btn" onclick="window.print()">Print / Save PDF</button>
+  <h1>Processing Report</h1>
+  <div class="muted">Generated at ${generatedAt}</div>
+
+  <div class="summary">
+    <div class="card"><div class="muted">Total Batches</div><div>${report.summary?.total_batches ?? 0}</div></div>
+    <div class="card"><div class="muted">Input Weight</div><div>${report.summary?.total_input_weight ?? 0}</div></div>
+    <div class="card"><div class="muted">Output Quantity</div><div>${report.summary?.total_output_quantity ?? 0}</div></div>
+    <div class="card"><div class="muted">Output Bags</div><div>${report.summary?.total_output_bags ?? 0}</div></div>
+    <div class="card"><div class="muted">Yield %</div><div>${report.summary?.yield_percentage ?? 0}</div></div>
+    <div class="card"><div class="muted">Input Value</div><div>${report.summary?.total_input_value ?? 0}</div></div>
+  </div>
+
+  <h2>Batch Summary</h2>
+  <table>
+    <thead><tr><th>Batch</th><th>Status</th><th>Current Stage</th><th>Input Weight</th><th>Output Quantity</th><th>Yield %</th></tr></thead>
+    <tbody>
+      ${rows.map((row) => `<tr><td>${row.batch_code}</td><td>${row.status}</td><td>${row.current_stage_key || '-'}</td><td>${row.total_input_weight}</td><td>${row.total_output_quantity}</td><td>${row.yield_percentage}</td></tr>`).join('')}
+    </tbody>
+  </table>
+
+  <h2>Grade Distribution</h2>
+  <table>
+    <thead><tr><th>Grade</th><th>Bags</th><th>Quantity</th></tr></thead>
+    <tbody>
+      ${gradeRows.map((row) => `<tr><td>${row.grade}</td><td>${row.bag_count}</td><td>${row.total_quantity}</td></tr>`).join('')}
+    </tbody>
+  </table>
+
+  <h2>Worker Productivity</h2>
+  <table>
+    <thead><tr><th>Worker</th><th>Entries</th><th>Total Quantity</th><th>Stages</th></tr></thead>
+    <tbody>
+      ${workerRows.map((row) => `<tr><td>${row.worker_name}</td><td>${row.entries}</td><td>${row.total_quantity}</td><td>${Object.entries(row.stages || {}).map(([k, c]) => `${k}:${c}`).join(', ') || '-'}</td></tr>`).join('')}
+    </tbody>
+  </table>
+</body>
+</html>`;
+}
+
+async function getProcessingReportData({ batchId = null, date = null } = {}) {
+  const filters = [];
+  const params = [];
+
+  if (Number.isFinite(batchId) && batchId > 0) {
+    filters.push('pb.id = ?');
+    params.push(batchId);
+  }
+  if (date) {
+    filters.push('(DATE(pb.created_at) = ? OR DATE(pb.completed_at) = ?)');
+    params.push(date, date);
+  }
+
+  const whereClause = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
+  const batchRows = await q(
+    `SELECT pb.id, pb.batch_code, pb.status, pb.current_stage_key, pb.created_at, pb.completed_at
+     FROM processing_batches pb
+     ${whereClause}
+     ORDER BY pb.id DESC`,
+    params
+  );
+
+  if (batchRows.length === 0) {
+    return {
+      filters: { batch_id: batchId, date },
+      summary: {
+        total_batches: 0,
+        total_input_weight: 0,
+        total_input_value: 0,
+        total_output_quantity: 0,
+        total_output_bags: 0,
+        yield_percentage: 0,
+      },
+      grade_distribution: [],
+      worker_productivity: [],
+      batches: [],
+    };
+  }
+
+  const batchIds = batchRows.map((row) => Number(row.id));
+  const placeholders = batchIds.map(() => '?').join(',');
+
+  const itemRows = await q(
+    `SELECT batch_id,
+            COUNT(*) AS item_count,
+            COALESCE(SUM(CASE WHEN status = 'active' THEN weight ELSE 0 END), 0) AS total_input_weight,
+            COALESCE(SUM(CASE WHEN status = 'active' THEN bale_value ELSE 0 END), 0) AS total_input_value
+     FROM processing_batch_items
+     WHERE batch_id IN (${placeholders})
+     GROUP BY batch_id`,
+    batchIds
+  );
+
+  const outputRows = await q(
+    `SELECT batch_id,
+            COUNT(*) AS total_output_bags,
+            COALESCE(SUM(quantity), 0) AS total_output_quantity
+     FROM processing_export_bags
+     WHERE batch_id IN (${placeholders})
+     GROUP BY batch_id`,
+    batchIds
+  );
+
+  const gradeRows = await q(
+    `SELECT batch_id, grade,
+            COUNT(*) AS bag_count,
+            COALESCE(SUM(quantity), 0) AS total_quantity
+     FROM processing_export_bags
+     WHERE batch_id IN (${placeholders})
+     GROUP BY batch_id, grade
+     ORDER BY grade ASC`,
+    batchIds
+  );
+
+  const workerRows = await q(
+    `SELECT batch_id, stage_key, total_quantity, worker_names_json
+     FROM processing_batch_stage_logs
+     WHERE batch_id IN (${placeholders})
+       AND action = 'finished'
+     ORDER BY logged_at ASC, id ASC`,
+    batchIds
+  );
+
+  const itemByBatchId = Object.fromEntries(itemRows.map((row) => [Number(row.batch_id), row]));
+  const outputByBatchId = Object.fromEntries(outputRows.map((row) => [Number(row.batch_id), row]));
+
+  const gradeDistributionByBatch = {};
+  const totalGradeDistribution = {};
+  for (const row of gradeRows) {
+    const currentBatchId = Number(row.batch_id);
+    if (!gradeDistributionByBatch[currentBatchId]) gradeDistributionByBatch[currentBatchId] = [];
+    const entry = {
+      grade: row.grade,
+      bag_count: Number(row.bag_count || 0),
+      total_quantity: roundMetric(row.total_quantity),
+    };
+    gradeDistributionByBatch[currentBatchId].push(entry);
+
+    if (!totalGradeDistribution[row.grade]) {
+      totalGradeDistribution[row.grade] = { grade: row.grade, bag_count: 0, total_quantity: 0 };
+    }
+    totalGradeDistribution[row.grade].bag_count += entry.bag_count;
+    totalGradeDistribution[row.grade].total_quantity += entry.total_quantity;
+  }
+
+  const workerTotals = {};
+  const workerByBatchId = {};
+  for (const row of workerRows) {
+    const currentBatchId = Number(row.batch_id);
+    const workerNames = parseJsonArray(row.worker_names_json);
+    const totalQuantity = roundMetric(row.total_quantity);
+
+    if (!workerByBatchId[currentBatchId]) workerByBatchId[currentBatchId] = {};
+
+    for (const workerName of workerNames) {
+      if (!workerTotals[workerName]) {
+        workerTotals[workerName] = { worker_name: workerName, entries: 0, total_quantity: 0, batch_ids: new Set(), stages: {} };
+      }
+      if (!workerByBatchId[currentBatchId][workerName]) {
+        workerByBatchId[currentBatchId][workerName] = { worker_name: workerName, entries: 0, total_quantity: 0, stages: {} };
+      }
+
+      workerTotals[workerName].entries += 1;
+      workerTotals[workerName].total_quantity += totalQuantity;
+      workerTotals[workerName].batch_ids.add(currentBatchId);
+      workerTotals[workerName].stages[row.stage_key] = (workerTotals[workerName].stages[row.stage_key] || 0) + 1;
+
+      workerByBatchId[currentBatchId][workerName].entries += 1;
+      workerByBatchId[currentBatchId][workerName].total_quantity += totalQuantity;
+      workerByBatchId[currentBatchId][workerName].stages[row.stage_key] = (workerByBatchId[currentBatchId][workerName].stages[row.stage_key] || 0) + 1;
+    }
+  }
+
+  const reportBatches = batchRows.map((row) => {
+    const currentBatchId = Number(row.id);
+    const itemStats = itemByBatchId[currentBatchId] || { item_count: 0, total_input_weight: 0, total_input_value: 0 };
+    const outputStats = outputByBatchId[currentBatchId] || { total_output_bags: 0, total_output_quantity: 0 };
+    const inputWeight = roundMetric(itemStats.total_input_weight);
+    const outputQuantity = roundMetric(outputStats.total_output_quantity);
+    return {
+      ...row,
+      item_count: Number(itemStats.item_count || 0),
+      total_input_weight: inputWeight,
+      total_input_value: roundMetric(itemStats.total_input_value),
+      total_output_bags: Number(outputStats.total_output_bags || 0),
+      total_output_quantity: outputQuantity,
+      yield_percentage: inputWeight > 0 ? roundMetric((outputQuantity / inputWeight) * 100) : 0,
+      grade_distribution: gradeDistributionByBatch[currentBatchId] || [],
+      worker_productivity: Object.values(workerByBatchId[currentBatchId] || {})
+        .map((entry) => ({
+          worker_name: entry.worker_name,
+          entries: entry.entries,
+          total_quantity: roundMetric(entry.total_quantity),
+          stages: entry.stages,
+        }))
+        .sort((a, b) => b.total_quantity - a.total_quantity || b.entries - a.entries || a.worker_name.localeCompare(b.worker_name)),
+    };
+  });
+
+  const totalInputWeight = roundMetric(reportBatches.reduce((sum, row) => sum + Number(row.total_input_weight || 0), 0));
+  const totalInputValue = roundMetric(reportBatches.reduce((sum, row) => sum + Number(row.total_input_value || 0), 0));
+  const totalOutputQuantity = roundMetric(reportBatches.reduce((sum, row) => sum + Number(row.total_output_quantity || 0), 0));
+  const totalOutputBags = reportBatches.reduce((sum, row) => sum + Number(row.total_output_bags || 0), 0);
+
+  return {
+    filters: { batch_id: batchId, date },
+    summary: {
+      total_batches: reportBatches.length,
+      total_input_weight: totalInputWeight,
+      total_input_value: totalInputValue,
+      total_output_quantity: totalOutputQuantity,
+      total_output_bags: totalOutputBags,
+      yield_percentage: totalInputWeight > 0 ? roundMetric((totalOutputQuantity / totalInputWeight) * 100) : 0,
+    },
+    grade_distribution: Object.values(totalGradeDistribution)
+      .map((entry) => ({ ...entry, total_quantity: roundMetric(entry.total_quantity) }))
+      .sort((a, b) => b.total_quantity - a.total_quantity || a.grade.localeCompare(b.grade)),
+    worker_productivity: Object.values(workerTotals)
+      .map((entry) => ({
+        worker_name: entry.worker_name,
+        entries: entry.entries,
+        total_quantity: roundMetric(entry.total_quantity),
+        batch_count: entry.batch_ids.size,
+        stages: entry.stages,
+      }))
+      .sort((a, b) => b.total_quantity - a.total_quantity || b.entries - a.entries || a.worker_name.localeCompare(b.worker_name)),
+    batches: reportBatches,
+  };
+}
+
 async function getProcessingBatchById(batchId) {
   const rows = await q(
     `SELECT pb.*, we.code AS created_by_code, we.name AS created_by_name,
@@ -487,13 +849,27 @@ async function getProcessingBatchById(batchId) {
     [batchId]
   );
 
+  const stageSessions = await q(
+    `SELECT pss.*, we.code AS operator_code, we.name AS operator_name
+     FROM processing_stage_sessions pss
+     LEFT JOIN warehouse_employees we ON we.id = pss.operator_employee_id
+     WHERE pss.batch_id = ?
+     ORDER BY pss.id ASC`,
+    [batchId]
+  );
+
   return {
     ...batch,
     stages: PROCESSING_STAGE_DEFS,
     items,
     stage_logs: stageLogs.map((row) => ({
       ...row,
-      worker_names: row.worker_names_json ? JSON.parse(row.worker_names_json) : [],
+      worker_names: parseJsonArray(row.worker_names_json),
+      output_details: parseJsonObject(row.output_details_json),
+    })),
+    stage_sessions: stageSessions.map((row) => ({
+      ...row,
+      stage_metrics: parseJsonObject(row.stage_metrics_json) || {},
     })),
     export_bags: exportBags,
   };
@@ -854,6 +1230,8 @@ async function initDatabase() {
       created_by_employee_id INT NULL,
       created_by_role VARCHAR(40) NOT NULL,
       completed_at DATETIME NULL,
+      paused_at DATETIME NULL,
+      resumed_at DATETIME NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       INDEX idx_processing_batches_status (status),
@@ -890,7 +1268,10 @@ async function initDatabase() {
       stage_label VARCHAR(80) NOT NULL,
       action VARCHAR(20) NOT NULL,
       total_quantity DECIMAL(12,3) NULL,
+      output_bag_count INT NULL,
+      output_grade VARCHAR(80) NULL,
       worker_names_json JSON NULL,
+      output_details_json JSON NULL,
       note VARCHAR(500) NOT NULL DEFAULT '',
       logged_by_employee_id INT NULL,
       logged_by_role VARCHAR(40) NOT NULL,
@@ -918,6 +1299,36 @@ async function initDatabase() {
       INDEX idx_processing_export_bags_grade (grade),
       CONSTRAINT fk_processing_export_bags_batch FOREIGN KEY (batch_id) REFERENCES processing_batches(id) ON DELETE CASCADE,
       CONSTRAINT fk_processing_export_bags_employee FOREIGN KEY (created_by_employee_id) REFERENCES warehouse_employees(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS processing_stage_sessions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      batch_id INT NOT NULL,
+      stage_key VARCHAR(40) NOT NULL,
+      stage_label VARCHAR(80) NOT NULL,
+      operator_employee_id INT NULL,
+      operator_role VARCHAR(40) NOT NULL,
+      machine_id VARCHAR(120) NULL,
+      input_bales INT NULL,
+      input_weight DECIMAL(12,3) NULL,
+      output_weight DECIMAL(12,3) NULL,
+      waste_weight DECIMAL(12,3) NULL,
+      efficiency_pct DECIMAL(7,3) NULL,
+      stage_metrics_json JSON NULL,
+      started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      ended_at DATETIME NULL,
+      duration_minutes INT NULL,
+      remarks VARCHAR(500) NOT NULL DEFAULT '',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_processing_stage_sessions_batch (batch_id),
+      INDEX idx_processing_stage_sessions_stage (stage_key),
+      INDEX idx_processing_stage_sessions_operator (operator_employee_id),
+      INDEX idx_processing_stage_sessions_started (started_at),
+      CONSTRAINT fk_processing_stage_sessions_batch FOREIGN KEY (batch_id) REFERENCES processing_batches(id) ON DELETE CASCADE,
+      CONSTRAINT fk_processing_stage_sessions_employee FOREIGN KEY (operator_employee_id) REFERENCES warehouse_employees(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;
   `);
 
@@ -990,6 +1401,19 @@ async function initDatabase() {
   await ensureColumnExists('bags', 'dispatch_invoice_number', 'dispatch_invoice_number VARCHAR(120) NULL');
   await ensureColumnExists('bags', 'dispatch_list_buyer_id', 'dispatch_list_buyer_id INT NULL');
   await ensureColumnExists('bags', 'dispatch_list_added_at', 'dispatch_list_added_at DATETIME NULL');
+  await ensureColumnExists('processing_batches', 'paused_at', 'paused_at DATETIME NULL');
+  await ensureColumnExists('processing_batches', 'resumed_at', 'resumed_at DATETIME NULL');
+  await ensureColumnExists('processing_batch_stage_logs', 'output_bag_count', 'output_bag_count INT NULL');
+  await ensureColumnExists('processing_batch_stage_logs', 'output_grade', 'output_grade VARCHAR(80) NULL');
+  await ensureColumnExists('processing_batch_stage_logs', 'output_details_json', 'output_details_json JSON NULL');
+  await ensureColumnExists('processing_stage_sessions', 'stage_metrics_json', 'stage_metrics_json JSON NULL');
+  await q(
+    `UPDATE processing_batches
+     SET current_stage_key = ?, updated_at = NOW()
+     WHERE status <> 'completed'
+       AND (current_stage_key IS NULL OR current_stage_key NOT IN (${PROCESSING_STAGE_DEFS.map(() => '?').join(',')}))`,
+    [PROCESSING_STAGE_DEFS[0].key, ...PROCESSING_STAGE_DEFS.map((stage) => stage.key)]
+  );
   await ensureColumnExists('vehicle_dispatch_items', 'warehouse_scan_status', "warehouse_scan_status VARCHAR(20) NOT NULL DEFAULT 'pending'");
   await ensureColumnExists('vehicle_dispatch_items', 'scanned_at', 'scanned_at DATETIME NULL');
   await ensureColumnExists('vehicle_dispatch_items', 'scanned_by_employee_id', 'scanned_by_employee_id INT NULL');
@@ -2741,7 +3165,7 @@ app.post('/api/processing/batches', withAsync(async (req, res) => {
      FROM processing_batch_items pbi
      INNER JOIN processing_batches pb ON pb.id = pbi.batch_id
      WHERE pbi.unique_code IN (${placeholders})
-       AND pb.status IN ('open', 'in_progress')
+       AND pb.status IN ('open', 'in_progress', 'paused')
        AND pbi.status = 'active'
      LIMIT 1`,
     codes
@@ -2801,6 +3225,7 @@ app.post('/api/processing/batches/:id/items', withAsync(async (req, res) => {
   const batchRows = await q('SELECT * FROM processing_batches WHERE id = ? LIMIT 1', [batchId]);
   if (batchRows.length === 0) return res.status(404).json({ error: 'Processing batch not found' });
   if (batchRows[0].status === 'completed') return res.status(400).json({ error: 'Completed batch cannot be modified' });
+  if (batchRows[0].status === 'paused') return res.status(400).json({ error: 'Paused batch cannot be modified until it is resumed' });
 
   const placeholders = codes.map(() => '?').join(',');
   const bagRows = await q(
@@ -2822,7 +3247,7 @@ app.post('/api/processing/batches/:id/items', withAsync(async (req, res) => {
      INNER JOIN processing_batches pb ON pb.id = pbi.batch_id
      WHERE pbi.unique_code IN (${placeholders})
        AND pbi.status = 'active'
-       AND pb.status IN ('open', 'in_progress')
+       AND pb.status IN ('open', 'in_progress', 'paused')
        AND pb.id <> ?
      LIMIT 1`,
     [...codes, batchId]
@@ -2872,6 +3297,7 @@ app.delete('/api/processing/batches/:id/items/:itemId', withAsync(async (req, re
   const batchRows = await q('SELECT * FROM processing_batches WHERE id = ? LIMIT 1', [batchId]);
   if (batchRows.length === 0) return res.status(404).json({ error: 'Processing batch not found' });
   if (batchRows[0].status === 'completed') return res.status(400).json({ error: 'Completed batch items cannot be removed' });
+  if (batchRows[0].status === 'paused') return res.status(400).json({ error: 'Paused batch items cannot be removed until the batch is resumed' });
 
   const itemRows = await q('SELECT * FROM processing_batch_items WHERE id = ? AND batch_id = ? LIMIT 1', [itemId, batchId]);
   if (itemRows.length === 0) return res.status(404).json({ error: 'Batch item not found' });
@@ -2912,6 +3338,7 @@ app.put('/api/processing/batches/:id/stages/:stageKey', withAsync(async (req, re
   const batch = batchRows[0];
 
   if (batch.status === 'completed') return res.status(400).json({ error: 'Batch is already completed' });
+  if (batch.status === 'paused') return res.status(400).json({ error: 'Batch is paused. Resume the batch before processing the current stage' });
   if (batch.current_stage_key !== stageKey) {
     return res.status(400).json({ error: `Current batch stage is ${batch.current_stage_key || 'not set'}` });
   }
@@ -2954,21 +3381,86 @@ app.put('/api/processing/batches/:id/stages/:stageKey', withAsync(async (req, re
 
   const note = String(body.note || '').trim();
   const stageLabel = PROCESSING_STAGE_LABEL_BY_KEY[stageKey] || stageKey;
+  const outputBagCountRaw = body.output_bag_count;
+  const outputBagCount = outputBagCountRaw === undefined || outputBagCountRaw === null || outputBagCountRaw === ''
+    ? null
+    : Number(outputBagCountRaw);
+  if (outputBagCount !== null && (!Number.isInteger(outputBagCount) || outputBagCount < 0)) {
+    return res.status(400).json({ error: 'output_bag_count must be a non-negative whole number' });
+  }
+
+  const outputGrade = String(body.output_grade || '').trim();
+  const machineId = String(body.machine_id || '').trim();
+  const stageMetrics = sanitizeStageMetrics(body.stage_metrics);
+  const inputBalesRaw = body.input_bales;
+  const inputBales = inputBalesRaw === undefined || inputBalesRaw === null || inputBalesRaw === '' ? null : Number(inputBalesRaw);
+  const inputWeightRaw = body.input_weight;
+  const inputWeight = inputWeightRaw === undefined || inputWeightRaw === null || inputWeightRaw === '' ? null : Number(inputWeightRaw);
+  const outputWeightRaw = body.output_weight;
+  const outputWeight = outputWeightRaw === undefined || outputWeightRaw === null || outputWeightRaw === '' ? null : Number(outputWeightRaw);
+  const wasteWeightRaw = body.waste_weight;
+  const wasteWeight = wasteWeightRaw === undefined || wasteWeightRaw === null || wasteWeightRaw === '' ? null : Number(wasteWeightRaw);
+  const efficiencyPctRaw = body.efficiency_pct;
+  const efficiencyPct = efficiencyPctRaw === undefined || efficiencyPctRaw === null || efficiencyPctRaw === '' ? null : Number(efficiencyPctRaw);
+  const durationMinutesRaw = body.duration_minutes;
+  const durationMinutes = durationMinutesRaw === undefined || durationMinutesRaw === null || durationMinutesRaw === '' ? null : Number(durationMinutesRaw);
+
+  if (inputBales !== null && (!Number.isInteger(inputBales) || inputBales < 0)) {
+    return res.status(400).json({ error: 'input_bales must be a non-negative whole number' });
+  }
+  for (const [fieldName, fieldValue] of [
+    ['input_weight', inputWeight],
+    ['output_weight', outputWeight],
+    ['waste_weight', wasteWeight],
+    ['efficiency_pct', efficiencyPct],
+  ]) {
+    if (fieldValue !== null && (!Number.isFinite(fieldValue) || fieldValue < 0)) {
+      return res.status(400).json({ error: `${fieldName} must be a non-negative number` });
+    }
+  }
+  if (durationMinutes !== null && (!Number.isInteger(durationMinutes) || durationMinutes < 0)) {
+    return res.status(400).json({ error: 'duration_minutes must be a non-negative whole number' });
+  }
+
+  if (action === 'finish') {
+    const missingMetricFields = validateStageMetrics(stageKey, stageMetrics);
+    if (missingMetricFields.length > 0) {
+      return res.status(400).json({ error: `Missing stage parameters: ${missingMetricFields.join(', ')}` });
+    }
+  }
+
+  let outputDetails = null;
+  if (body.output_details && typeof body.output_details === 'object' && !Array.isArray(body.output_details)) {
+    outputDetails = body.output_details;
+  } else {
+    const detailText = String(body.output_details || '').trim();
+    if (detailText) outputDetails = { summary: detailText };
+  }
+
+  if (action === 'finish') {
+    if (outputBagCount !== null) outputDetails = { ...(outputDetails || {}), bag_count: outputBagCount };
+    if (outputGrade) outputDetails = { ...(outputDetails || {}), grade: outputGrade };
+    if (machineId) outputDetails = { ...(outputDetails || {}), machine_id: machineId };
+    if (Object.keys(stageMetrics).length > 0) outputDetails = { ...(outputDetails || {}), stage_metrics: stageMetrics };
+  }
 
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     await conn.query(
       `INSERT INTO processing_batch_stage_logs
-       (batch_id, stage_key, stage_label, action, total_quantity, worker_names_json, note, logged_by_employee_id, logged_by_role, logged_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+       (batch_id, stage_key, stage_label, action, total_quantity, output_bag_count, output_grade, worker_names_json, output_details_json, note, logged_by_employee_id, logged_by_role, logged_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
         batchId,
         stageKey,
         stageLabel,
         action === 'start' ? 'started' : 'finished',
         totalQuantity,
+        outputBagCount,
+        outputGrade || null,
         workerNames.length > 0 ? JSON.stringify(workerNames) : null,
+        outputDetails ? JSON.stringify(outputDetails) : null,
         note,
         actorId,
         actorRole,
@@ -2977,17 +3469,82 @@ app.put('/api/processing/batches/:id/stages/:stageKey', withAsync(async (req, re
 
     if (action === 'start') {
       await conn.query(
+        `INSERT INTO processing_stage_sessions
+         (batch_id, stage_key, stage_label, operator_employee_id, operator_role, machine_id, input_bales, input_weight, output_weight, waste_weight, efficiency_pct, stage_metrics_json, started_at, remarks, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, NOW(), NOW())`,
+        [
+          batchId,
+          stageKey,
+          stageLabel,
+          actorId,
+          actorRole,
+          machineId || null,
+          inputBales,
+          inputWeight,
+          outputWeight,
+          wasteWeight,
+          efficiencyPct,
+          Object.keys(stageMetrics).length > 0 ? JSON.stringify(stageMetrics) : null,
+          note,
+        ]
+      );
+
+      await conn.query(
         `UPDATE processing_batches
-         SET status = 'in_progress', updated_at = NOW()
+         SET status = 'in_progress', paused_at = NULL, resumed_at = NOW(), updated_at = NOW()
          WHERE id = ?`,
         [batchId]
       );
     } else {
+      const openSessions = await conn.query(
+        `SELECT id, started_at
+         FROM processing_stage_sessions
+         WHERE batch_id = ? AND stage_key = ? AND ended_at IS NULL
+         ORDER BY id DESC
+         LIMIT 1`,
+        [batchId, stageKey]
+      );
+      const openSessionRows = openSessions[0] || [];
+      if (openSessionRows.length > 0) {
+        const openSession = openSessionRows[0];
+        const startedAt = DateTime.fromJSDate(new Date(openSession.started_at));
+        const now = DateTime.now();
+        const computedDuration = Math.max(0, Math.round(now.diff(startedAt, 'minutes').minutes));
+        await conn.query(
+          `UPDATE processing_stage_sessions
+           SET ended_at = NOW(),
+               duration_minutes = ?,
+               machine_id = COALESCE(?, machine_id),
+               input_bales = COALESCE(?, input_bales),
+               input_weight = COALESCE(?, input_weight),
+               output_weight = COALESCE(?, output_weight),
+               waste_weight = COALESCE(?, waste_weight),
+               efficiency_pct = COALESCE(?, efficiency_pct),
+               stage_metrics_json = COALESCE(?, stage_metrics_json),
+               remarks = CASE WHEN ? <> '' THEN ? ELSE remarks END,
+               updated_at = NOW()
+           WHERE id = ?`,
+          [
+            durationMinutes !== null ? durationMinutes : computedDuration,
+            machineId || null,
+            inputBales,
+            inputWeight,
+            outputWeight,
+            wasteWeight,
+            efficiencyPct,
+            Object.keys(stageMetrics).length > 0 ? JSON.stringify(stageMetrics) : null,
+            note,
+            note,
+            openSession.id,
+          ]
+        );
+      }
+
       const isLastStage = stageIndex >= PROCESSING_STAGE_DEFS.length - 1;
       if (isLastStage) {
         await conn.query(
           `UPDATE processing_batches
-           SET status = 'completed', current_stage_key = NULL, completed_at = NOW(), updated_at = NOW()
+           SET status = 'completed', current_stage_key = NULL, completed_at = NOW(), paused_at = NULL, updated_at = NOW()
            WHERE id = ?`,
           [batchId]
         );
@@ -2995,11 +3552,76 @@ app.put('/api/processing/batches/:id/stages/:stageKey', withAsync(async (req, re
         const nextStageKey = PROCESSING_STAGE_DEFS[stageIndex + 1].key;
         await conn.query(
           `UPDATE processing_batches
-           SET status = 'in_progress', current_stage_key = ?, updated_at = NOW()
+           SET status = 'in_progress', current_stage_key = ?, paused_at = NULL, updated_at = NOW()
            WHERE id = ?`,
           [nextStageKey, batchId]
         );
       }
+    }
+
+    await conn.commit();
+    const updatedBatch = await getProcessingBatchById(batchId);
+    res.json({ success: true, batch: updatedBatch });
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}));
+
+app.put('/api/processing/batches/:id/status', withAsync(async (req, res) => {
+  const batchId = Number(req.params.id);
+  const body = req.body || {};
+  const action = String(body.action || '').trim().toLowerCase();
+  const actorRole = assertProcessingRoleOrThrow(body.actor_role);
+  const actorId = normalizeBuyerId(body.actor_id);
+  const note = String(body.note || '').trim();
+
+  if (!Number.isFinite(batchId) || batchId <= 0) return res.status(400).json({ error: 'Invalid batch id' });
+  if (!['pause', 'resume'].includes(action)) return res.status(400).json({ error: 'action must be pause or resume' });
+
+  const batchRows = await q('SELECT * FROM processing_batches WHERE id = ? LIMIT 1', [batchId]);
+  if (batchRows.length === 0) return res.status(404).json({ error: 'Processing batch not found' });
+
+  const batch = batchRows[0];
+  const stageKey = batch.current_stage_key || PROCESSING_STAGE_DEFS[0].key;
+  const stageLabel = PROCESSING_STAGE_LABEL_BY_KEY[stageKey] || stageKey;
+
+  if (action === 'pause') {
+    if (batch.status === 'completed') return res.status(400).json({ error: 'Completed batch cannot be paused' });
+    if (batch.status === 'paused') return res.status(400).json({ error: 'Batch is already paused' });
+    if (batch.status !== 'in_progress') return res.status(400).json({ error: 'Batch must be in progress before it can be paused' });
+  }
+
+  if (action === 'resume') {
+    if (batch.status !== 'paused') return res.status(400).json({ error: 'Only paused batches can be resumed' });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query(
+      `INSERT INTO processing_batch_stage_logs
+       (batch_id, stage_key, stage_label, action, total_quantity, output_bag_count, output_grade, worker_names_json, output_details_json, note, logged_by_employee_id, logged_by_role, logged_at)
+       VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, NOW())`,
+      [batchId, stageKey, stageLabel, action === 'pause' ? 'paused' : 'resumed', note, actorId, actorRole]
+    );
+
+    if (action === 'pause') {
+      await conn.query(
+        `UPDATE processing_batches
+         SET status = 'paused', paused_at = NOW(), updated_at = NOW()
+         WHERE id = ?`,
+        [batchId]
+      );
+    } else {
+      await conn.query(
+        `UPDATE processing_batches
+         SET status = 'in_progress', resumed_at = NOW(), paused_at = NULL, updated_at = NOW()
+         WHERE id = ?`,
+        [batchId]
+      );
     }
 
     await conn.commit();
@@ -3062,6 +3684,185 @@ app.get('/api/processing/daily-progress', withAsync(async (req, res) => {
       ...stageRow,
       workers: Object.entries(workerSummary[stageRow.stage_key] || {}).map(([worker_name, stats]) => ({ worker_name, ...stats })),
     })),
+  });
+}));
+
+app.get('/api/processing/reports', withAsync(async (req, res) => {
+  const batchId = Number(req.query.batch_id);
+  const dateValue = normalizeIsoDate(req.query.date);
+  const report = await getProcessingReportData({
+    batchId: Number.isFinite(batchId) && batchId > 0 ? batchId : null,
+    date: dateValue,
+  });
+  res.json(report);
+}));
+
+app.get('/api/processing/reports/export', withAsync(async (req, res) => {
+  const batchId = Number(req.query.batch_id);
+  const dateValue = normalizeIsoDate(req.query.date);
+  const format = String(req.query.format || 'csv').trim().toLowerCase();
+  const report = await getProcessingReportData({
+    batchId: Number.isFinite(batchId) && batchId > 0 ? batchId : null,
+    date: dateValue,
+  });
+
+  const stamp = DateTime.now().setZone('Asia/Kolkata').toFormat('yyyyMMdd-HHmmss');
+  if (format === 'csv') {
+    const csv = buildProcessingReportCsv(report);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="processing-report-${stamp}.csv"`);
+    res.send(csv);
+    return;
+  }
+
+  if (format === 'pdf') {
+    const html = buildProcessingReportPrintHtml(report);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+    return;
+  }
+
+  res.status(400).json({ error: 'format must be csv or pdf' });
+}));
+
+app.get('/api/processing/alerts/missing-stages', withAsync(async (req, res) => {
+  const statusFilter = String(req.query.status || '').trim().toLowerCase();
+  const allowedStatuses = new Set(['open', 'in_progress', 'paused', 'completed']);
+  const useStatusFilter = statusFilter && allowedStatuses.has(statusFilter);
+
+  const batches = await q(
+    `SELECT id, batch_code, status, current_stage_key, created_at, completed_at
+     FROM processing_batches
+     ${useStatusFilter ? 'WHERE status = ?' : ''}
+     ORDER BY id DESC`,
+    useStatusFilter ? [statusFilter] : []
+  );
+
+  if (batches.length === 0) {
+    res.json({ generated_at: new Date().toISOString(), alerts: [] });
+    return;
+  }
+
+  const batchIds = batches.map((row) => Number(row.id));
+  const stageRows = await q(
+    `SELECT batch_id, stage_key
+     FROM processing_batch_stage_logs
+     WHERE action = 'finished' AND batch_id IN (${batchIds.map(() => '?').join(',')})
+     GROUP BY batch_id, stage_key`,
+    batchIds
+  );
+
+  const finishedByBatch = {};
+  for (const row of stageRows) {
+    const id = Number(row.batch_id);
+    if (!finishedByBatch[id]) finishedByBatch[id] = new Set();
+    finishedByBatch[id].add(String(row.stage_key || '').trim().toLowerCase());
+  }
+
+  const alerts = [];
+  for (const batch of batches) {
+    const finishedSet = finishedByBatch[Number(batch.id)] || new Set();
+    const missingStages = PROCESSING_STAGE_DEFS
+      .filter((stage) => !finishedSet.has(stage.key))
+      .map((stage) => stage.label);
+
+    if (missingStages.length === 0) continue;
+
+    let severity = 'medium';
+    if (batch.status === 'completed') severity = 'high';
+    if (batch.status === 'open') severity = 'low';
+
+    alerts.push({
+      batch_id: batch.id,
+      batch_code: batch.batch_code,
+      status: batch.status,
+      current_stage_key: batch.current_stage_key,
+      severity,
+      missing_stages: missingStages,
+      created_at: batch.created_at,
+      completed_at: batch.completed_at,
+    });
+  }
+
+  res.json({ generated_at: new Date().toISOString(), alerts });
+}));
+
+app.get('/api/processing/traceability', withAsync(async (req, res) => {
+  const batchId = Number(req.query.batch_id);
+  const qrCode = String(req.query.qr_code || '').trim();
+
+  const filters = [];
+  const params = [];
+  if (Number.isFinite(batchId) && batchId > 0) {
+    filters.push('pb.id = ?');
+    params.push(batchId);
+  }
+  if (qrCode) {
+    filters.push('EXISTS (SELECT 1 FROM processing_batch_items pbi WHERE pbi.batch_id = pb.id AND pbi.unique_code = ?)');
+    params.push(qrCode);
+  }
+
+  const whereClause = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
+  const batches = await q(
+    `SELECT pb.id, pb.batch_code, pb.status, pb.current_stage_key, pb.created_at, pb.completed_at
+     FROM processing_batches pb
+     ${whereClause}
+     ORDER BY pb.id DESC
+     LIMIT 50`,
+    params
+  );
+
+  const responseBatches = [];
+  for (const batch of batches) {
+    const id = Number(batch.id);
+    const items = await q(
+      `SELECT pbi.id, pbi.unique_code, pbi.status, pbi.weight, pbi.bale_value
+       FROM processing_batch_items pbi
+       WHERE pbi.batch_id = ?
+       ORDER BY pbi.id ASC`,
+      [id]
+    );
+    const stageLogs = await q(
+      `SELECT id, stage_key, stage_label, action, total_quantity, output_bag_count, output_grade, worker_names_json, output_details_json, note, logged_at
+       FROM processing_batch_stage_logs
+       WHERE batch_id = ?
+       ORDER BY id ASC`,
+      [id]
+    );
+    const sessions = await q(
+      `SELECT id, stage_key, stage_label, machine_id, input_bales, input_weight, output_weight, waste_weight, efficiency_pct, stage_metrics_json, started_at, ended_at, duration_minutes, remarks
+       FROM processing_stage_sessions
+       WHERE batch_id = ?
+       ORDER BY id ASC`,
+      [id]
+    );
+    const exportBags = await q(
+      `SELECT id, export_unique_code, grade, quantity, created_at
+       FROM processing_export_bags
+       WHERE batch_id = ?
+       ORDER BY id ASC`,
+      [id]
+    );
+
+    responseBatches.push({
+      ...batch,
+      items,
+      stage_logs: stageLogs.map((row) => ({
+        ...row,
+        worker_names: parseJsonArray(row.worker_names_json),
+        output_details: parseJsonObject(row.output_details_json),
+      })),
+      stage_sessions: sessions.map((row) => ({ ...row, stage_metrics: parseJsonObject(row.stage_metrics_json) || {} })),
+      export_bags: exportBags,
+    });
+  }
+
+  res.json({
+    filters: {
+      batch_id: Number.isFinite(batchId) && batchId > 0 ? batchId : null,
+      qr_code: qrCode || null,
+    },
+    batches: responseBatches,
   });
 }));
 
