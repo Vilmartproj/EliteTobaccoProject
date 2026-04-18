@@ -605,6 +605,15 @@ async function initDatabase() {
   `);
 
   await q(`
+    CREATE TABLE IF NOT EXISTS classification_grades (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(50) NOT NULL UNIQUE,
+      description VARCHAR(255) NOT NULL DEFAULT '',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB;
+  `);
+
+  await q(`
     CREATE TABLE IF NOT EXISTS qr_codes (
       id INT AUTO_INCREMENT PRIMARY KEY,
       unique_code VARCHAR(120) NOT NULL UNIQUE,
@@ -909,6 +918,60 @@ async function initDatabase() {
       INDEX idx_processing_export_bags_grade (grade),
       CONSTRAINT fk_processing_export_bags_batch FOREIGN KEY (batch_id) REFERENCES processing_batches(id) ON DELETE CASCADE,
       CONSTRAINT fk_processing_export_bags_employee FOREIGN KEY (created_by_employee_id) REFERENCES warehouse_employees(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS classification_entries (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      bag_id INT NOT NULL,
+      unique_code VARCHAR(120) NOT NULL,
+      grade VARCHAR(80) NOT NULL,
+      rate DECIMAL(12,3) NULL,
+      tobacco_type VARCHAR(120) NOT NULL,
+      classification_date DATE NOT NULL,
+      classified_by_employee_id INT NULL,
+      classified_by_role VARCHAR(40) NOT NULL,
+      note VARCHAR(500) NOT NULL DEFAULT '',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_classification_entries_bag (bag_id),
+      INDEX idx_classification_entries_code (unique_code),
+      INDEX idx_classification_entries_date (classification_date),
+      CONSTRAINT fk_classification_entries_bag FOREIGN KEY (bag_id) REFERENCES bags(id) ON DELETE RESTRICT,
+      CONSTRAINT fk_classification_entries_employee FOREIGN KEY (classified_by_employee_id) REFERENCES warehouse_employees(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS el_grades (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(50) NOT NULL UNIQUE,
+      description VARCHAR(255) NOT NULL DEFAULT '',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB;
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS processing_entries (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      classification_entry_id INT NOT NULL,
+      unique_code VARCHAR(120) NOT NULL,
+      process_type ENUM('butting','stripping','grading','kutcha') NOT NULL,
+      bales INT NOT NULL DEFAULT 0,
+      weight DECIMAL(12,3) NOT NULL DEFAULT 0,
+      el_grade VARCHAR(50) NOT NULL,
+      generated_qr_code TEXT NULL,
+      created_by_employee_id INT NULL,
+      created_by_role VARCHAR(40) NOT NULL,
+      note VARCHAR(500) NOT NULL DEFAULT '',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_processing_entries_classification (classification_entry_id),
+      INDEX idx_processing_entries_code (unique_code),
+      INDEX idx_processing_entries_type (process_type),
+      CONSTRAINT fk_processing_entries_classification FOREIGN KEY (classification_entry_id) REFERENCES classification_entries(id) ON DELETE RESTRICT,
+      CONSTRAINT fk_processing_entries_employee FOREIGN KEY (created_by_employee_id) REFERENCES warehouse_employees(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;
   `);
 
@@ -1518,6 +1581,51 @@ app.delete('/api/grades/:id', withAsync(async (req, res) => {
   if (inUse[0].total > 0) return res.status(400).json({ error: 'Grade is in use and cannot be deleted' });
 
   await q('DELETE FROM grades WHERE id = ?', [gradeId]);
+  res.json({ success: true, grade });
+}));
+
+// ── CLASSIFICATION GRADES CRUD ──
+app.get('/api/classification-grades', withAsync(async (_req, res) => {
+  const rows = await q('SELECT * FROM classification_grades ORDER BY code ASC');
+  res.json(rows);
+}));
+
+app.post('/api/classification-grades', withAsync(async (req, res) => {
+  const code = String(req.body?.code || '').trim().toUpperCase();
+  const description = String(req.body?.description || '').trim();
+  if (!code) return res.status(400).json({ error: 'code required' });
+  try {
+    const result = await q('INSERT INTO classification_grades (code, description, created_at) VALUES (?, ?, NOW())', [code, description]);
+    const rows = await q('SELECT * FROM classification_grades WHERE id = ?', [result.insertId]);
+    return res.json(rows[0]);
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Classification grade code already exists' });
+    throw error;
+  }
+}));
+
+app.put('/api/classification-grades/:id', withAsync(async (req, res) => {
+  const gradeId = Number(req.params.id);
+  const code = String(req.body?.code || '').trim().toUpperCase();
+  const description = String(req.body?.description || '').trim();
+  if (!code) return res.status(400).json({ error: 'code required' });
+  const rows = await q('SELECT * FROM classification_grades WHERE id = ? LIMIT 1', [gradeId]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Classification grade not found' });
+  const duplicate = await q('SELECT id FROM classification_grades WHERE code = ? AND id <> ? LIMIT 1', [code, gradeId]);
+  if (duplicate.length > 0) return res.status(400).json({ error: 'Classification grade code already exists' });
+  await q('UPDATE classification_grades SET code = ?, description = ? WHERE id = ?', [code, description, gradeId]);
+  const updated = await q('SELECT * FROM classification_grades WHERE id = ?', [gradeId]);
+  res.json(updated[0]);
+}));
+
+app.delete('/api/classification-grades/:id', withAsync(async (req, res) => {
+  const gradeId = Number(req.params.id);
+  const rows = await q('SELECT * FROM classification_grades WHERE id = ? LIMIT 1', [gradeId]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Classification grade not found' });
+  const grade = rows[0];
+  const inUse = await q('SELECT COUNT(*) AS total FROM classification_entries WHERE grade = ?', [grade.code]);
+  if (inUse[0].total > 0) return res.status(400).json({ error: 'Classification grade is in use and cannot be deleted' });
+  await q('DELETE FROM classification_grades WHERE id = ?', [gradeId]);
   res.json({ success: true, grade });
 }));
 
@@ -3025,6 +3133,110 @@ app.post('/api/processing/batches/:id/export-bags', withAsync(async (req, res) =
   }
 }));
 
+// ─── Classification Entries ─────────────────────────────────────────────────
+
+app.get('/api/classification-entries', withAsync(async (req, res) => {
+  const employeeId = normalizeBuyerId(req.query.employee_id);
+  const dateFilter = normalizeIsoDate(req.query.date);
+  const filters = [];
+  const params = [];
+  if (employeeId) { filters.push('ce.classified_by_employee_id = ?'); params.push(employeeId); }
+  if (dateFilter) { filters.push('ce.classification_date = ?'); params.push(dateFilter); }
+  const whereClause = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
+  const rows = await q(
+    `SELECT ce.*, b.buyer_code, b.buyer_name, b.weight AS bag_weight, b.fcv
+     FROM classification_entries ce
+     LEFT JOIN bags b ON b.id = ce.bag_id
+     ${whereClause}
+     ORDER BY ce.created_at DESC`,
+    params
+  );
+  res.json(rows);
+}));
+
+app.post('/api/classification-entries', withAsync(async (req, res) => {
+  const body = req.body || {};
+  const actorRole = assertProcessingRoleOrThrow(body.actor_role);
+  const actorId = normalizeBuyerId(body.actor_id);
+  const uniqueCode = String(body.unique_code || '').trim();
+  const grade = String(body.grade || '').trim();
+  const tobaccoType = String(body.tobacco_type || '').trim();
+  const classificationDate = normalizeIsoDate(body.classification_date);
+  const rate = body.rate != null && body.rate !== '' ? Number(body.rate) : null;
+  const note = String(body.note || '').trim();
+
+  if (!uniqueCode) return res.status(400).json({ error: 'QR code is required' });
+  if (!grade) return res.status(400).json({ error: 'Grade is required' });
+  if (!tobaccoType) return res.status(400).json({ error: 'Tobacco type is required' });
+  if (!classificationDate) return res.status(400).json({ error: 'Classification date is required' });
+
+  // Look up the bag
+  const bagRows = await q('SELECT id, unique_code FROM bags WHERE unique_code = ? LIMIT 1', [uniqueCode]);
+  if (bagRows.length === 0) return res.status(404).json({ error: `No bag found with code ${uniqueCode}` });
+  const bagId = bagRows[0].id;
+
+  // Verify the QR code has been matched at warehouse level
+  const warehouseMatched = await q(
+    `SELECT vdi.id FROM vehicle_dispatch_items vdi
+     WHERE vdi.unique_code = ? AND vdi.warehouse_scan_status = 'matched'
+     LIMIT 1`,
+    [uniqueCode]
+  );
+  if (warehouseMatched.length === 0) {
+    return res.status(400).json({ error: `QR code ${uniqueCode} has not been matched at warehouse yet` });
+  }
+
+  // Check for duplicate classification entry
+  const existing = await q('SELECT id FROM classification_entries WHERE bag_id = ? LIMIT 1', [bagId]);
+  if (existing.length > 0) return res.status(409).json({ error: `Bag ${uniqueCode} has already been classified` });
+
+  const result = await q(
+    `INSERT INTO classification_entries (bag_id, unique_code, grade, rate, tobacco_type, classification_date, classified_by_employee_id, classified_by_role, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [bagId, uniqueCode, grade, rate, tobaccoType, classificationDate, actorId, actorRole, note]
+  );
+  const insertedId = result.insertId;
+  const [entry] = await q('SELECT * FROM classification_entries WHERE id = ?', [insertedId]);
+  res.json(entry);
+}));
+
+app.put('/api/classification-entries/:id', withAsync(async (req, res) => {
+  const entryId = Number(req.params.id);
+  if (!Number.isFinite(entryId) || entryId <= 0) return res.status(400).json({ error: 'Invalid entry id' });
+
+  const body = req.body || {};
+  assertProcessingRoleOrThrow(body.actor_role);
+  const grade = String(body.grade || '').trim();
+  const tobaccoType = String(body.tobacco_type || '').trim();
+  const classificationDate = normalizeIsoDate(body.classification_date);
+  const rate = body.rate != null && body.rate !== '' ? Number(body.rate) : null;
+  const note = String(body.note || '').trim();
+
+  if (!grade) return res.status(400).json({ error: 'Grade is required' });
+  if (!tobaccoType) return res.status(400).json({ error: 'Tobacco type is required' });
+  if (!classificationDate) return res.status(400).json({ error: 'Classification date is required' });
+
+  await q(
+    `UPDATE classification_entries SET grade = ?, rate = ?, tobacco_type = ?, classification_date = ?, note = ? WHERE id = ?`,
+    [grade, rate, tobaccoType, classificationDate, note, entryId]
+  );
+  const [updated] = await q('SELECT * FROM classification_entries WHERE id = ?', [entryId]);
+  if (!updated) return res.status(404).json({ error: 'Classification entry not found' });
+  res.json(updated);
+}));
+
+app.delete('/api/classification-entries/:id', withAsync(async (req, res) => {
+  const entryId = Number(req.params.id);
+  if (!Number.isFinite(entryId) || entryId <= 0) return res.status(400).json({ error: 'Invalid entry id' });
+
+  const actorRole = assertProcessingRoleOrThrow(req.query.actor_role || req.body?.actor_role);
+  const [entry] = await q('SELECT * FROM classification_entries WHERE id = ?', [entryId]);
+  if (!entry) return res.status(404).json({ error: 'Classification entry not found' });
+
+  await q('DELETE FROM classification_entries WHERE id = ?', [entryId]);
+  res.json({ success: true, deleted_id: entryId, unique_code: entry.unique_code });
+}));
+
 app.get('/api/stats', withAsync(async (_req, res) => {
   const rows = await q(`
     SELECT
@@ -3037,6 +3249,154 @@ app.get('/api/stats', withAsync(async (_req, res) => {
   `);
 
   res.json(rows[0]);
+}));
+
+// ── EL Grades CRUD ──
+app.get('/api/el-grades', withAsync(async (_req, res) => {
+  const rows = await q('SELECT * FROM el_grades ORDER BY code ASC');
+  res.json(rows);
+}));
+
+app.post('/api/el-grades', withAsync(async (req, res) => {
+  const code = String(req.body?.code || '').trim().toUpperCase();
+  const description = String(req.body?.description || '').trim();
+  if (!code) return res.status(400).json({ error: 'code required' });
+  try {
+    const result = await q('INSERT INTO el_grades (code, description, created_at) VALUES (?, ?, NOW())', [code, description]);
+    const rows = await q('SELECT * FROM el_grades WHERE id = ?', [result.insertId]);
+    return res.json(rows[0]);
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'EL grade code already exists' });
+    throw error;
+  }
+}));
+
+app.put('/api/el-grades/:id', withAsync(async (req, res) => {
+  const gradeId = Number(req.params.id);
+  const code = String(req.body?.code || '').trim().toUpperCase();
+  const description = String(req.body?.description || '').trim();
+  if (!code) return res.status(400).json({ error: 'code required' });
+  const rows = await q('SELECT * FROM el_grades WHERE id = ? LIMIT 1', [gradeId]);
+  if (rows.length === 0) return res.status(404).json({ error: 'EL grade not found' });
+  const duplicate = await q('SELECT id FROM el_grades WHERE code = ? AND id <> ? LIMIT 1', [code, gradeId]);
+  if (duplicate.length > 0) return res.status(400).json({ error: 'EL grade code already exists' });
+  await q('UPDATE el_grades SET code = ?, description = ? WHERE id = ?', [code, description, gradeId]);
+  const updated = await q('SELECT * FROM el_grades WHERE id = ?', [gradeId]);
+  res.json(updated[0]);
+}));
+
+app.delete('/api/el-grades/:id', withAsync(async (req, res) => {
+  const gradeId = Number(req.params.id);
+  const rows = await q('SELECT * FROM el_grades WHERE id = ? LIMIT 1', [gradeId]);
+  if (rows.length === 0) return res.status(404).json({ error: 'EL grade not found' });
+  const grade = rows[0];
+  const inUse = await q('SELECT COUNT(*) AS total FROM processing_entries WHERE el_grade = ?', [grade.code]);
+  if (inUse[0].total > 0) return res.status(400).json({ error: 'EL grade is in use and cannot be deleted' });
+  await q('DELETE FROM el_grades WHERE id = ?', [gradeId]);
+  res.json({ success: true, grade });
+}));
+
+// ── Processing Entries CRUD ──
+app.get('/api/processing-entries', withAsync(async (req, res) => {
+  const employeeId = normalizeBuyerId(req.query.employee_id);
+  const classificationEntryId = normalizeBuyerId(req.query.classification_entry_id);
+  const processType = String(req.query.process_type || '').trim().toLowerCase();
+  const filters = [];
+  const params = [];
+  if (employeeId) { filters.push('pe.created_by_employee_id = ?'); params.push(employeeId); }
+  if (classificationEntryId) { filters.push('pe.classification_entry_id = ?'); params.push(classificationEntryId); }
+  if (processType) { filters.push('pe.process_type = ?'); params.push(processType); }
+  const whereClause = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
+  const rows = await q(
+    `SELECT pe.*, ce.grade AS classification_grade, ce.tobacco_type, b.fcv, b.buyer_code, b.buyer_name, b.weight AS bag_weight
+     FROM processing_entries pe
+     LEFT JOIN classification_entries ce ON ce.id = pe.classification_entry_id
+     LEFT JOIN bags b ON b.unique_code = pe.unique_code
+     ${whereClause}
+     ORDER BY pe.created_at DESC`,
+    params
+  );
+  res.json(rows);
+}));
+
+app.post('/api/processing-entries', withAsync(async (req, res) => {
+  const body = req.body || {};
+  const actorRole = assertProcessingRoleOrThrow(body.actor_role);
+  const actorId = normalizeBuyerId(body.actor_id);
+  const classificationEntryId = Number(body.classification_entry_id);
+  const processType = String(body.process_type || '').trim().toLowerCase();
+  const bales = Number(body.bales) || 0;
+  const weight = Number(body.weight) || 0;
+  const elGrade = String(body.el_grade || '').trim().toUpperCase();
+  const generateQr = !!body.generate_qr;
+  const note = String(body.note || '').trim();
+
+  if (!Number.isFinite(classificationEntryId) || classificationEntryId <= 0) return res.status(400).json({ error: 'Classification entry is required' });
+  if (!['butting', 'stripping', 'grading', 'kutcha'].includes(processType)) return res.status(400).json({ error: 'Invalid process type' });
+  if (bales <= 0) return res.status(400).json({ error: 'Bales must be greater than 0' });
+  if (weight <= 0) return res.status(400).json({ error: 'Weight must be greater than 0' });
+  if (!elGrade) return res.status(400).json({ error: 'EL grade is required' });
+
+  // Verify classification entry exists
+  const ceRows = await q('SELECT * FROM classification_entries WHERE id = ? LIMIT 1', [classificationEntryId]);
+  if (ceRows.length === 0) return res.status(404).json({ error: 'Classification entry not found' });
+  const ce = ceRows[0];
+
+  // Verify EL grade exists
+  const elGradeRows = await q('SELECT id FROM el_grades WHERE code = ? LIMIT 1', [elGrade]);
+  if (elGradeRows.length === 0) return res.status(400).json({ error: `EL grade ${elGrade} does not exist` });
+
+  let generatedQrCodes = null;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // Optionally generate one QR code per bale
+    if (generateQr && bales > 0) {
+      const prefix = `PE-${processType.toUpperCase().slice(0, 3)}-`;
+      const codes = [];
+      for (let i = 0; i < bales; i++) {
+        let candidate;
+        let attempts = 0;
+        do {
+          candidate = `${prefix}${String(Date.now()).slice(-6)}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+          const [existing] = await conn.query('SELECT id FROM qr_codes WHERE unique_code = ? LIMIT 1', [candidate]);
+          if (existing.length === 0) break;
+          attempts += 1;
+        } while (attempts < 20);
+        await conn.query('INSERT INTO qr_codes (unique_code, buyer_id, used, created_at) VALUES (?, NULL, 0, NOW())', [candidate]);
+        codes.push(candidate);
+      }
+      generatedQrCodes = JSON.stringify(codes);
+    }
+
+    const [insertResult] = await conn.query(
+      `INSERT INTO processing_entries
+       (classification_entry_id, unique_code, process_type, bales, weight, el_grade, generated_qr_code, created_by_employee_id, created_by_role, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [classificationEntryId, ce.unique_code, processType, bales, weight, elGrade, generatedQrCodes, actorId, actorRole, note]
+    );
+
+    await conn.commit();
+
+    const [entry] = await conn.query('SELECT * FROM processing_entries WHERE id = ?', [insertResult.insertId]);
+    res.json(entry[0]);
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}));
+
+app.delete('/api/processing-entries/:id', withAsync(async (req, res) => {
+  const entryId = Number(req.params.id);
+  if (!Number.isFinite(entryId) || entryId <= 0) return res.status(400).json({ error: 'Invalid entry id' });
+  assertProcessingRoleOrThrow(req.query.actor_role || req.body?.actor_role);
+  const [entry] = await q('SELECT * FROM processing_entries WHERE id = ?', [entryId]);
+  if (!entry) return res.status(404).json({ error: 'Processing entry not found' });
+  await q('DELETE FROM processing_entries WHERE id = ?', [entryId]);
+  res.json({ success: true, deleted_id: entryId });
 }));
 
 app.use((error, _req, res, _next) => {

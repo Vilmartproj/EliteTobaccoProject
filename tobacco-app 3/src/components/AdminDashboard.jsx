@@ -5,6 +5,7 @@ import { S as _S } from '../styles';
 import QRCode from './QRCode';
 import QRCameraScanner from './QRCameraScanner';
 import AdminUserReview from './AdminUserReview';
+import ELGradeManager from './ELGradeManager';
 
 
 // ── Admin colour theme: teal → blue gradient (matching buyer dashboard) ──────
@@ -162,6 +163,13 @@ export default function AdminDashboard({ user, onLogout }) {
   const [purchaseLocationEditingId, setPurchaseLocationEditingId] = useState(null);
   const [purchaseLocationMsg, setPurchaseLocationMsg] = useState('');
 
+  // Classification grades state
+  const [classificationGrades, setClassificationGrades] = useState([]);
+  const [clGradeCode, setClGradeCode] = useState('');
+  const [clGradeDescription, setClGradeDescription] = useState('');
+  const [clGradeEditingId, setClGradeEditingId] = useState(null);
+  const [clGradeMsg, setClGradeMsg] = useState('');
+
   // Admin logins state
   const [adminLogins, setAdminLogins] = useState([]);
   const qrTrackMsgRef = useRef(null);
@@ -181,9 +189,10 @@ export default function AdminDashboard({ user, onLogout }) {
   const apfCodeInputRef = useRef(null);
   const tobaccoTypeCodeInputRef = useRef(null);
   const purchaseLocationCodeInputRef = useRef(null);
+  const clGradeCodeInputRef = useRef(null);
 
   const refresh = async () => {
-    const [s, b, w, apf, tobaccoTypeRows, purchaseLocationRows, tbGrades, byGrades, q, bg, buyerActionSetting, al, vehicleDispatchRows] = await Promise.all([
+    const [s, b, w, apf, tobaccoTypeRows, purchaseLocationRows, tbGrades, byGrades, q, bg, buyerActionSetting, al, vehicleDispatchRows, clGrades] = await Promise.all([
       api.getStats(),
       api.getBuyers(),
       api.getWarehouseEmployees(),
@@ -197,6 +206,7 @@ export default function AdminDashboard({ user, onLogout }) {
       api.getBuyerBagActionSetting(),
       api.getAdminLogins(),
       api.getVehicleDispatches(),
+      api.getClassificationGrades(),
     ]);
     setStats(s);
     setBuyers(b);
@@ -209,6 +219,7 @@ export default function AdminDashboard({ user, onLogout }) {
     setQR(q);
     setBags(bg);
     setDispatches(vehicleDispatchRows);
+    setClassificationGrades(clGrades || []);
     setEnabledBuyerActionIds(Array.isArray(buyerActionSetting?.enabled_buyer_ids)
       ? buyerActionSetting.enabled_buyer_ids.map(Number)
       : []);
@@ -572,6 +583,54 @@ export default function AdminDashboard({ user, onLogout }) {
       setBuyerGradeMsg(e.message);
     }
   };
+
+  const resetClassificationGradeForm = () => {
+    setClGradeCode('');
+    setClGradeDescription('');
+    setClGradeEditingId(null);
+    setTimeout(() => clGradeCodeInputRef.current?.focus(), 0);
+  };
+
+  const handleSaveClassificationGrade = async () => {
+    if (!clGradeCode.trim()) {
+      setClGradeMsg('Grade code is required');
+      return;
+    }
+    try {
+      if (clGradeEditingId) {
+        await api.updateClassificationGrade(clGradeEditingId, { code: clGradeCode, description: clGradeDescription });
+        setClGradeMsg(`✅ Grade ${clGradeCode.toUpperCase()} updated`);
+      } else {
+        await api.addClassificationGrade({ code: clGradeCode, description: clGradeDescription });
+        setClGradeMsg(`✅ Grade ${clGradeCode.toUpperCase()} added`);
+      }
+      resetClassificationGradeForm();
+      await refresh();
+    } catch (e) {
+      setClGradeMsg(e.message);
+    }
+  };
+
+  const handleEditClassificationGrade = (grade) => {
+    setClGradeEditingId(grade.id);
+    setClGradeCode(grade.code);
+    setClGradeDescription(grade.description);
+    setClGradeMsg('');
+  };
+
+  const handleDeleteClassificationGrade = async (grade) => {
+    if (!window.confirm(`Delete classification grade ${grade.code}?`)) return;
+    try {
+      await api.deleteClassificationGrade(grade.id);
+      setClGradeMsg(`✅ Grade ${grade.code} deleted`);
+      if (clGradeEditingId === grade.id) resetClassificationGradeForm();
+      await refresh();
+    } catch (e) {
+      setClGradeMsg(e.message);
+    }
+  };
+
+  const sortedClassificationGrades = [...classificationGrades].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
 
   const resetApfNumberForm = () => {
     setApfNumberCode('');
@@ -1185,6 +1244,8 @@ export default function AdminDashboard({ user, onLogout }) {
             ['tobacco-types','🌿 Tobacco Types'],
             ['tb-grades','🏷️ TB Grades'],
             ['buyer-grades','🏷️ Buyer Grades'],
+            ['classification-grades','🏷️ Classification Grades'],
+            ['el-grades','🏷️ EL Grades'],
             ['qrcodes','🔲 QR Codes'],
             ['qr-tracking','📡 QR Tracking'],
             ['generate','⚡ Generate QR'],
@@ -1943,6 +2004,70 @@ export default function AdminDashboard({ user, onLogout }) {
               </div>
             </div>
           </div>
+        )}
+
+        {/* ── CLASSIFICATION GRADE MAINTENANCE ── */}
+        {tab === 'classification-grades' && (
+          <div>
+            <div style={S.card}>
+              <div style={S.subheading}>Classification Grade Maintenance</div>
+              {clGradeMsg && <div style={clGradeMsg.startsWith('✅') ? S.success : S.error}>{clGradeMsg}</div>}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
+                <div>
+                  <label style={S.label}>Grade Code</label>
+                  <input ref={clGradeCodeInputRef} style={S.input} placeholder="e.g. CG1" value={clGradeCode} onChange={e => setClGradeCode(e.target.value.toUpperCase())} />
+                </div>
+                <div>
+                  <label style={S.label}>Description</label>
+                  <input style={S.input} placeholder="e.g. Classification Grade 1" value={clGradeDescription} onChange={e => setClGradeDescription(e.target.value)} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  <button style={{ ...S.btnPrimary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={handleSaveClassificationGrade}>
+                    {clGradeEditingId ? 'Update' : 'Add'}
+                  </button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'end' }}>
+                  {clGradeEditingId && (
+                    <button style={{ ...S.btnSecondary, width: '100%', flex: 'none', padding: '10px 16px' }} onClick={resetClassificationGradeForm}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div style={S.card}>
+              <div style={S.subheading}>All Classification Grades ({classificationGrades.length})</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ ...S.table, minWidth: 520 }}>
+                  <thead><tr>{['Grade Code','Description','Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {sortedClassificationGrades.map(g => (
+                      <tr key={g.id}>
+                        <td style={S.td}><b>{g.code}</b></td>
+                        <td style={{ ...S.td, whiteSpace: 'normal' }}>{g.description}</td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleEditClassificationGrade(g)}>
+                              ✏️ Edit
+                            </button>
+                            <button style={{ ...S.btnSecondary, flex: 'none', padding: '6px 10px', fontSize: 12 }} onClick={() => handleDeleteClassificationGrade(g)}>
+                              🗑 Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── EL GRADES ── */}
+        {tab === 'el-grades' && (
+          <ELGradeManager S={S} />
         )}
 
         {/* ── QR CODES ── */}

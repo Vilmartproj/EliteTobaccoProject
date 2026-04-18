@@ -4,6 +4,8 @@ import { S as _S } from '../styles';
 import BrandLogo from './BrandLogo';
 import QRCameraScanner from './QRCameraScanner';
 import WarehouseBatchProcessing from './WarehouseBatchProcessing';
+import ClassificationForm from './ClassificationForm';
+import ProcessingForm from './ProcessingForm';
 import { formatDateTime } from '../utils/dateFormat';
 
 // ── Warehouse colour theme: teal → blue gradient (matching buyer dashboard) ──
@@ -98,6 +100,7 @@ export default function WarehouseDashboard({ user, onLogout }) {
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const inputRef = useRef(null);
+  const [processingTab, setProcessingTab] = useState('classification-entry');
 
   const loadDispatches = async () => {
     const data = await api.getVehicleDispatches(null, user.id);
@@ -187,6 +190,8 @@ export default function WarehouseDashboard({ user, onLogout }) {
       </div>
 
       <div style={{ ...S.page, maxWidth: 1195 }}>
+        {!isClassificationUser && (
+        <>
         <div style={S.card}>
           <div style={S.subheading}>Assigned Vehicle Dispatches ({dispatches.length})</div>
           {msg && <div style={msg.startsWith('✅') ? S.success : S.error}>{msg}</div>}
@@ -328,8 +333,27 @@ export default function WarehouseDashboard({ user, onLogout }) {
             </div>
           </div>
         )}
+        </>
+        )}
 
-        {isClassificationUser && <WarehouseBatchProcessing user={user} />}
+        {isClassificationUser && (
+          <>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+              {[
+                ['classification-entry', '📋 Classification Entry'],
+                ['batch-processing', '⚙️ Batch Processing'],
+                ['processing', '🔄 Processing'],
+              ].map(([id, label]) => (
+                <button key={id} style={S.tab(processingTab === id)} onClick={() => setProcessingTab(id)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {processingTab === 'classification-entry' && <ClassificationForm user={user} />}
+            {processingTab === 'batch-processing' && <WarehouseBatchProcessing user={user} />}
+            {processingTab === 'processing' && <ProcessingForm user={user} S={S} />}
+          </>
+        )}
       </div>
     </div>
   );

@@ -73,6 +73,31 @@ export const api = {
   addGrade:         (body)         => req('POST', '/grades', body),
   updateGrade:      (id, body)     => req('PUT',  `/grades/${id}`, body),
   deleteGrade:      (id)           => req('DELETE', `/grades/${id}`),
+  getClassificationGrades:    ()             => req('GET',  '/classification-grades'),
+  addClassificationGrade:     (body)         => req('POST', '/classification-grades', body),
+  updateClassificationGrade:  (id, body)     => req('PUT',  `/classification-grades/${id}`, body),
+  deleteClassificationGrade:  (id)           => req('DELETE', `/classification-grades/${id}`),
+  // EL Grades
+  getElGrades:               ()             => req('GET',  '/el-grades'),
+  addElGrade:                (body)         => req('POST', '/el-grades', body),
+  updateElGrade:             (id, body)     => req('PUT',  `/el-grades/${id}`, body),
+  deleteElGrade:             (id)           => req('DELETE', `/el-grades/${id}`),
+  // Processing Entries
+  getProcessingEntries: (query = {}) => {
+    const params = new URLSearchParams();
+    if (query.employee_id) params.set('employee_id', String(query.employee_id));
+    if (query.classification_entry_id) params.set('classification_entry_id', String(query.classification_entry_id));
+    if (query.process_type) params.set('process_type', String(query.process_type));
+    const q = params.toString();
+    return req('GET', `/processing-entries${q ? `?${q}` : ''}`);
+  },
+  saveProcessingEntry:  (body) => req('POST', '/processing-entries', body),
+  deleteProcessingEntry: (id, query = {}) => {
+    const params = new URLSearchParams();
+    if (query.actor_role) params.set('actor_role', String(query.actor_role));
+    const q = params.toString();
+    return req('DELETE', `/processing-entries/${id}${q ? `?${q}` : ''}`);
+  },
   getQRCodes:       ()             => req('GET',  '/qrcodes'),
   generateQR:       (body)         => req('POST', '/qrcodes/generate', body),
   assignQR:         (id, buyerId)  => req('PUT',  `/qrcodes/${id}/assign`, { buyerId }),
@@ -115,6 +140,22 @@ export const api = {
   updateProcessingStage: (batchId, stageKey, body) => req('PUT', `/processing/batches/${batchId}/stages/${encodeURIComponent(stageKey)}`, body),
   getDailyProcessingProgress: (date) => req('GET', `/processing/daily-progress${date ? `?date=${encodeURIComponent(date)}` : ''}`),
   createProcessingExportBags: (batchId, body) => req('POST', `/processing/batches/${batchId}/export-bags`, body),
+  // Classification entries
+  getClassificationEntries: (query = {}) => {
+    const params = new URLSearchParams();
+    if (query.employee_id) params.set('employee_id', String(query.employee_id));
+    if (query.date) params.set('date', String(query.date));
+    const q = params.toString();
+    return req('GET', `/classification-entries${q ? `?${q}` : ''}`);
+  },
+  saveClassificationEntry: (body) => req('POST', '/classification-entries', body),
+  updateClassificationEntry: (id, body) => req('PUT', `/classification-entries/${id}`, body),
+  deleteClassificationEntry: (id, query = {}) => {
+    const params = new URLSearchParams();
+    if (query.actor_role) params.set('actor_role', String(query.actor_role));
+    const q = params.toString();
+    return req('DELETE', `/classification-entries/${id}${q ? `?${q}` : ''}`);
+  },
   getBags:          (buyerId)      => req('GET',  `/bags${buyerId ? `?buyer_id=${buyerId}` : ''}`),
   saveBag:          (body)         => req('POST', '/bags', body),
   updateBag:        (id, body)     => req('PUT',  `/bags/${id}`, body),
